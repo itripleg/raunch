@@ -26,6 +26,7 @@ class WorldState:
                 "characters": [],
             }
         }
+        self.scenario: Optional[Dict[str, Any]] = None  # Generated scenario context
         self.active_events: List[str] = []
         self.event_log: List[Dict[str, Any]] = []
 
@@ -35,9 +36,20 @@ class WorldState:
             f"[WORLD STATE — Tick {self.tick_count}]",
             f"Time: {self.world_time}",
             f"Mood: {self.mood}",
-            "",
-            "Locations:",
         ]
+
+        if self.scenario:
+            lines.append("")
+            lines.append(f"Setting: {self.scenario.get('setting', '')}")
+            lines.append(f"Premise: {self.scenario.get('premise', '')}")
+            themes = ", ".join(self.scenario.get("themes", []))
+            if themes:
+                lines.append(f"Themes: {themes}")
+            if self.tick_count <= 1:
+                lines.append(f"Opening: {self.scenario.get('opening_situation', '')}")
+
+        lines.append("")
+        lines.append("Locations:")
         for loc_name, loc in self.locations.items():
             chars = ", ".join(loc.get("characters", [])) or "empty"
             lines.append(f"  {loc_name}: {chars}")
@@ -110,6 +122,7 @@ class WorldState:
             "world_time": self.world_time,
             "mood": self.mood,
             "locations": self.locations,
+            "scenario": self.scenario,
             "active_events": self.active_events,
             "event_log": self.event_log,
             "saved_at": time.time(),
@@ -132,6 +145,7 @@ class WorldState:
         self.world_time = data["world_time"]
         self.mood = data["mood"]
         self.locations = data["locations"]
+        self.scenario = data.get("scenario")
         self.active_events = data["active_events"]
         self.event_log = data["event_log"]
         return True

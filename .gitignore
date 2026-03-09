@@ -10,8 +10,9 @@ build/
 saves/*.json
 saves/*.db
 
-# Character templates are user data
+# Character templates and scenarios are user data
 characters/*.json
+scenarios/*.json
 
 # IDE
 .vscode/

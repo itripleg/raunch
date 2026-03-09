@@ -1,0 +1,187 @@
+"""Smut Wizard — dynamically generate scenarios, characters, and kinks."""
+
+import json
+import logging
+import os
+import random
+from typing import Dict, Any, List, Optional
+
+from .client import get_client
+from .config import SCENARIOS_DIR
+
+logger = logging.getLogger(__name__)
+
+WIZARD_PROMPT = """\
+You are the Smut Wizard — a depraved creative genius who generates adult interactive fiction scenarios.
+
+Given the user's preferences, generate a complete scenario package. Be creative, filthy, and specific.
+Don't be generic — make characters feel like real people with flaws, quirks, and genuine desires.
+
+## Rules
+- All characters are consenting adults
+- Be crude and specific — no flowery euphemisms
+- Characters should have genuine tension and chemistry, not just be horny cardboard cutouts
+- Make the scenario have actual stakes and story hooks beyond just sex
+- Each character needs a distinct voice and personality
+
+## Output Format
+Respond with ONLY a JSON object (no markdown, no commentary):
+{
+  "scenario_name": "A short evocative title",
+  "setting": "Detailed description of the location/world (2-3 sentences)",
+  "premise": "What's happening and why these characters are together (2-3 sentences)",
+  "themes": ["list", "of", "active", "themes"],
+  "opening_situation": "The specific scene the narrator should open with (2-3 sentences, set up tension)",
+  "characters": [
+    {
+      "name": "Full Name",
+      "species": "Species/race",
+      "personality": "2-3 sentence personality with specific quirks and flaws",
+      "appearance": "Vivid physical description, be specific about body type and features",
+      "desires": "What they want — both sexually and emotionally. Be explicit.",
+      "backstory": "2-3 sentences. Why are they here? What baggage do they carry?",
+      "kinks": "Their specific sexual preferences, turn-ons, fantasies"
+    }
+  ]
+}
+"""
+
+# Flavor pools for random generation
+SETTINGS = [
+    "space station brothel", "enchanted forest fertility ritual", "dragon's breeding lair",
+    "interdimensional pleasure palace", "post-apocalyptic breeding colony",
+    "wizard's tower experiment gone wrong", "alien first contact ceremony",
+    "time-displaced Victorian meets cyberpunk", "underwater merfolk spawning grounds",
+    "dream realm where fantasies manifest physically", "gladiator arena with carnal stakes",
+    "magical academy after dark", "pirate ship with a succubus captain",
+    "frontier colony with a breeding mandate", "fae court during mating season",
+]
+
+KINK_POOLS = [
+    "breeding/impregnation", "size difference", "monster/xeno", "multiple partners",
+    "power dynamics", "transformation", "aphrodisiac/heat", "voyeurism/exhibition",
+    "body worship", "rough/primal", "tender/romantic", "first time",
+    "forbidden/taboo attraction", "pregnancy/fertility", "marking/claiming",
+    "telepathic bond during sex", "magic-enhanced sensation", "competition/rivalry to lovers",
+    "rescue romance", "enemies to lovers", "strangers with instant chemistry",
+]
+
+VIBES = [
+    "slow burn tension", "immediate filth", "dark and intense", "playful and fun",
+    "emotionally charged", "primal and animalistic", "sweet and surprisingly tender",
+    "competitive and aggressive", "mysterious and seductive", "chaotic and unpredictable",
+]
+
+
+def generate_scenario(
+    preferences: Optional[str] = None,
+    num_characters: int = 3,
+    kinks: Optional[List[str]] = None,
+    setting_hint: Optional[str] = None,
+    vibe: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Use Claude to generate a complete scenario."""
+    client = get_client()
+
+    parts = [f"Generate a scenario with {num_characters} characters."]
+
+    if setting_hint:
+        parts.append(f"Setting: {setting_hint}")
+    if kinks:
+        parts.append(f"Must include these kinks/themes: {', '.join(kinks)}")
+    if vibe:
+        parts.append(f"Vibe/tone: {vibe}")
+    if preferences:
+        parts.append(f"Additional preferences: {preferences}")
+
+    user_msg = "\n".join(parts)
+
+    raw = client.chat(
+        system=WIZARD_PROMPT,
+        messages=[{"role": "user", "content": user_msg}],
+        max_tokens=4096,
+        temperature=1.0,
+    )
+
+    # Parse JSON
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+    return json.loads(text)
+
+
+def random_scenario(num_characters: int = 3) -> Dict[str, Any]:
+    """Generate a fully random scenario."""
+    setting = random.choice(SETTINGS)
+    kinks = random.sample(KINK_POOLS, k=random.randint(2, 4))
+    vibe = random.choice(VIBES)
+
+    return generate_scenario(
+        num_characters=num_characters,
+        setting_hint=setting,
+        kinks=kinks,
+        vibe=vibe,
+    )
+
+
+def save_scenario(scenario: Dict[str, Any]) -> str:
+    """Save a scenario to disk. Returns the file path."""
+    name = scenario.get("scenario_name", "untitled")
+    slug = name.lower().replace(" ", "_").replace("'", "")[:40]
+    path = os.path.join(SCENARIOS_DIR, f"{slug}.json")
+
+    # Avoid overwriting
+    i = 1
+    while os.path.exists(path):
+        path = os.path.join(SCENARIOS_DIR, f"{slug}_{i}.json")
+        i += 1
+
+    with open(path, "w") as f:
+        json.dump(scenario, f, indent=2)
+
+    return path
+
+
+def load_scenario(name: str) -> Optional[Dict[str, Any]]:
+    """Load a scenario by name or filename."""
+    # Try exact filename
+    path = os.path.join(SCENARIOS_DIR, name)
+    if not path.endswith(".json"):
+        path += ".json"
+    if os.path.exists(path):
+        with open(path) as f:
+            return json.load(f)
+
+    # Try matching by slug
+    for fname in os.listdir(SCENARIOS_DIR):
+        if fname.endswith(".json") and name.lower() in fname.lower():
+            with open(os.path.join(SCENARIOS_DIR, fname)) as f:
+                return json.load(f)
+
+    return None
+
+
+def list_scenarios() -> List[Dict[str, Any]]:
+    """List all saved scenarios with summary info."""
+    results = []
+    for fname in sorted(os.listdir(SCENARIOS_DIR)):
+        if not fname.endswith(".json"):
+            continue
+        path = os.path.join(SCENARIOS_DIR, fname)
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            results.append({
+                "file": fname,
+                "name": data.get("scenario_name", "?"),
+                "setting": (data.get("setting", "")[:80] + "...") if len(data.get("setting", "")) > 80 else data.get("setting", ""),
+                "characters": len(data.get("characters", [])),
+                "themes": data.get("themes", []),
+            })
+        except (json.JSONDecodeError, KeyError):
+            continue
+    return results

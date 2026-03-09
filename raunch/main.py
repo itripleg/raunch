@@ -5,6 +5,7 @@ import os
 import socket
 import logging
 import threading
+from typing import Dict
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -14,6 +15,8 @@ from .agents.character import Character
 from .server import GameServer
 from .display import render_tick, render_character_list, render_world_state
 from .config import CHARACTERS_DIR, CLIENT_HOST, SERVER_PORT
+from .wizard import generate_scenario, random_scenario, save_scenario, load_scenario, list_scenarios
+from .wizard import SETTINGS, KINK_POOLS, VIBES
 
 console = Console()
 logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
@@ -33,7 +36,8 @@ def cli(ctx):
 @cli.command()
 @click.option("--load", "save_name", default=None, help="Load a saved game")
 @click.option("--name", "world_name", default=None, help="Name this world")
-def start(save_name, world_name):
+@click.option("--scenario", "scenario_name", default=None, help="Load a scenario (from wizard/roll)")
+def start(save_name, world_name, scenario_name):
     """Start the world simulation server."""
     orch = Orchestrator()
 
@@ -42,6 +46,15 @@ def start(save_name, world_name):
 
     if save_name and orch.world.load(save_name):
         console.print(f"[green]Loaded save: {save_name}[/green]")
+
+    # Load scenario if specified
+    if scenario_name and not orch.characters:
+        scenario = load_scenario(scenario_name)
+        if scenario:
+            _apply_scenario(orch, scenario)
+        else:
+            console.print(f"[red]Scenario '{scenario_name}' not found.[/red]")
+            return
 
     if not orch.characters:
         _create_starter_characters(orch)
@@ -488,7 +501,209 @@ def list_characters():
 
 
 # ---------------------------------------------------------------------------
-# STARTER CHARACTERS
+# SMUT WIZARD
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.option("--characters", "num_chars", default=3, help="Number of characters")
+def wizard(num_chars):
+    """Interactive smut wizard — craft a custom scenario."""
+    console.print(
+        Panel(
+            "[bold]THE SMUT WIZARD[/bold]\n\n"
+            "Answer a few questions and I'll conjure a filthy scenario for you.",
+            border_style="bright_magenta",
+        )
+    )
+
+    # Setting
+    console.print("\n[bold]Setting vibes[/bold] (pick a number, type your own, or press Enter for random):")
+    for i, s in enumerate(SETTINGS, 1):
+        console.print(f"  [dim]{i:2}.[/dim] {s}")
+    try:
+        choice = input("\n> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+    if choice.isdigit() and 1 <= int(choice) <= len(SETTINGS):
+        setting = SETTINGS[int(choice) - 1]
+    elif choice:
+        setting = choice
+    else:
+        import random
+        setting = random.choice(SETTINGS)
+    console.print(f"  [green]Setting: {setting}[/green]")
+
+    # Kinks
+    console.print("\n[bold]Kinks/themes[/bold] (pick numbers separated by commas, type your own, or Enter for random):")
+    for i, k in enumerate(KINK_POOLS, 1):
+        console.print(f"  [dim]{i:2}.[/dim] {k}")
+    try:
+        choice = input("\n> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+    if choice:
+        kinks = []
+        for part in choice.split(","):
+            part = part.strip()
+            if part.isdigit() and 1 <= int(part) <= len(KINK_POOLS):
+                kinks.append(KINK_POOLS[int(part) - 1])
+            elif part:
+                kinks.append(part)
+    else:
+        import random
+        kinks = random.sample(KINK_POOLS, k=3)
+    console.print(f"  [green]Kinks: {', '.join(kinks)}[/green]")
+
+    # Vibe
+    console.print("\n[bold]Tone/vibe[/bold] (pick a number, type your own, or Enter for random):")
+    for i, v in enumerate(VIBES, 1):
+        console.print(f"  [dim]{i:2}.[/dim] {v}")
+    try:
+        choice = input("\n> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+    if choice.isdigit() and 1 <= int(choice) <= len(VIBES):
+        vibe = VIBES[int(choice) - 1]
+    elif choice:
+        vibe = choice
+    else:
+        import random
+        vibe = random.choice(VIBES)
+    console.print(f"  [green]Vibe: {vibe}[/green]")
+
+    # Extra preferences
+    console.print("\n[bold]Anything else?[/bold] (specific requests, or Enter to skip):")
+    try:
+        extras = input("> ").strip() or None
+    except (EOFError, KeyboardInterrupt):
+        return
+
+    # Generate
+    console.print("\n[bright_magenta]The Smut Wizard is conjuring your scenario...[/bright_magenta]")
+    try:
+        scenario = generate_scenario(
+            preferences=extras,
+            num_characters=num_chars,
+            kinks=kinks,
+            setting_hint=setting,
+            vibe=vibe,
+        )
+    except Exception as e:
+        console.print(f"[red]Generation failed: {e}[/red]")
+        return
+
+    _display_scenario(scenario)
+
+    # Save
+    path = save_scenario(scenario)
+    slug = os.path.basename(path).replace(".json", "")
+    console.print(f"\n[green]Saved to scenarios/{os.path.basename(path)}[/green]")
+    console.print(f"\nStart this world:\n  [bold]raunch start --scenario {slug}[/bold]")
+
+
+@cli.command()
+@click.option("--characters", "num_chars", default=3, help="Number of characters")
+def roll(num_chars):
+    """Roll the dice — generate a fully random scenario."""
+    console.print("[bright_magenta]Rolling the dice...[/bright_magenta]")
+    try:
+        scenario = random_scenario(num_characters=num_chars)
+    except Exception as e:
+        console.print(f"[red]Generation failed: {e}[/red]")
+        return
+
+    _display_scenario(scenario)
+
+    path = save_scenario(scenario)
+    slug = os.path.basename(path).replace(".json", "")
+    console.print(f"\n[green]Saved to scenarios/{os.path.basename(path)}[/green]")
+    console.print(f"\nStart this world:\n  [bold]raunch start --scenario {slug}[/bold]")
+
+
+@cli.command("scenarios")
+def list_scenarios_cmd():
+    """List saved scenarios."""
+    scenarios = list_scenarios()
+    if not scenarios:
+        console.print("[dim]No scenarios yet. Create one with `raunch wizard` or `raunch roll`.[/dim]")
+        return
+    for s in scenarios:
+        themes = ", ".join(s.get("themes", [])[:4])
+        console.print(
+            f"  [bold]{s['name']}[/bold] [dim]({s['file']})[/dim]\n"
+            f"    {s['setting']}\n"
+            f"    [dim]{s['characters']} characters | {themes}[/dim]"
+        )
+
+
+def _display_scenario(scenario: Dict):
+    """Pretty-print a generated scenario."""
+    console.print()
+    console.print(
+        Panel(
+            f"[bold]{scenario.get('scenario_name', 'Untitled')}[/bold]\n\n"
+            f"{scenario.get('setting', '')}\n\n"
+            f"[italic]{scenario.get('premise', '')}[/italic]\n\n"
+            f"Themes: {', '.join(scenario.get('themes', []))}\n\n"
+            f"[bold]Opening:[/bold] {scenario.get('opening_situation', '')}",
+            title="SCENARIO",
+            border_style="bright_magenta",
+            padding=(1, 2),
+        )
+    )
+    for char in scenario.get("characters", []):
+        kinks = char.get("kinks", "")
+        console.print(
+            Panel(
+                f"[bold]{char['name']}[/bold] — {char.get('species', '?')}\n\n"
+                f"{char.get('personality', '')}\n\n"
+                f"[bold]Appearance:[/bold] {char.get('appearance', '')}\n"
+                f"[bold]Desires:[/bold] {char.get('desires', '')}\n"
+                f"[bold]Backstory:[/bold] {char.get('backstory', '')}\n"
+                f"[bold]Kinks:[/bold] {kinks}",
+                border_style="dim",
+                padding=(1, 2),
+            )
+        )
+
+
+def _apply_scenario(orch: Orchestrator, scenario: Dict) -> None:
+    """Apply a scenario to the orchestrator — set world context and create characters."""
+    # Set world metadata
+    orch.world.scenario = scenario
+    orch.world.world_name = scenario.get("scenario_name", orch.world.world_name)
+
+    # Update starting location from scenario setting
+    setting = scenario.get("setting", "")
+    if setting:
+        loc_name = scenario.get("scenario_name", "The Scene")
+        orch.world.locations = {
+            loc_name: {
+                "description": setting,
+                "characters": [],
+            }
+        }
+    else:
+        loc_name = list(orch.world.locations.keys())[0]
+
+    # Create characters from scenario
+    console.print(f"[cyan]Loading scenario: {scenario.get('scenario_name', '?')}[/cyan]")
+    for char_data in scenario.get("characters", []):
+        char = Character(
+            name=char_data["name"],
+            species=char_data.get("species", "Human"),
+            personality=char_data.get("personality", ""),
+            appearance=char_data.get("appearance", ""),
+            desires=char_data.get("desires", ""),
+            backstory=char_data.get("backstory", ""),
+            kinks=char_data.get("kinks", ""),
+        )
+        orch.add_character(char, location=loc_name)
+        console.print(f"  + {char.name} ({char_data.get('species', '?')})")
+
+
+# ---------------------------------------------------------------------------
+# STARTER CHARACTERS (fallback when no scenario)
 # ---------------------------------------------------------------------------
 
 def _create_starter_characters(orch: Orchestrator) -> None:
