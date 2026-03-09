@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import List, Dict, Any, Optional
 
 from ..client import get_client
@@ -80,14 +81,22 @@ class Agent:
 
         # Try to parse JSON
         try:
-            # Strip markdown code fences if present
             text = raw.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-                text = text.strip()
-            return json.loads(text)
+            # Direct parse
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                pass
+            # Strip markdown fences
+            fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
+            if fence_match:
+                return json.loads(fence_match.group(1).strip())
+            # Extract { ... } block
+            first = text.find("{")
+            last = text.rfind("}")
+            if first != -1 and last > first:
+                return json.loads(text[first:last + 1])
+            raise json.JSONDecodeError("no json", text, 0)
         except (json.JSONDecodeError, IndexError):
             logger.debug(f"[{self.name}] Response was not valid JSON, returning raw")
             return {"raw": raw}

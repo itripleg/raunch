@@ -11,6 +11,40 @@ from .config import SCENARIOS_DIR
 
 logger = logging.getLogger(__name__)
 
+import re
+
+
+def _parse_json_response(raw: str) -> Dict[str, Any]:
+    """Extract JSON from an LLM response, handling various wrapping formats."""
+    text = raw.strip()
+
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # Find the first { and last } — extract the JSON object
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        try:
+            return json.loads(text[first_brace:last_brace + 1])
+        except json.JSONDecodeError:
+            pass
+
+    # Nothing worked
+    logger.error(f"Could not parse JSON from response: {text[:200]}...")
+    raise ValueError(f"LLM response was not valid JSON. Raw response starts with: {text[:100]}...")
+
 WIZARD_PROMPT = """\
 You are the Smut Wizard — a depraved creative genius who generates adult interactive fiction scenarios.
 
@@ -103,15 +137,7 @@ def generate_scenario(
         temperature=1.0,
     )
 
-    # Parse JSON
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-
-    return json.loads(text)
+    return _parse_json_response(raw)
 
 
 def random_scenario(num_characters: int = 3) -> Dict[str, Any]:
