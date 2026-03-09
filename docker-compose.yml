@@ -1,0 +1,14 @@
+services:
+  raunch:
+    build: .
+    ports:
+      - "127.0.0.1:7666:7666"
+    volumes:
+      # Mount saves and characters for persistence
+      - ./saves:/app/saves
+      - ./characters:/app/characters
+      # Mount Claude credentials (read-only) for OAuth
+      - ~/.claude:/root/.claude:ro
+    stdin_open: true
+    tty: true
+    restart: unless-stopped

@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Saves and DB (local data, not code)
+saves/*.json
+saves/*.db
+
+# Character templates are user data
+characters/*.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+*.env
