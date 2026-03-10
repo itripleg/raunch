@@ -13,6 +13,7 @@ from rich.panel import Panel
 from .orchestrator import Orchestrator
 from .agents.character import Character
 from .server import GameServer
+from .ws_server import WebSocketServer, WS_PORT
 from .display import render_tick, render_character_list, render_world_state
 from .config import CHARACTERS_DIR, CLIENT_HOST, SERVER_PORT
 from .wizard import generate_scenario, random_scenario, save_scenario, load_scenario, list_scenarios
@@ -20,6 +21,9 @@ from .wizard import SETTINGS, KINK_POOLS, VIBES
 
 console = Console()
 logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
+logging.getLogger("websockets").setLevel(logging.ERROR)
+logging.getLogger("httpx").setLevel(logging.ERROR)
+logging.getLogger("httpcore").setLevel(logging.ERROR)
 
 
 @click.group()
@@ -63,10 +67,33 @@ def start(save_name, world_name, scenario_name):
     server = GameServer(orch)
     server.start()
 
+    # Start the WebSocket server for web frontend
+    import asyncio
+    ws_server = WebSocketServer(orch)
+
+    def _run_ws():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(ws_server.start())
+        loop.run_forever()
+
+    ws_thread = threading.Thread(target=_run_ws, daemon=True)
+    ws_thread.start()
+
     # Wire up: orchestrator ticks → server broadcasts + local display
     def on_tick(results):
-        render_tick(results, attached_to=orch.attached_to)
-        server.broadcast_tick(results)
+        try:
+            render_tick(results, attached_to=orch.attached_to)
+        except Exception as e:
+            console.print(f"[red]Display error: {e}[/red]")
+        try:
+            server.broadcast_tick(results)
+        except Exception as e:
+            console.print(f"[red]TCP broadcast error: {e}[/red]")
+        try:
+            ws_server.broadcast_tick(results)
+        except Exception as e:
+            console.print(f"[red]WS broadcast error: {e}[/red]")
 
     orch.add_tick_callback(on_tick)
 
@@ -75,7 +102,7 @@ def start(save_name, world_name, scenario_name):
         Panel(
             f"[bold]RAUNCH SERVER[/bold] — {world.world_name} [{world.world_id}]\n\n"
             f"Created: {world.created_at} | Tick: {world.tick_count}\n"
-            f"Server listening on port {SERVER_PORT}\n\n"
+            f"TCP: port {SERVER_PORT} | WebSocket: port {WS_PORT}\n\n"
             "Attach from another terminal:\n"
             f"  [bold]raunch attach <character_name>[/bold]\n"
             f"  [bold]raunch status[/bold]\n\n"

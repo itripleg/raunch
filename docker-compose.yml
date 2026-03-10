@@ -3,10 +3,12 @@ services:
     build: .
     ports:
       - "127.0.0.1:7666:7666"
+      - "127.0.0.1:7667:7667"
     volumes:
       # Mount saves and characters for persistence
       - ./saves:/app/saves
       - ./characters:/app/characters
+      - ./scenarios:/app/scenarios
       # Mount Claude credentials (read-only) for OAuth
       - ~/.claude:/root/.claude:ro
     stdin_open: true

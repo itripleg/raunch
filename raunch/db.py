@@ -92,24 +92,44 @@ def save_character_tick(world_id: str, tick: int, character_name: str,
 
 
 def get_tick_history(world_id: str, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
-    """Get narration history for a world."""
+    """Get narration history for a world, including character data."""
     conn = _get_conn()
     rows = conn.execute(
         "SELECT tick, narration, events, world_time, mood, created_at FROM ticks "
         "WHERE world_id = ? ORDER BY tick DESC LIMIT ? OFFSET ?",
         (world_id, limit, offset),
     ).fetchall()
-    return [
-        {
-            "tick": r["tick"],
+
+    results = []
+    for r in reversed(rows):  # Return in chronological order
+        tick_num = r["tick"]
+        # Fetch character data for this tick
+        char_rows = conn.execute(
+            "SELECT character_name, inner_thoughts, action, dialogue, emotional_state, desires_update "
+            "FROM character_ticks WHERE world_id = ? AND tick = ?",
+            (world_id, tick_num),
+        ).fetchall()
+
+        characters = {}
+        for cr in char_rows:
+            characters[cr["character_name"]] = {
+                "inner_thoughts": cr["inner_thoughts"],
+                "action": cr["action"],
+                "dialogue": cr["dialogue"],
+                "emotional_state": cr["emotional_state"],
+                "desires_update": cr["desires_update"],
+            }
+
+        results.append({
+            "tick": tick_num,
             "narration": r["narration"],
             "events": json.loads(r["events"]) if r["events"] else [],
             "world_time": r["world_time"],
             "mood": r["mood"],
+            "characters": characters,
             "created_at": r["created_at"],
-        }
-        for r in reversed(rows)  # Return in chronological order
-    ]
+        })
+    return results
 
 
 def get_character_history(world_id: str, character_name: str,
@@ -147,7 +167,7 @@ def get_full_tick(world_id: str, tick: int) -> Optional[Dict[str, Any]]:
         return None
 
     char_rows = conn.execute(
-        "SELECT character_name, inner_thoughts, action, dialogue, emotional_state "
+        "SELECT character_name, inner_thoughts, action, dialogue, emotional_state, desires_update "
         "FROM character_ticks WHERE world_id = ? AND tick = ?",
         (world_id, tick),
     ).fetchall()
@@ -164,6 +184,7 @@ def get_full_tick(world_id: str, tick: int) -> Optional[Dict[str, Any]]:
                 "action": r["action"],
                 "dialogue": r["dialogue"],
                 "emotional_state": r["emotional_state"],
+                "desires_update": r["desires_update"],
             }
             for r in char_rows
         },
