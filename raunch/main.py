@@ -15,7 +15,7 @@ from .agents.character import Character
 from .server import GameServer
 from .ws_server import WebSocketServer, WS_PORT
 from .display import render_tick, render_character_list, render_world_state
-from .config import CHARACTERS_DIR, CLIENT_HOST, SERVER_PORT
+from .config import CHARACTERS_DIR, CLIENT_HOST, SERVER_PORT, SAVES_DIR
 from .wizard import generate_scenario, random_scenario, save_scenario, load_scenario, list_scenarios
 from .wizard import SETTINGS, KINK_POOLS, VIBES
 
@@ -49,13 +49,31 @@ def start(save_name, world_name, scenario_name):
         orch.world.world_name = world_name
 
     if save_name and orch.world.load(save_name):
+        orch.is_loaded_session = True
+        orch.save_name = save_name
+        orch._initial_save_done = True  # Don't re-save immediately for loaded sessions
         console.print(f"[green]Loaded save: {save_name}[/green]")
 
     # Load scenario if specified
     if scenario_name and not orch.characters:
         scenario = load_scenario(scenario_name)
         if scenario:
-            _apply_scenario(orch, scenario)
+            # Check if there's an existing save for this scenario
+            derived_save_name = scenario.get("scenario_name", "").lower().replace(" ", "_").replace("'", "")[:50]
+            if derived_save_name and not save_name:
+                # Try to load existing save for this scenario
+                if orch.world.load(derived_save_name):
+                    orch.is_loaded_session = True
+                    orch.save_name = derived_save_name
+                    orch._initial_save_done = True
+                    console.print(f"[green]Continuing scenario from save: {derived_save_name}[/green]")
+                    # Recreate characters from scenario (agent state is lost, but world state preserved)
+                    _apply_scenario_characters(orch, scenario)
+                else:
+                    # Fresh start
+                    _apply_scenario(orch, scenario)
+            else:
+                _apply_scenario(orch, scenario)
         else:
             console.print(f"[red]Scenario '{scenario_name}' not found.[/red]")
             return
@@ -110,6 +128,8 @@ def start(save_name, world_name, scenario_name):
             "  [bold]c[/bold]  — List characters\n"
             "  [bold]w[/bold]  — Show world state\n"
             "  [bold]p[/bold]  — Pause/resume\n"
+            "  [bold]t[/bold]  — Show tick interval\n"
+            "  [bold]t N[/bold] — Set tick interval to N seconds\n"
             "  [bold]q[/bold]  — Quit & save",
             border_style="bright_magenta",
         )
@@ -151,6 +171,15 @@ def start(save_name, world_name, scenario_name):
             elif cmd == "d":
                 orch.attach(None)
                 console.print("[dim]Detached[/dim]")
+            elif cmd.startswith("t "):
+                try:
+                    seconds = int(cmd[2:].strip())
+                    orch.set_tick_interval(seconds)
+                    console.print(f"[green]Tick interval set to {orch.tick_interval}s[/green]")
+                except ValueError:
+                    console.print("[red]Usage: t <seconds>[/red]")
+            elif cmd == "t":
+                console.print(f"[cyan]Tick interval: {orch.tick_interval}s[/cyan]")
             else:
                 console.print("[dim]Unknown command.[/dim]")
     except KeyboardInterrupt:
@@ -647,6 +676,62 @@ def roll(num_chars):
     console.print(f"\nStart this world:\n  [bold]raunch start --scenario {slug}[/bold]")
 
 
+@cli.command()
+@click.argument("scenario_name")
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+def reset(scenario_name, force):
+    """Reset a scenario — delete its save and history to start fresh."""
+    scenario = load_scenario(scenario_name)
+    if not scenario:
+        console.print(f"[red]Scenario '{scenario_name}' not found.[/red]")
+        return
+
+    derived_save_name = scenario.get("scenario_name", "").lower().replace(" ", "_").replace("'", "")[:50]
+    save_path = os.path.join(SAVES_DIR, f"{derived_save_name}.json")
+
+    # Check if save exists
+    if not os.path.exists(save_path):
+        console.print(f"[yellow]No save found for '{scenario_name}' — already fresh.[/yellow]")
+        return
+
+    # Load to get world_id for history deletion
+    with open(save_path) as f:
+        save_data = json.load(f)
+    world_id = save_data.get("world_id")
+    tick_count = save_data.get("tick_count", 0)
+
+    if not force:
+        console.print(f"[yellow]This will delete:[/yellow]")
+        console.print(f"  • Save file: {derived_save_name}.json")
+        console.print(f"  • {tick_count} ticks of history (world_id: {world_id})")
+        try:
+            confirm = input("\nType 'yes' to confirm: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]Cancelled.[/dim]")
+            return
+        if confirm != "yes":
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+    # Delete save file
+    os.remove(save_path)
+    console.print(f"[green]Deleted {derived_save_name}.json[/green]")
+
+    # Delete history from database
+    if world_id:
+        import sqlite3
+        db_path = os.path.join(SAVES_DIR, "history.db")
+        if os.path.exists(db_path):
+            conn = sqlite3.connect(db_path)
+            ticks_deleted = conn.execute("DELETE FROM ticks WHERE world_id = ?", (world_id,)).rowcount
+            chars_deleted = conn.execute("DELETE FROM character_ticks WHERE world_id = ?", (world_id,)).rowcount
+            conn.commit()
+            conn.close()
+            console.print(f"[green]Deleted {ticks_deleted} ticks, {chars_deleted} character records[/green]")
+
+    console.print(f"\n[green]Scenario '{scenario_name}' reset. Run with --scenario to start fresh.[/green]")
+
+
 @cli.command("scenarios")
 def list_scenarios_cmd():
     """List saved scenarios."""
@@ -692,6 +777,28 @@ def _display_scenario(scenario: Dict):
                 padding=(1, 2),
             )
         )
+
+
+def _apply_scenario_characters(orch: Orchestrator, scenario: Dict) -> None:
+    """Recreate characters from scenario (for loading existing saves)."""
+    # Get location from existing world state or derive from scenario
+    if orch.world.locations:
+        loc_name = list(orch.world.locations.keys())[0]
+    else:
+        loc_name = scenario.get("scenario_name", "The Scene")
+
+    for char_data in scenario.get("characters", []):
+        char = Character(
+            name=char_data["name"],
+            species=char_data.get("species", "Human"),
+            personality=char_data.get("personality", ""),
+            appearance=char_data.get("appearance", ""),
+            desires=char_data.get("desires", ""),
+            backstory=char_data.get("backstory", ""),
+            kinks=char_data.get("kinks", ""),
+        )
+        orch.add_character(char, location=loc_name)
+        console.print(f"  + {char.name} ({char_data.get('species', '?')})")
 
 
 def _apply_scenario(orch: Orchestrator, scenario: Dict) -> None:

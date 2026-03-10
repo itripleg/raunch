@@ -1,6 +1,5 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
 
 type Props = {
   game: {
@@ -23,9 +22,9 @@ export function Sidebar({ game, actions, onClose }: Props) {
   const world = game.world as Record<string, unknown> | null;
 
   return (
-    <aside className="w-64 border-r border-border/50 bg-card/20 flex flex-col shrink-0">
+    <aside className="min-w-[256px] h-full border-r border-border/50 bg-card/20 flex flex-col shrink-0 pt-12 overflow-hidden">
       {/* World info */}
-      <div className="p-4 space-y-2">
+      <div className="p-4 space-y-2 group">
         <div className="flex items-center justify-between">
           <h2 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
             World
@@ -42,10 +41,12 @@ export function Sidebar({ game, actions, onClose }: Props) {
         {world && (
           <div className="space-y-1.5">
             <p className="text-sm font-medium">{world.world_name as string}</p>
-            <div className="grid grid-cols-2 gap-1 text-[11px] text-muted-foreground">
-              <span>Time: {world.world_time as string ?? "?"}</span>
-              <span>Tick: {world.tick_count as number ?? "?"}</span>
-              <span className="col-span-2">Mood: {world.mood as string ?? "?"}</span>
+            <div className="text-[11px] text-muted-foreground space-y-0.5">
+              <div>Time: {world.world_time as string ?? "?"}</div>
+              <div>Mood: {world.mood as string ?? "?"}</div>
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground/60">
+                Tick: {world.tick_count as number ?? "?"}
+              </div>
             </div>
           </div>
         )}
@@ -83,18 +84,26 @@ export function Sidebar({ game, actions, onClose }: Props) {
                   </span>
                 </div>
                 {info && (
-                  <div className="ml-4 mt-1 text-[11px] text-muted-foreground space-y-0.5">
-                    {info.species ? <div>{String(info.species)}</div> : null}
-                    {info.emotional_state ? (
-                      <div className="text-amber-400/60 italic">{String(info.emotional_state)}</div>
+                  <div className="ml-4 mt-1 text-[10px] text-muted-foreground space-y-0.5">
+                    {info.species && !["?", "unknown"].includes(String(info.species).toLowerCase()) ? (
+                      <div className="truncate">{String(info.species)}</div>
                     ) : null}
-                    {info.location ? <div>@ {String(info.location)}</div> : null}
+                    {info.emotional_state ? (
+                      <div className="text-amber-400/60 italic truncate">{String(info.emotional_state)}</div>
+                    ) : null}
                   </div>
                 )}
                 {isAttached && (
-                  <span className="ml-4 mt-1 text-[10px] text-primary/60 block">
-                    Click to detach
-                  </span>
+                  <div className="ml-4 mt-1.5 flex items-center gap-2">
+                    <span className="text-[10px] text-primary/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                      Click to detach
+                    </span>
+                    {world?.tick_count && (
+                      <span className="text-[9px] font-mono text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                        tick {world.tick_count as number}
+                      </span>
+                    )}
+                  </div>
                 )}
               </button>
             );
@@ -102,27 +111,6 @@ export function Sidebar({ game, actions, onClose }: Props) {
         </div>
       </ScrollArea>
 
-      <Separator className="bg-border/30" />
-
-      {/* Quick actions */}
-      <div className="p-3 space-y-1.5">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-xs h-8"
-          onClick={() => actions.getHistory(30)}
-        >
-          View History
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-xs h-8"
-          onClick={actions.listCharacters}
-        >
-          Refresh Characters
-        </Button>
-      </div>
     </aside>
   );
 }

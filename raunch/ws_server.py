@@ -53,12 +53,16 @@ class WebSocketServer:
         self.clients.add(client)
         logger.info("WS client connected")
 
-        # Send welcome
+        # Send welcome with initial history
         char_names = list(self.orch.characters.keys())
+        initial_history = db.get_tick_history(self.orch.world.world_id, limit=50)
         await client.send({
             "type": "welcome",
             "world": self.orch.world.info(),
             "characters": char_names,
+            "history": initial_history,
+            "tick_interval": self.orch.tick_interval,
+            "paused": self.orch._paused,
         })
 
         try:
@@ -112,6 +116,7 @@ class WebSocketServer:
                 "characters": list(self.orch.characters.keys()),
                 "paused": self.orch._paused,
                 "clients": len(self.clients),
+                "tick_interval": self.orch.tick_interval,
             })
 
         elif cmd == "history":
@@ -143,19 +148,76 @@ class WebSocketServer:
                     await client.send({"type": "error", "message": f"No data for tick {tick_num}"})
 
         elif cmd == "action":
-            if self.orch.player_character:
-                self.orch.submit_player_action(msg.get("text", ""))
+            text = msg.get("text", "").strip()
+            if not text:
+                await client.send({"type": "error", "message": "Empty message"})
+            elif client.attached_to:
+                # Influence mode: whisper to attached character
+                logger.warning(f"[WS] Received influence for '{client.attached_to}': {text[:50]}...")
+                if self.orch.submit_influence(client.attached_to, text):
+                    logger.warning(f"[WS] Influence submitted successfully")
+                    await client.send({
+                        "type": "influence_queued",
+                        "character": client.attached_to,
+                        "text": text,
+                    })
+                else:
+                    logger.warning(f"[WS] Influence FAILED to submit")
+                    await client.send({"type": "error", "message": f"Character {client.attached_to} not found"})
+            elif self.orch.player_character:
+                # Legacy player control mode
+                self.orch.submit_player_action(text)
                 await client.send({"type": "ok", "message": "Action submitted"})
             else:
-                await client.send({"type": "error", "message": "No player character set"})
+                await client.send({"type": "error", "message": "Attach to a character first"})
+
+        elif cmd == "pause":
+            self.orch.pause()
+            await self._broadcast_pause_state()
+
+        elif cmd == "resume":
+            self.orch.resume()
+            await self._broadcast_pause_state()
+
+        elif cmd == "toggle_pause":
+            if self.orch._paused:
+                self.orch.resume()
+            else:
+                self.orch.pause()
+            await self._broadcast_pause_state()
+
+        elif cmd == "set_tick_interval":
+            seconds = msg.get("seconds", 30)
+            self.orch.set_tick_interval(int(seconds))
+            await self._broadcast_tick_interval()
+
+        elif cmd == "get_tick_interval":
+            await client.send({
+                "type": "tick_interval",
+                "seconds": self.orch.tick_interval,
+            })
 
         else:
             await client.send({"type": "error", "message": f"Unknown command: {cmd}"})
+
+    async def _broadcast_tick_interval(self):
+        """Notify all clients of current tick interval."""
+        msg = {"type": "tick_interval", "seconds": self.orch.tick_interval}
+        for client in list(self.clients):
+            await client.send(msg)
+
+    async def _broadcast_pause_state(self):
+        """Notify all clients of current pause state."""
+        msg = {"type": "pause_state", "paused": self.orch._paused}
+        for client in list(self.clients):
+            await client.send(msg)
 
     def broadcast_tick(self, results: Dict[str, Any]):
         """Send tick results to all WS clients. Called from sync context."""
         if not self._loop or not self.clients:
             return
+
+        from datetime import datetime
 
         for client in list(self.clients):
             view = {
@@ -164,6 +226,7 @@ class WebSocketServer:
                 "narration": results.get("narration", ""),
                 "events": results.get("events", []),
                 "characters": {},
+                "created_at": datetime.utcnow().isoformat(),
             }
 
             for cname, cdata in results.get("characters", {}).items():

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import type { TickData } from "@/hooks/useGame";
 import { CharacterPanel } from "./CharacterPanel";
 import { TickFeed } from "./TickFeed";
@@ -16,6 +17,9 @@ type GameState = {
   replayTick: Record<string, unknown> | null;
   status: Record<string, unknown> | null;
   error: string | null;
+  paused?: boolean;
+  tickInterval?: number;
+  pendingInfluence?: { character: string; text: string } | null;
 };
 
 type Actions = {
@@ -31,6 +35,8 @@ type Actions = {
   replay: (tick: number) => void;
   submitAction: (text: string) => void;
   clearError: () => void;
+  togglePause?: () => void;
+  setTickInterval?: (seconds: number) => void;
 };
 
 type Props = {
@@ -40,9 +46,28 @@ type Props = {
 
 export function GameLayout({ game, actions }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const [focusedTickNum, setFocusedTickNum] = useState<number | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
+  // Initialize focused tick to latest when ticks first load
+  useEffect(() => {
+    if (game.ticks.length > 0 && focusedTickNum === null) {
+      setFocusedTickNum(game.ticks[game.ticks.length - 1].tick);
+    }
+  }, [game.ticks.length, focusedTickNum]);
+
+  // Get the character data for the focused tick
+  const focusedTickData = useMemo(() => {
+    if (!focusedTickNum || !game.attachedTo) return null;
+    const tick = game.ticks.find(t => t.tick === focusedTickNum);
+    return tick?.characters[game.attachedTo] ?? null;
+  }, [focusedTickNum, game.ticks, game.attachedTo]);
+
+  // Fallback to latest tick if no focus
   const latestTick = game.ticks[game.ticks.length - 1];
+  const displayedCharacterData = focusedTickData ?? latestTick?.characters[game.attachedTo ?? ""];
 
   // Fetch character list and recent history on mount
   useEffect(() => {
@@ -50,17 +75,38 @@ export function GameLayout({ game, actions }: Props) {
     actions.getHistory(20);
   }, [actions]);
 
-  // Auto-scroll feed
-  useEffect(() => {
+  // Check if user is near bottom of scroll
+  const handleScroll = useCallback(() => {
     if (feedRef.current) {
-      feedRef.current.scrollTop = feedRef.current.scrollHeight;
+      const { scrollTop, scrollHeight, clientHeight } = feedRef.current;
+      const nearBottom = scrollHeight - scrollTop - clientHeight < 150;
+      setIsNearBottom(nearBottom);
     }
-  }, [game.ticks]);
+  }, []);
+
+  // Handle tick focus changes from scroll position
+  const handleTickFocus = useCallback((tickNum: number) => {
+    setFocusedTickNum(tickNum);
+  }, []);
+
+  // Smart auto-scroll: only if user is near bottom AND autoScroll is on
+  useEffect(() => {
+    if (autoScroll && isNearBottom && feedRef.current) {
+      // Smooth scroll to bottom after a small delay for animation
+      const timer = setTimeout(() => {
+        feedRef.current?.scrollTo({
+          top: feedRef.current.scrollHeight,
+          behavior: "smooth"
+        });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [game.ticks.length, autoScroll, isNearBottom]);
 
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
-      {/* Top bar */}
-      <header className="h-12 flex items-center justify-between px-4 border-b border-border/50 bg-card/50 backdrop-blur-sm shrink-0">
+    <div className="h-screen relative bg-background overflow-hidden">
+      {/* Top bar - fixed, transparent with blur to see content through */}
+      <header className="absolute top-0 inset-x-0 h-12 flex items-center justify-between px-4 bg-background/30 backdrop-blur-xl z-20 after:absolute after:inset-x-0 after:top-full after:h-8 after:bg-gradient-to-b after:from-background/50 after:to-transparent after:pointer-events-none after:backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -76,55 +122,145 @@ export function GameLayout({ game, actions }: Props) {
           </span>
         </div>
 
-        <div className="flex items-center gap-4">
-          {game.attachedTo && (
-            <span className="text-xs">
-              Attached to{" "}
-              <span className="text-primary font-medium">{game.attachedTo}</span>
-            </span>
+        <div className="flex items-center gap-3">
+          {/* Tick interval selector */}
+          {actions.setTickInterval && (
+            <select
+              value={game.tickInterval ?? 30}
+              onChange={(e) => actions.setTickInterval?.(parseInt(e.target.value))}
+              className="bg-muted/50 text-muted-foreground text-xs px-2 py-1 rounded border-none outline-none cursor-pointer hover:bg-muted"
+              title="Tick interval"
+            >
+              <option value={10}>10s</option>
+              <option value={30}>30s</option>
+              <option value={60}>1m</option>
+              <option value={120}>2m</option>
+              <option value={300}>5m</option>
+              <option value={600}>10m</option>
+              <option value={1800}>30m</option>
+              <option value={3600}>1h</option>
+            </select>
           )}
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs text-muted-foreground">Live</span>
+
+          {/* Pause/Resume button */}
+          {actions.togglePause && (
+            <button
+              onClick={actions.togglePause}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                game.paused
+                  ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30"
+                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {game.paused ? (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  Resume
+                </>
+              ) : (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                  </svg>
+                  Pause
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Status LED with hover tooltip */}
+          <div className="relative group">
+            <span
+              className={`block w-2.5 h-2.5 rounded-full shadow-sm cursor-default transition-colors ${
+                game.paused
+                  ? "bg-amber-500 shadow-amber-500/30"
+                  : "bg-emerald-500 shadow-emerald-500/50 animate-pulse"
+              }`}
+            />
+            <div className="absolute right-0 top-full mt-2 px-2 py-1 bg-popover border border-border rounded text-xs text-popover-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+              {game.paused ? "Simulation paused" : "Simulation running"}
+              {game.tickInterval && ` · ${game.tickInterval}s intervals`}
+            </div>
           </div>
-          <button
-            onClick={actions.disconnect}
-            className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-          >
-            Disconnect
-          </button>
+
+          {/* Hidden disconnect button - kept for future remote server features */}
+          {false && (
+            <button
+              onClick={actions.disconnect}
+              className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+            >
+              Disconnect
+            </button>
+          )}
         </div>
       </header>
 
-      {/* Main content */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Main content - full height, content scrolls under header */}
+      <div className="flex h-full overflow-hidden">
         {/* Sidebar */}
-        {sidebarOpen && (
-          <Sidebar
-            game={game}
-            actions={actions}
-            onClose={() => setSidebarOpen(false)}
-          />
-        )}
+        <AnimatePresence initial={false}>
+          {sidebarOpen && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 256, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="overflow-hidden shrink-0 h-full"
+            >
+              <Sidebar
+                game={game}
+                actions={actions}
+                onClose={() => setSidebarOpen(false)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Center: Tick feed */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          <div ref={feedRef} className="flex-1 overflow-y-auto">
-            <TickFeed ticks={game.ticks} attachedTo={game.attachedTo} />
+          <div
+            ref={feedRef}
+            className="flex-1 overflow-y-auto scroll-smooth pt-14"
+            onScroll={handleScroll}
+          >
+            <TickFeed
+              ticks={game.ticks}
+              attachedTo={game.attachedTo}
+              autoScroll={autoScroll && isNearBottom}
+              focusedTick={focusedTickNum}
+              onTickFocus={handleTickFocus}
+              containerRef={feedRef}
+            />
           </div>
 
-          {/* Action bar */}
-          <ActionBar onSubmit={actions.submitAction} />
+          {/* Action bar - influence whisper */}
+          <ActionBar onSubmit={actions.submitAction} attachedTo={game.attachedTo} />
         </main>
 
-        {/* Right panel: attached character */}
-        {game.attachedTo && latestTick && (
-          <CharacterPanel
-            name={game.attachedTo}
-            data={latestTick.characters[game.attachedTo]}
-            onDetach={actions.detach}
-          />
-        )}
+        {/* Right panel: attached character - synced with scroll */}
+        <AnimatePresence initial={false}>
+          {game.attachedTo && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 320, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="overflow-hidden shrink-0 h-full"
+            >
+              <CharacterPanel
+                name={game.attachedTo}
+                data={displayedCharacterData}
+                pendingInfluence={
+                  game.pendingInfluence?.character === game.attachedTo
+                    ? game.pendingInfluence.text
+                    : null
+                }
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Error toast */}

@@ -47,6 +47,13 @@ class WorldState:
                 lines.append(f"Themes: {themes}")
             if self.tick_count <= 1:
                 lines.append(f"Opening: {self.scenario.get('opening_situation', '')}")
+            # Include NPCs from scenario for narrator to introduce
+            npcs = self.scenario.get("npcs", [])
+            if npcs:
+                lines.append("")
+                lines.append("NPCs available to introduce:")
+                for npc in npcs:
+                    lines.append(f"  - {npc.get('name', '?')}: {npc.get('description', '')}")
 
         lines.append("")
         lines.append("Locations:")
