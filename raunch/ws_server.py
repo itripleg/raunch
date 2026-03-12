@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from typing import Dict, Any, Optional, Set
 
 import websockets
@@ -100,6 +101,26 @@ class WebSocketServer:
         elif cmd == "detach":
             client.attached_to = None
             await client.send({"type": "detached"})
+
+        elif cmd == "join":
+            nickname = msg.get("nickname", "").strip()
+            # Assign unique player ID
+            client.player_id = str(uuid.uuid4())
+            # Generate nickname if not provided
+            if not nickname:
+                # Count existing players to generate "Player N" name
+                player_count = sum(1 for c in self.clients if c.player_id is not None)
+                nickname = f"Player {player_count}"
+            client.nickname = nickname
+            client.ready = False
+            # Send confirmation to joining client
+            await client.send({
+                "type": "joined",
+                "player_id": client.player_id,
+                "nickname": client.nickname,
+            })
+            # Broadcast player_joined to all clients
+            await self._broadcast_player_joined(client)
 
         elif cmd == "list":
             chars = {}
@@ -241,6 +262,16 @@ class WebSocketServer:
     async def _broadcast_pause_state(self):
         """Notify all clients of current pause state."""
         msg = {"type": "pause_state", "paused": self.orch._paused}
+        for client in list(self.clients):
+            await client.send(msg)
+
+    async def _broadcast_player_joined(self, joined_client: WSClient):
+        """Notify all clients that a player has joined."""
+        msg = {
+            "type": "player_joined",
+            "player_id": joined_client.player_id,
+            "nickname": joined_client.nickname,
+        }
         for client in list(self.clients):
             await client.send(msg)
 
