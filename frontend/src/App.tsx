@@ -121,15 +121,17 @@ function App() {
     }
   }, [apiUrl]);
 
-  // Check world status when WebSocket connects
+  // Send join command and check world status when WebSocket connects
   useEffect(() => {
-    if (wsState === "connected") {
+    if (wsState === "connected" && nicknameConfirmed) {
+      // Send join command with the stored nickname
+      actions.join(nickname);
       checkWorldStatus();
     } else if (wsState === "disconnected") {
       // Reset world status when disconnected
       setWorldRunning(null);
     }
-  }, [wsState, checkWorldStatus]);
+  }, [wsState, nicknameConfirmed, nickname, actions, checkWorldStatus]);
 
   // Handle nickname submission
   const handleNicknameSubmit = (submittedNickname: string) => {
