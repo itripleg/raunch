@@ -104,6 +104,7 @@ class Orchestrator:
         self.turn_timeout: int = 60  # Seconds before timeout triggers tick (0 = no timeout)
         self._player_ready_states: Dict[str, bool] = {}  # player_id -> ready state
         self._turn_start_time: Optional[float] = None  # When current turn started
+        self._last_tick_trigger_reason: str = 'auto'  # Reason for last tick: 'all_ready', 'timeout', 'host', 'auto'
 
     def add_character(self, character: Character, location: str = "The Nexus Station") -> None:
         """Add a character to the world."""
@@ -448,6 +449,9 @@ class Orchestrator:
             # Check pause again before running tick
             if self._paused:
                 continue
+
+            # Store trigger reason for streaming callback access
+            self._last_tick_trigger_reason = tick_trigger_reason
 
             results = self._run_tick()
             results['triggered_by'] = tick_trigger_reason

@@ -348,12 +348,22 @@ class WebSocketServer:
         for client in list(self.clients):
             await client.send(msg)
 
-    def broadcast_tick_start(self, tick_num: int):
-        """Notify clients that a new tick is starting (for streaming)."""
+    def broadcast_tick_start(self, tick_num: int, triggered_by: str = 'auto'):
+        """Notify clients that a new tick is starting (for streaming).
+
+        Args:
+            tick_num: The tick number starting
+            triggered_by: Reason for tick trigger ('all_ready', 'timeout', 'host', 'auto')
+        """
         if not self._loop or not self.clients:
             return
         from datetime import datetime
-        msg = {"type": "tick_start", "tick": tick_num, "timestamp": datetime.utcnow().isoformat()}
+        msg = {
+            "type": "tick_start",
+            "tick": tick_num,
+            "timestamp": datetime.utcnow().isoformat(),
+            "triggered_by": triggered_by,
+        }
         for client in list(self.clients):
             try:
                 asyncio.run_coroutine_threadsafe(client.send(msg), self._loop)
