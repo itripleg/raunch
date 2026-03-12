@@ -67,6 +67,12 @@ export type Player = {
   ready: boolean;
 };
 
+export type TurnState = {
+  countdown: number;
+  waiting_for: string[];
+  all_ready: boolean;
+};
+
 type State = {
   world: WorldInfo | null;
   characterNames: string[];
@@ -91,6 +97,7 @@ type State = {
   playerId: string | null;
   nickname: string | null;
   players: Player[];
+  turnState: TurnState | null;
 };
 
 type Action =
@@ -120,7 +127,8 @@ type Action =
   // Multiplayer
   | { type: "JOINED"; player_id: string; nickname: string }
   | { type: "PLAYERS"; players: Player[] }
-  | { type: "WORLD_LOADED"; world_id: string; name: string; characters: string[] };
+  | { type: "WORLD_LOADED"; world_id: string; name: string; characters: string[] }
+  | { type: "TURN_STATE"; countdown: number; waiting_for: string[]; all_ready: boolean };
 
 const initial: State = {
   world: null,
@@ -151,6 +159,7 @@ const initial: State = {
   playerId: null,
   nickname: null,
   players: [],
+  turnState: null,
 };
 
 function reducer(state: State, action: Action): State {
@@ -293,6 +302,15 @@ function reducer(state: State, action: Action): State {
         characterNames: action.characters,
         ticks: [],
         history: [],
+      };
+    case "TURN_STATE":
+      return {
+        ...state,
+        turnState: {
+          countdown: action.countdown,
+          waiting_for: action.waiting_for,
+          all_ready: action.all_ready,
+        },
       };
     case "RESET":
       return initial;
@@ -483,6 +501,14 @@ export function useGame(wsUrl: string) {
           world_id: msg.world_id as string,
           name: msg.name as string,
           characters: msg.characters as string[],
+        });
+        break;
+      case "turn_state":
+        dispatch({
+          type: "TURN_STATE",
+          countdown: msg.countdown as number,
+          waiting_for: msg.waiting_for as string[],
+          all_ready: msg.all_ready as boolean,
         });
         break;
       // tick_start, stream_delta, stream_done handled synchronously above
