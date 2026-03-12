@@ -133,6 +133,14 @@ function App() {
     }
   }, [wsState, nicknameConfirmed, nickname, actions, checkWorldStatus]);
 
+  // Sync worldRunning when game.world changes from WebSocket (e.g., world_loaded message)
+  useEffect(() => {
+    if (game.world?.world_id && worldRunning === false) {
+      // World was loaded via WebSocket broadcast, update local state
+      setWorldRunning(true);
+    }
+  }, [game.world, worldRunning]);
+
   // Handle nickname submission
   const handleNicknameSubmit = (submittedNickname: string) => {
     setNickname(submittedNickname);
@@ -146,7 +154,9 @@ function App() {
   }, [checkWorldStatus]);
 
   const isConnected = wsState === "connected";
-  const hasWorld = game.world !== null || worldRunning === true;
+  // Use worldRunning from REST API as source of truth for whether a scenario is loaded
+  // game.world is set from welcome message regardless of scenario state
+  const hasWorld = worldRunning === true;
 
   // Show nickname prompt first if not confirmed
   if (!nicknameConfirmed) {
