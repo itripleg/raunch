@@ -9,6 +9,8 @@ type Props = {
   data?: CharacterTick;
   pendingInfluence?: string | null;
   streamingText?: string;
+  onClose?: () => void;
+  isPreview?: boolean;
 };
 
 /** Extract inner_thoughts from partial JSON stream */
@@ -29,36 +31,57 @@ function extractThoughtsFromStream(raw: string): string {
   return "";
 }
 
-export function CharacterPanel({ name, data, pendingInfluence, streamingText }: Props) {
+export function CharacterPanel({ name, data, pendingInfluence, streamingText, onClose, isPreview }: Props) {
   const streamingThoughts = useMemo(
     () => extractThoughtsFromStream(streamingText || ""),
     [streamingText]
   );
 
   return (
-    <aside className="min-w-[320px] h-full border-l border-border/50 bg-card/30 flex flex-col shrink-0 pt-12 overflow-hidden">
+    <aside className="min-w-[280px] sm:min-w-[320px] h-full border-l border-border/50 bg-card/80 lg:bg-card/30 flex flex-col shrink-0 pt-12 overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b border-border/50">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-sm text-primary">{name}</h3>
-          {/* Influence badge - shows pending whisper */}
-          {pendingInfluence && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20 }}
-              className="relative group/badge"
-            >
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] bg-amber-500/20 text-amber-400 cursor-help">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                </svg>
-                queued
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className={`font-semibold text-sm ${isPreview ? "text-muted-foreground" : "text-primary"}`}>
+              {name}
+            </h3>
+            {isPreview && (
+              <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">
+                preview
               </span>
-              <div className="absolute left-0 top-full mt-1.5 px-2 py-1.5 bg-popover border border-border rounded text-[10px] text-popover-foreground max-w-56 opacity-0 group-hover/badge:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg break-words">
-                <span className="italic text-amber-400/80">"{pendingInfluence}"</span>
-              </div>
-            </motion.div>
+            )}
+            {/* Influence badge - shows pending whisper */}
+            {pendingInfluence && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                className="relative group/badge"
+              >
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] bg-amber-500/20 text-amber-400 cursor-help">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                  </svg>
+                  queued
+                </span>
+                <div className="absolute left-0 top-full mt-1.5 px-2 py-1.5 bg-popover border border-border rounded text-[10px] text-popover-foreground max-w-56 opacity-0 group-hover/badge:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg break-words">
+                  <span className="italic text-amber-400/80">"{pendingInfluence}"</span>
+                </div>
+              </motion.div>
+            )}
+          </div>
+          {/* Close button - mobile only */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1.5 -mr-1.5 text-muted-foreground hover:text-foreground transition-colors lg:hidden"
+              aria-label="Close panel"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
           )}
         </div>
         <p className="text-xs text-muted-foreground mt-1">Inner thoughts</p>

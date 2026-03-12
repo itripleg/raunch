@@ -18,13 +18,14 @@ type Props = {
     toggleDirectorMode?: () => void;
   };
   onClose: () => void;
+  onCharacterAttached?: () => void;
 };
 
-export function Sidebar({ game, actions, onClose }: Props) {
+export function Sidebar({ game, actions, onClose, onCharacterAttached }: Props) {
   const world = game.world as Record<string, unknown> | null;
 
   return (
-    <aside className="min-w-[256px] h-full border-r border-border/50 bg-card/20 flex flex-col shrink-0 pt-12 overflow-hidden">
+    <aside className="min-w-[256px] h-full border-r border-border/50 bg-card/80 lg:bg-card/20 flex flex-col shrink-0 pt-12 overflow-hidden">
       {/* World info */}
       <div className="p-4 space-y-2 group">
         <div className="flex items-center justify-between">
@@ -65,7 +66,7 @@ export function Sidebar({ game, actions, onClose }: Props) {
 
       <ScrollArea className="flex-1 px-4">
         <div className="space-y-1.5 pb-4">
-          {/* Narrator - special entry for director mode */}
+          {/* Narrator - compact entry for director mode */}
           <button
             onClick={() => {
               // If in director mode, exit it. Otherwise enter it (and detach from any character)
@@ -99,16 +100,6 @@ export function Sidebar({ game, actions, onClose }: Props) {
                 <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
               </svg>
             </div>
-            <div className="ml-4 mt-1 text-[10px] text-muted-foreground">
-              <div className="truncate">Direct the scene</div>
-            </div>
-            {game.directorMode && (
-              <div className="ml-4 mt-1.5">
-                <span className="text-[10px] text-amber-400/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                  Click to deselect
-                </span>
-              </div>
-            )}
           </button>
 
           <Separator className="bg-border/20 my-2" />
@@ -127,6 +118,7 @@ export function Sidebar({ game, actions, onClose }: Props) {
                     // Exit director mode when attaching to a character
                     if (game.directorMode) actions.toggleDirectorMode?.();
                     actions.attach(name);
+                    onCharacterAttached?.();
                   }
                 }}
                 className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group ${

@@ -292,6 +292,20 @@ class WebSocketServer:
         if not self._loop or not self.clients:
             return
 
+        # Handle error results - send as error message instead of tick
+        if "error" in results:
+            error_msg = {
+                "type": "error",
+                "message": results["error"],
+                "tick": results.get("tick"),
+            }
+            for client in list(self.clients):
+                try:
+                    asyncio.run_coroutine_threadsafe(client.send(error_msg), self._loop)
+                except Exception:
+                    pass
+            return
+
         from datetime import datetime
 
         for client in list(self.clients):
