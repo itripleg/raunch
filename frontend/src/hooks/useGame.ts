@@ -476,6 +476,8 @@ export function useGame(wsUrl: string) {
         disconnect();
         dispatch({ type: "RESET" });
       },
+      // Multiplayer
+      join: (nickname: string) => send({ cmd: "join", nickname }),
       attach: (name: string) => send({ cmd: "attach", character: name }),
       detach: () => send({ cmd: "detach" }),
       listCharacters: () => send({ cmd: "list" }),

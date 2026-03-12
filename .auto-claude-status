@@ -1,0 +1,25 @@
+{
+  "active": true,
+  "spec": "001-review-multiplayer-api-design-specification",
+  "state": "building",
+  "subtasks": {
+    "completed": 20,
+    "total": 36,
+    "in_progress": 1,
+    "failed": 0
+  },
+  "phase": {
+    "current": "Frontend Nickname Flow",
+    "id": null,
+    "total": 4
+  },
+  "workers": {
+    "active": 0,
+    "max": 1
+  },
+  "session": {
+    "number": 21,
+    "started_at": "2026-03-12T16:27:00.589037"
+  },
+  "last_update": "2026-03-12T17:07:04.628438"
+}
