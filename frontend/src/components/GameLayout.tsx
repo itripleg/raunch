@@ -6,6 +6,7 @@ import { TickFeed } from "./TickFeed";
 import { Sidebar } from "./Sidebar";
 import { ActionBar } from "./ActionBar";
 import { TurnStateUI } from "./TurnStateUI";
+import { PlayerPresence } from "./PlayerPresence";
 
 type GameState = {
   world: Record<string, unknown> | null;
@@ -136,6 +137,14 @@ export function GameLayout({ game, actions }: Props) {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Player presence indicator */}
+          {game.players && game.players.length > 0 && (
+            <PlayerPresence
+              players={game.players}
+              myPlayerId={game.players.find(p => p.nickname === game.nickname)?.player_id ?? null}
+            />
+          )}
+
           {/* Tick interval selector */}
           {actions.setTickInterval && (
             <select
