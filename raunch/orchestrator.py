@@ -100,6 +100,12 @@ class Orchestrator:
         self.streaming_enabled = True
         self._stream_callback: Optional[Callable[[int, str, str, str], None]] = None
 
+        # Turn-based multiplayer support
+        self.turn_timeout: int = 60  # Seconds before timeout triggers tick (0 = no timeout)
+        self._player_ready_states: Dict[str, bool] = {}  # player_id -> ready state
+        self._turn_start_time: Optional[float] = None  # When current turn started
+        self._last_tick_trigger_reason: str = 'auto'  # Reason for last tick: 'all_ready', 'timeout', 'host', 'auto'
+
     def add_character(self, character: Character, location: str = "The Nexus Station") -> None:
         """Add a character to the world."""
         self.characters[character.name] = character
@@ -153,6 +159,81 @@ class Orchestrator:
         if guidance:
             logger.info(f"[DIRECTOR] Retrieved guidance: {guidance[:50]}...")
         return guidance
+
+    # Turn-based multiplayer methods
+
+    def set_player_ready(self, player_id: str, ready: bool = True) -> None:
+        """Set a player's ready state for the current turn."""
+        self._player_ready_states[player_id] = ready
+        logger.debug(f"Player {player_id} ready state: {ready}")
+
+    def clear_player_ready(self, player_id: str) -> None:
+        """Remove a player from ready tracking (on disconnect)."""
+        if player_id in self._player_ready_states:
+            del self._player_ready_states[player_id]
+            logger.debug(f"Player {player_id} removed from ready tracking")
+
+    def reset_ready_states(self) -> None:
+        """Reset all player ready states to False (after tick completes)."""
+        for player_id in self._player_ready_states:
+            self._player_ready_states[player_id] = False
+        self._turn_start_time = time.time()
+        logger.debug("All player ready states reset")
+
+    def get_ready_states(self) -> Dict[str, bool]:
+        """Get current ready states for all tracked players."""
+        return dict(self._player_ready_states)
+
+    def all_players_ready(self) -> bool:
+        """Check if all tracked players are ready. Returns False if no players."""
+        if not self._player_ready_states:
+            return False
+        return all(self._player_ready_states.values())
+
+    def get_player_count(self) -> int:
+        """Get number of tracked players."""
+        return len(self._player_ready_states)
+
+    def get_waiting_for(self) -> List[str]:
+        """Get list of player IDs who are not yet ready."""
+        return [pid for pid, ready in self._player_ready_states.items() if not ready]
+
+    def set_turn_timeout(self, seconds: int) -> None:
+        """Set the turn timeout in seconds. 0 = no timeout."""
+        self.turn_timeout = max(0, seconds)
+        logger.info(f"Turn timeout set to {self.turn_timeout}s")
+
+    def get_turn_elapsed(self) -> float:
+        """Get seconds elapsed since turn started."""
+        if self._turn_start_time is None:
+            return 0.0
+        return time.time() - self._turn_start_time
+
+    def get_turn_remaining(self) -> float:
+        """Get seconds remaining until timeout. Returns 0 if no timeout or expired."""
+        if self.turn_timeout == 0:
+            return float('inf')  # No timeout
+        remaining = self.turn_timeout - self.get_turn_elapsed()
+        return max(0.0, remaining)
+
+    def _check_turn_ready(self) -> tuple[bool, str]:
+        """Check if turn should proceed. Returns (ready, reason).
+
+        Reasons: 'all_ready', 'timeout', 'no_players', or '' if not ready.
+        """
+        # No players tracked - don't auto-tick (spec: "No auto-tick when 0 players connected")
+        if not self._player_ready_states:
+            return (False, 'no_players')
+
+        # All players ready
+        if self.all_players_ready():
+            return (True, 'all_ready')
+
+        # Timeout expired (only if timeout is enabled)
+        if self.turn_timeout > 0 and self.get_turn_remaining() <= 0:
+            return (True, 'timeout')
+
+        return (False, '')
 
     def _run_tick(self) -> Dict[str, Any]:
         """Execute one world tick. Returns all results."""
@@ -341,11 +422,43 @@ class Orchestrator:
                     if not self._running:
                         break
 
+            # Turn-based multiplayer: wait for all players ready OR timeout
+            tick_trigger_reason = 'auto'  # Default for non-multiplayer mode
+            if self._player_ready_states:
+                # Initialize turn start time if not set
+                if self._turn_start_time is None:
+                    self._turn_start_time = time.time()
+
+                # Poll for turn ready condition
+                while self._running and not self._paused:
+                    ready, reason = self._check_turn_ready()
+                    if ready:
+                        tick_trigger_reason = reason
+                        logger.info(f"Turn ready: {reason}")
+                        break
+                    if reason == 'no_players':
+                        # No players connected - don't tick, wait for players
+                        time.sleep(0.5)
+                        continue
+                    # Not ready yet, sleep briefly and check again
+                    time.sleep(0.25)
+
+                if not self._running:
+                    break
+
             # Check pause again before running tick
             if self._paused:
                 continue
 
+            # Store trigger reason for streaming callback access
+            self._last_tick_trigger_reason = tick_trigger_reason
+
             results = self._run_tick()
+            results['triggered_by'] = tick_trigger_reason
+
+            # Reset ready states after tick completes (for multiplayer)
+            if self._player_ready_states:
+                self.reset_ready_states()
 
             # Check if tick had errors (narrator failed = all failed)
             narration = results.get("narration", "")

@@ -60,6 +60,19 @@ export type StreamingState = {
   charactersDone: string[];
 };
 
+export type Player = {
+  player_id: string;
+  nickname: string;
+  attached_to: string | null;
+  ready: boolean;
+};
+
+export type TurnState = {
+  countdown: number;
+  waiting_for: string[];
+  all_ready: boolean;
+};
+
 type State = {
   world: WorldInfo | null;
   characterNames: string[];
@@ -80,6 +93,11 @@ type State = {
   pendingDirectorGuidance: string | null;
   // Streaming
   streaming: StreamingState;
+  // Multiplayer
+  playerId: string | null;
+  nickname: string | null;
+  players: Player[];
+  turnState: TurnState | null;
 };
 
 type Action =
@@ -105,7 +123,12 @@ type Action =
   // Streaming
   | { type: "TICK_START"; tick: number }
   | { type: "STREAM_SYNC"; tick: number; narrator: string; characters: Record<string, string> }
-  | { type: "STREAM_DONE"; tick: number; source: string };
+  | { type: "STREAM_DONE"; tick: number; source: string }
+  // Multiplayer
+  | { type: "JOINED"; player_id: string; nickname: string }
+  | { type: "PLAYERS"; players: Player[] }
+  | { type: "WORLD_LOADED"; world_id: string; name: string; characters: string[] }
+  | { type: "TURN_STATE"; countdown: number; waiting_for: string[]; all_ready: boolean };
 
 const initial: State = {
   world: null,
@@ -132,6 +155,11 @@ const initial: State = {
     narratorDone: false,
     charactersDone: [],
   },
+  // Multiplayer
+  playerId: null,
+  nickname: null,
+  players: [],
+  turnState: null,
 };
 
 function reducer(state: State, action: Action): State {
@@ -260,6 +288,30 @@ function reducer(state: State, action: Action): State {
           },
         };
       }
+    case "JOINED":
+      return { ...state, playerId: action.player_id, nickname: action.nickname };
+    case "PLAYERS":
+      return { ...state, players: action.players };
+    case "WORLD_LOADED":
+      return {
+        ...state,
+        world: {
+          world_id: action.world_id,
+          world_name: action.name,
+        },
+        characterNames: action.characters,
+        ticks: [],
+        history: [],
+      };
+    case "TURN_STATE":
+      return {
+        ...state,
+        turnState: {
+          countdown: action.countdown,
+          waiting_for: action.waiting_for,
+          all_ready: action.all_ready,
+        },
+      };
     case "RESET":
       return initial;
     default:
@@ -433,6 +485,32 @@ export function useGame(wsUrl: string) {
           text: (msg as Record<string, unknown>).text as string || "",
         });
         break;
+      case "joined":
+        dispatch({
+          type: "JOINED",
+          player_id: msg.player_id as string,
+          nickname: msg.nickname as string,
+        });
+        break;
+      case "players":
+        dispatch({ type: "PLAYERS", players: msg.players as Player[] });
+        break;
+      case "world_loaded":
+        dispatch({
+          type: "WORLD_LOADED",
+          world_id: msg.world_id as string,
+          name: msg.name as string,
+          characters: msg.characters as string[],
+        });
+        break;
+      case "turn_state":
+        dispatch({
+          type: "TURN_STATE",
+          countdown: msg.countdown as number,
+          waiting_for: msg.waiting_for as string[],
+          all_ready: msg.all_ready as boolean,
+        });
+        break;
       // tick_start, stream_delta, stream_done handled synchronously above
     }
   }, [lastMessage]);
@@ -444,8 +522,11 @@ export function useGame(wsUrl: string) {
         disconnect();
         dispatch({ type: "RESET" });
       },
+      // Multiplayer
+      join: (nickname: string) => send({ cmd: "join", nickname }),
       attach: (name: string) => send({ cmd: "attach", character: name }),
       detach: () => send({ cmd: "detach" }),
+      ready: () => send({ cmd: "ready" }),
       listCharacters: () => send({ cmd: "list" }),
       getWorld: () => send({ cmd: "world" }),
       getStatus: () => send({ cmd: "status" }),
@@ -453,7 +534,12 @@ export function useGame(wsUrl: string) {
       getCharacterHistory: (name: string, count = 20) =>
         send({ cmd: "character_history", character: name, count }),
       replay: (tick: number) => send({ cmd: "replay", tick }),
-      submitAction: (text: string) => send({ cmd: "action", text }),
+      submitAction: (text: string, autoReady = false) => {
+        send({ cmd: "action", text });
+        if (autoReady) {
+          send({ cmd: "ready" });
+        }
+      },
       togglePause: () => send({ cmd: "toggle_pause" }),
       pause: () => send({ cmd: "pause" }),
       resume: () => send({ cmd: "resume" }),
@@ -463,7 +549,12 @@ export function useGame(wsUrl: string) {
       clearError: () => dispatch({ type: "CLEAR_ERROR" }),
       // Director mode
       toggleDirectorMode: () => dispatch({ type: "TOGGLE_DIRECTOR_MODE" }),
-      submitDirectorGuidance: (text: string) => send({ cmd: "director", text }),
+      submitDirectorGuidance: (text: string, autoReady = false) => {
+        send({ cmd: "director", text });
+        if (autoReady) {
+          send({ cmd: "ready" });
+        }
+      },
     }),
     [connect, disconnect, send]
   );
