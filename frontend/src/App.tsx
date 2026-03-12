@@ -1,8 +1,9 @@
-import { useState, Component, type ReactNode } from "react";
+import { useState, useEffect, Component, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useGame } from "./hooks/useGame";
 import { SplashScreen } from "./components/SplashScreen";
 import { GameLayout } from "./components/GameLayout";
+import { WizardPage } from "./components/WizardPage";
 
 const DEFAULT_WS_URL = "ws://127.0.0.1:7667";
 
@@ -52,7 +53,20 @@ class ErrorBoundary extends Component<
 
 function App() {
   const [wsUrl, setWsUrl] = useState(DEFAULT_WS_URL);
+  const [route, setRoute] = useState(window.location.hash);
   const { wsState, game, actions } = useGame(wsUrl);
+
+  // Simple hash-based routing
+  useEffect(() => {
+    const handleHashChange = () => setRoute(window.location.hash);
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  // Wizard page
+  if (route === "#wizard") {
+    return <WizardPage />;
+  }
 
   const isConnected = wsState === "connected" && game.world;
 

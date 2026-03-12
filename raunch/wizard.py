@@ -92,12 +92,18 @@ SETTINGS = [
 ]
 
 KINK_POOLS = [
-    "breeding/impregnation", "size difference", "monster/xeno", "multiple partners",
-    "power dynamics", "transformation", "aphrodisiac/heat", "voyeurism/exhibition",
-    "body worship", "rough/primal", "tender/romantic", "first time",
-    "forbidden/taboo attraction", "pregnancy/fertility", "marking/claiming",
-    "telepathic bond during sex", "magic-enhanced sensation", "competition/rivalry to lovers",
-    "rescue romance", "enemies to lovers", "strangers with instant chemistry",
+    # Tame
+    "tender/romantic", "first time", "rescue romance", "strangers with instant chemistry",
+    "enemies to lovers", "competition/rivalry to lovers",
+    # Mild
+    "girl/girl", "bisexual", "body worship", "voyeurism/exhibition",
+    "power dynamics", "multiple partners",
+    # Spicy
+    "rough/primal", "marking/claiming", "forbidden/taboo attraction",
+    "aphrodisiac/heat", "telepathic bond during sex", "magic-enhanced sensation",
+    # Freaky
+    "size difference", "breeding/impregnation", "pregnancy/fertility",
+    "transformation", "monster/xeno",
 ]
 
 VIBES = [
