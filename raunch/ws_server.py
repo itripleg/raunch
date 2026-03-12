@@ -88,8 +88,12 @@ class WebSocketServer:
             logger.info("WS client disconnected")
             # Broadcast player_left and updated player list to all remaining clients
             if client.player_id is not None:
+                # Remove from orchestrator's turn-based tracking
+                self.orch.clear_player_ready(client.player_id)
                 await self._broadcast_player_left(client)
                 await self._broadcast_players()
+                # Broadcast turn state - their departure may trigger tick if they were last non-ready
+                await self._broadcast_turn_state()
 
     async def _process_command(self, client: WSClient, msg: Dict[str, Any]):
         cmd = msg.get("cmd", "")
@@ -118,6 +122,8 @@ class WebSocketServer:
                 nickname = f"Player {player_count}"
             client.nickname = nickname
             client.ready = False
+            # Register player with orchestrator for turn-based tracking
+            self.orch.set_player_ready(client.player_id, False)
             # Send confirmation to joining client
             await client.send({
                 "type": "joined",
@@ -128,6 +134,8 @@ class WebSocketServer:
             await self._broadcast_player_joined(client)
             # Broadcast updated player list to all clients
             await self._broadcast_players()
+            # Broadcast turn state so new player sees waiting-for list
+            await self._broadcast_turn_state()
 
         elif cmd == "list":
             chars = {}
@@ -182,6 +190,7 @@ class WebSocketServer:
 
         elif cmd == "action":
             text = msg.get("text", "").strip()
+            auto_ready = msg.get("ready", True)  # Default to auto-ready on action submit (demo behavior)
             if not text:
                 await client.send({"type": "error", "message": "Empty message"})
             elif client.attached_to:
@@ -194,6 +203,11 @@ class WebSocketServer:
                         "character": client.attached_to,
                         "text": text,
                     })
+                    # Auto-ready player on action submission (spec: demo behavior)
+                    if auto_ready and client.player_id:
+                        client.ready = True
+                        self.orch.set_player_ready(client.player_id, True)
+                        await self._broadcast_turn_state()
                 else:
                     logger.warning(f"[WS] Influence FAILED to submit")
                     await client.send({"type": "error", "message": f"Character {client.attached_to} not found"})
@@ -201,6 +215,11 @@ class WebSocketServer:
                 # Legacy player control mode
                 self.orch.submit_player_action(text)
                 await client.send({"type": "ok", "message": "Action submitted"})
+                # Auto-ready in legacy mode too
+                if auto_ready and client.player_id:
+                    client.ready = True
+                    self.orch.set_player_ready(client.player_id, True)
+                    await self._broadcast_turn_state()
             else:
                 await client.send({"type": "error", "message": "Attach to a character first"})
 
@@ -221,6 +240,7 @@ class WebSocketServer:
 
         elif cmd == "director":
             text = msg.get("text", "").strip()
+            auto_ready = msg.get("ready", True)  # Default to auto-ready on director submit
             if not text:
                 await client.send({"type": "error", "message": "Empty guidance"})
             else:
@@ -229,6 +249,11 @@ class WebSocketServer:
                     "type": "director_queued",
                     "text": text,
                 })
+                # Auto-ready player on director guidance submission
+                if auto_ready and client.player_id:
+                    client.ready = True
+                    self.orch.set_player_ready(client.player_id, True)
+                    await self._broadcast_turn_state()
 
         elif cmd == "ready":
             # Mark player as ready for the current turn
@@ -236,6 +261,8 @@ class WebSocketServer:
                 await client.send({"type": "error", "message": "Must join before readying"})
             else:
                 client.ready = True
+                # Sync with orchestrator for turn-based tick triggering
+                self.orch.set_player_ready(client.player_id, True)
                 await self._broadcast_turn_state()
 
         elif cmd == "set_tick_interval":
@@ -332,7 +359,7 @@ class WebSocketServer:
             await client.send(msg)
 
     async def _broadcast_turn_state(self):
-        """Notify all clients of current turn state (ready states, waiting for, timeout)."""
+        """Notify all clients of current turn state (ready states, waiting for, countdown)."""
         # Get all joined players
         players = [c for c in self.clients if c.player_id is not None]
 
@@ -349,8 +376,9 @@ class WebSocketServer:
             if not c.ready
         ]
 
-        # Get timeout from orchestrator if available
+        # Get timeout and remaining time from orchestrator
         turn_timeout = getattr(self.orch, 'turn_timeout', 60)
+        turn_remaining = self.orch.get_turn_remaining() if hasattr(self.orch, 'get_turn_remaining') else turn_timeout
 
         msg = {
             "type": "turn_state",
@@ -359,6 +387,7 @@ class WebSocketServer:
             "all_ready": len(waiting_for) == 0 and len(players) > 0,
             "player_count": len(players),
             "timeout": turn_timeout,
+            "countdown": int(turn_remaining) if turn_remaining != float('inf') else turn_timeout,
         }
         for client in list(self.clients):
             await client.send(msg)
@@ -426,6 +455,17 @@ class WebSocketServer:
             return
 
         from datetime import datetime
+
+        # Reset all client ready states after tick completes (turn-based multiplayer)
+        for client in list(self.clients):
+            if client.player_id is not None:
+                client.ready = False
+
+        # Schedule turn state broadcast (async from sync context)
+        try:
+            asyncio.run_coroutine_threadsafe(self._broadcast_turn_state(), self._loop)
+        except Exception:
+            pass
 
         for client in list(self.clients):
             view = {
