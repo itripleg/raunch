@@ -3,8 +3,37 @@ import { AnimatePresence, motion } from "motion/react";
 import { useGame } from "./hooks/useGame";
 import { SplashScreen } from "./components/SplashScreen";
 import { GameLayout } from "./components/GameLayout";
+import { NicknamePrompt } from "./components/NicknamePrompt";
 
 const DEFAULT_WS_URL = "ws://127.0.0.1:7667";
+const NICKNAME_STORAGE_KEY = "raunch_nickname";
+
+// Helper to read nickname from localStorage
+function getStoredNickname(): string | null {
+  try {
+    return localStorage.getItem(NICKNAME_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+// Helper to check if nickname has been set (even if empty for anonymous)
+function hasStoredNickname(): boolean {
+  try {
+    return localStorage.getItem(NICKNAME_STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+// Helper to save nickname to localStorage
+function setStoredNickname(nickname: string): void {
+  try {
+    localStorage.setItem(NICKNAME_STORAGE_KEY, nickname);
+  } catch {
+    // Silently fail if localStorage is unavailable
+  }
+}
 
 // Error boundary to catch rendering crashes
 class ErrorBoundary extends Component<
@@ -54,7 +83,33 @@ function App() {
   const [wsUrl, setWsUrl] = useState(DEFAULT_WS_URL);
   const { wsState, game, actions } = useGame(wsUrl);
 
+  // Nickname state with localStorage persistence
+  const [nickname, setNickname] = useState<string>(() => getStoredNickname() ?? "");
+  const [nicknameConfirmed, setNicknameConfirmed] = useState(() => hasStoredNickname());
+
+  // Handle nickname submission
+  const handleNicknameSubmit = (submittedNickname: string) => {
+    setNickname(submittedNickname);
+    setStoredNickname(submittedNickname);
+    setNicknameConfirmed(true);
+  };
+
   const isConnected = wsState === "connected" && game.world;
+
+  // Show nickname prompt first if not confirmed
+  if (!nicknameConfirmed) {
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="nickname"
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5, ease: "easeInOut" }}
+        >
+          <NicknamePrompt onSubmit={handleNicknameSubmit} />
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
 
   return (
     <AnimatePresence mode="wait">
