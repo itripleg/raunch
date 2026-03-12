@@ -7,6 +7,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from .wizard import list_scenarios
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,3 +72,10 @@ app.add_middleware(
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+@app.get("/api/v1/scenarios", response_model=List[ScenarioResponse])
+async def get_scenarios():
+    """List all available scenarios."""
+    scenarios = list_scenarios()
+    return scenarios
