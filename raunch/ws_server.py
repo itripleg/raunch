@@ -69,6 +69,7 @@ class WebSocketServer:
             "tick_interval": self.orch.tick_interval,
             "manual": self.orch.is_manual_mode,
             "paused": self.orch._paused,
+            "player_id": client.player_id,
         })
 
         try:
@@ -85,8 +86,9 @@ class WebSocketServer:
         finally:
             self.clients.discard(client)
             logger.info("WS client disconnected")
-            # Broadcast updated player list to all remaining clients
+            # Broadcast player_left and updated player list to all remaining clients
             if client.player_id is not None:
+                await self._broadcast_player_left(client)
                 await self._broadcast_players()
 
     async def _process_command(self, client: WSClient, msg: Dict[str, Any]):
@@ -284,6 +286,16 @@ class WebSocketServer:
             "type": "player_joined",
             "player_id": joined_client.player_id,
             "nickname": joined_client.nickname,
+        }
+        for client in list(self.clients):
+            await client.send(msg)
+
+    async def _broadcast_player_left(self, left_client: WSClient):
+        """Notify all clients that a player has left."""
+        msg = {
+            "type": "player_left",
+            "player_id": left_client.player_id,
+            "nickname": left_client.nickname,
         }
         for client in list(self.clients):
             await client.send(msg)
