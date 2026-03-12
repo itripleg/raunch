@@ -186,6 +186,17 @@ class WebSocketServer:
                 self.orch.pause()
             await self._broadcast_pause_state()
 
+        elif cmd == "director":
+            text = msg.get("text", "").strip()
+            if not text:
+                await client.send({"type": "error", "message": "Empty guidance"})
+            else:
+                self.orch.submit_director_guidance(text)
+                await client.send({
+                    "type": "director_queued",
+                    "text": text,
+                })
+
         elif cmd == "set_tick_interval":
             seconds = msg.get("seconds", 30)
             self.orch.set_tick_interval(int(seconds))
@@ -211,6 +222,53 @@ class WebSocketServer:
         msg = {"type": "pause_state", "paused": self.orch._paused}
         for client in list(self.clients):
             await client.send(msg)
+
+    def broadcast_tick_start(self, tick_num: int):
+        """Notify clients that a new tick is starting (for streaming)."""
+        if not self._loop or not self.clients:
+            return
+        from datetime import datetime
+        msg = {"type": "tick_start", "tick": tick_num, "timestamp": datetime.utcnow().isoformat()}
+        for client in list(self.clients):
+            try:
+                asyncio.run_coroutine_threadsafe(client.send(msg), self._loop)
+            except Exception:
+                pass
+
+    def broadcast_stream_delta(self, tick_num: int, source: str, delta: str):
+        """Broadcast a streaming text delta to clients."""
+        if not self._loop:
+            logger.warning(f"[STREAM] No loop yet, skipping delta")
+            return
+        if not self.clients:
+            return  # Normal if no clients connected
+        msg = {
+            "type": "stream_delta",
+            "tick": tick_num,
+            "source": source,
+            "delta": delta,
+        }
+        for client in list(self.clients):
+            # Send narrator to everyone, character streams only to attached client
+            if source != "narrator" and source != client.attached_to:
+                continue
+            try:
+                asyncio.run_coroutine_threadsafe(client.send(msg), self._loop)
+            except Exception:
+                pass
+
+    def broadcast_stream_done(self, tick_num: int, source: str):
+        """Notify clients that a source has finished streaming."""
+        if not self._loop or not self.clients:
+            return
+        msg = {"type": "stream_done", "tick": tick_num, "source": source}
+        for client in list(self.clients):
+            if source != "narrator" and source != client.attached_to:
+                continue
+            try:
+                asyncio.run_coroutine_threadsafe(client.send(msg), self._loop)
+            except Exception:
+                pass
 
     def broadcast_tick(self, results: Dict[str, Any]):
         """Send tick results to all WS clients. Called from sync context."""

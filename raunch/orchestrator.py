@@ -84,6 +84,9 @@ class Orchestrator:
         # Influence system - whisper suggestions to characters
         self._influences: Dict[str, str] = {}  # character_name -> influence text
 
+        # Director system - guidance for the narrator
+        self._director_guidance: Optional[str] = None
+
         # Session tracking
         self.is_loaded_session = False  # True if this was loaded from a save
         self.save_name: Optional[str] = None  # Name to save under (derived from scenario/world)
@@ -91,6 +94,10 @@ class Orchestrator:
 
         # Tick interval (can be changed at runtime)
         self.tick_interval = BASE_TICK_SECONDS
+
+        # Streaming support
+        self.streaming_enabled = True
+        self._stream_callback: Optional[Callable[[int, str, str, str], None]] = None
 
     def add_character(self, character: Character, location: str = "The Nexus Station") -> None:
         """Add a character to the world."""
@@ -137,6 +144,20 @@ class Orchestrator:
             logger.warning(f"[INFLUENCE] Retrieved for {character_name}: {influence[:50]}...")
         return influence
 
+    def submit_director_guidance(self, text: str) -> bool:
+        """Queue guidance for the narrator for the next tick."""
+        self._director_guidance = text
+        logger.info(f"[DIRECTOR] Queued guidance: {text[:50]}...")
+        return True
+
+    def get_director_guidance(self) -> Optional[str]:
+        """Get and clear any pending director guidance."""
+        guidance = self._director_guidance
+        self._director_guidance = None
+        if guidance:
+            logger.info(f"[DIRECTOR] Retrieved guidance: {guidance[:50]}...")
+        return guidance
+
     def _run_tick(self) -> Dict[str, Any]:
         """Execute one world tick. Returns all results."""
         self.world.tick_count += 1
@@ -149,14 +170,39 @@ class Orchestrator:
         for name, char in self.characters.items():
             char_summaries.append(f"- {name} ({char.character_data.get('species', '?')}): {char.emotional_state}, at {char.location}")
 
+        # Check for director guidance
+        director_guidance = self.get_director_guidance()
+
         narrator_input = (
             f"{world_snapshot}\n\n"
             f"Characters in play:\n" + "\n".join(char_summaries) + "\n\n"
-            f"Advance the world. What happens next?"
         )
 
+        if director_guidance:
+            narrator_input += (
+                f"[DIRECTOR GUIDANCE]: {director_guidance}\n"
+                f"Incorporate this into the scene naturally. Don't acknowledge the guidance directly.\n\n"
+            )
+
+        narrator_input += "Advance the world. What happens next?"
+
         try:
-            narrator_result = self.narrator.tick(narrator_input)
+            if self.streaming_enabled and self._stream_callback:
+                # Streaming mode
+                logger.warning(f"[STREAM] Starting narrator stream for tick {tick_num}")
+                self._stream_callback(tick_num, "narrator", "start", "")
+                chunk_count = 0
+                def on_chunk(chunk):
+                    nonlocal chunk_count
+                    chunk_count += 1
+                    self._stream_callback(tick_num, "narrator", "delta", chunk)
+                narrator_result = self.narrator.tick_stream(narrator_input, on_delta=on_chunk)
+                logger.warning(f"[STREAM] Narrator done, sent {chunk_count} chunks")
+                self._stream_callback(tick_num, "narrator", "done", "")
+            else:
+                logger.warning(f"[STREAM] Streaming disabled or no callback, streaming_enabled={self.streaming_enabled}, has_callback={self._stream_callback is not None}")
+                narrator_result = self.narrator.tick(narrator_input)
+
             self.world.apply_narrator_update(narrator_result)
             # Extract narration, cleaning up any raw JSON fallback
             narration = narrator_result.get("narration")
@@ -168,7 +214,7 @@ class Orchestrator:
             results["narration"] = narration
             results["events"] = narrator_result.get("events", [])
         except Exception as e:
-            logger.error(f"Narrator tick failed: {e}")
+            logger.error(f"Narrator tick failed: {e}", exc_info=True)
             results["narration"] = f"[Narrator error: {e}]"
             results["events"] = []
 
@@ -218,7 +264,15 @@ class Orchestrator:
                 )
 
             try:
-                char_result = char.tick(char_input)
+                if self.streaming_enabled and self._stream_callback:
+                    self._stream_callback(tick_num, name, "start", "")
+                    char_result = char.tick_stream(
+                        char_input,
+                        on_delta=lambda chunk, n=name: self._stream_callback(tick_num, n, "delta", chunk)
+                    )
+                    self._stream_callback(tick_num, name, "done", "")
+                else:
+                    char_result = char.tick(char_input)
                 results["characters"][name] = char_result
             except Exception as e:
                 logger.error(f"Character {name} tick failed: {e}")
@@ -359,6 +413,11 @@ class Orchestrator:
         """Set the tick interval in seconds (min 10, max 86400 / 24h)."""
         self.tick_interval = max(10, min(86400, seconds))
         logger.info(f"Tick interval set to {self.tick_interval}s")
+
+    def set_stream_callback(self, callback: Optional[Callable[[int, str, str, str], None]]) -> None:
+        """Set callback for streaming: callback(tick_num, source, event_type, data)."""
+        self._stream_callback = callback
+        logger.warning(f"[STREAM] Stream callback set: {callback is not None}")
 
     @property
     def is_paused(self) -> bool:

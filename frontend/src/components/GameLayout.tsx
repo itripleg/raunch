@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import type { TickData } from "@/hooks/useGame";
+import { motion, AnimatePresence } from "motion/react";
+import type { TickData, StreamingState } from "@/hooks/useGame";
 import { CharacterPanel } from "./CharacterPanel";
 import { TickFeed } from "./TickFeed";
 import { Sidebar } from "./Sidebar";
@@ -20,6 +20,9 @@ type GameState = {
   paused?: boolean;
   tickInterval?: number;
   pendingInfluence?: { character: string; text: string } | null;
+  directorMode?: boolean;
+  pendingDirectorGuidance?: string | null;
+  streaming?: StreamingState;
 };
 
 type Actions = {
@@ -37,6 +40,8 @@ type Actions = {
   clearError: () => void;
   togglePause?: () => void;
   setTickInterval?: (seconds: number) => void;
+  toggleDirectorMode?: () => void;
+  submitDirectorGuidance?: (text: string) => void;
 };
 
 type Props = {
@@ -232,11 +237,18 @@ export function GameLayout({ game, actions }: Props) {
               focusedTick={focusedTickNum}
               onTickFocus={handleTickFocus}
               containerRef={feedRef}
+              streaming={game.streaming}
             />
           </div>
 
-          {/* Action bar - influence whisper */}
-          <ActionBar onSubmit={actions.submitAction} attachedTo={game.attachedTo} />
+          {/* Action bar - influence whisper or director mode */}
+          <ActionBar
+            onSubmitInfluence={actions.submitAction}
+            onSubmitDirector={actions.submitDirectorGuidance ?? (() => {})}
+            attachedTo={game.attachedTo}
+            directorMode={game.directorMode ?? false}
+            pendingDirectorGuidance={game.pendingDirectorGuidance}
+          />
         </main>
 
         {/* Right panel: attached character - synced with scroll */}

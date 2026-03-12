@@ -4,7 +4,7 @@ import os
 import json
 import logging
 import time
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Generator
 
 import anthropic
 import httpx
@@ -175,6 +175,53 @@ class LLMClient:
             messages=messages,
         )
         return response.content[0].text
+
+    def chat_stream(
+        self,
+        system: str,
+        messages: List[Dict[str, Any]],
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> Generator[str, None, None]:
+        """Stream chat completion, yielding text deltas."""
+        yielded_any = False
+        try:
+            for chunk in self._do_chat_stream(system, messages, model, max_tokens, temperature):
+                yielded_any = True
+                yield chunk
+        except anthropic.AuthenticationError:
+            if yielded_any:
+                # Already yielded content, can't retry without duplicates
+                logger.error("Auth failed mid-stream after yielding content, cannot retry")
+                raise
+            logger.warning("Auth failed during stream, attempting token refresh...")
+            if self._try_refresh():
+                logger.info("Token refreshed, retrying stream...")
+                yield from self._do_chat_stream(system, messages, model, max_tokens, temperature)
+            else:
+                raise
+        except anthropic.BadRequestError as e:
+            if yielded_any:
+                # Already yielded content, can't fall back cleanly
+                logger.error(f"BadRequest mid-stream after yielding content: {e}")
+                raise
+            # Streaming may not be supported - fall back to non-streaming
+            logger.warning(f"Streaming not supported, falling back: {e}")
+            result = self.chat(system, messages, model, max_tokens, temperature)
+            yield result
+
+    def _do_chat_stream(self, system, messages, model, max_tokens, temperature) -> Generator[str, None, None]:
+        """Internal streaming implementation."""
+        with self._client.messages.stream(
+            model=model or self.model,
+            max_tokens=max_tokens or self.max_tokens,
+            temperature=temperature if temperature is not None else self.temperature,
+            system=system,
+            messages=messages,
+        ) as stream:
+            for text in stream.text_stream:
+                yield text
 
 
 # Singleton

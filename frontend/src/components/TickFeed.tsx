@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { TickData } from "@/hooks/useGame";
+import type { TickData, StreamingState } from "@/hooks/useGame";
 import { Badge } from "@/components/ui/badge";
 
 /** Format timestamp elegantly - relative for recent, time for older */
@@ -211,9 +211,10 @@ type Props = {
   focusedTick?: number | null;
   onTickFocus?: (tickNum: number) => void;
   containerRef?: React.RefObject<HTMLDivElement | null>;
+  streaming?: StreamingState;
 };
 
-export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, onTickFocus, containerRef }: Props) {
+export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, onTickFocus, containerRef, streaming }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const tickRefs = useRef<Map<number, HTMLElement>>(new Map());
   const [newestTick, setNewestTick] = useState<number | null>(null);
@@ -306,6 +307,12 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
           />
         ))}
       </AnimatePresence>
+
+      {/* Currently streaming tick */}
+      {streaming?.isStreaming && (
+        <StreamingTickEntry streaming={streaming} attachedTo={attachedTo} />
+      )}
+
       <div ref={endRef} />
     </div>
   );
@@ -419,27 +426,106 @@ function TickEntry({ tick, attachedTo, isFocused, isNew, setRef }: TickEntryProp
         <NarrationText text={tick.narration} isNew={isNew} />
       </motion.div>
 
-      {/* Character dialogue (main character only - NPCs are in narration) */}
-      <div className="space-y-2 pl-2">
+      {/* Character actions and dialogue */}
+      <div className="space-y-2 pl-2 mt-3">
         {Object.entries(tick.characters).map(([name, data]) => {
-          if (!data?.dialogue) return null;
+          if (!data) return null;
+          const hasContent = data.action || data.dialogue;
+          if (!hasContent) return null;
+
           const isAttached = name === attachedTo;
 
-          // Only show attached character's dialogue here (NPCs handled by narrator)
-          if (!isAttached) return null;
-
           return (
-            <div key={name} className="flex items-start gap-2">
-              <span className="text-xs text-muted-foreground shrink-0">
-                {name}:
+            <motion.div
+              key={name}
+              initial={{ opacity: 0, x: -5 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.3, duration: 0.3 }}
+              className={`text-sm space-y-1 ${isAttached ? "border-l-2 border-primary/30 pl-2" : ""}`}
+            >
+              <span className={`text-xs font-medium ${isAttached ? "text-primary" : "text-muted-foreground"}`}>
+                {name}
               </span>
-              <span className="text-sm italic text-emerald-400">
-                "{data.dialogue}"
-              </span>
-            </div>
+              {data.action && (
+                <p className="text-foreground/80 leading-relaxed">
+                  <NarrationText text={data.action} isNew={isNew} />
+                </p>
+              )}
+              {data.dialogue && (
+                <p className="italic text-emerald-400/90">
+                  "{data.dialogue}"
+                </p>
+              )}
+            </motion.div>
           );
         })}
       </div>
+    </motion.article>
+  );
+}
+
+/** Streaming tick entry - shows text as it generates */
+function StreamingTickEntry({ streaming, attachedTo }: { streaming: StreamingState; attachedTo: string | null }) {
+  if (!streaming.isStreaming || !streaming.tick) return null;
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-3"
+    >
+      {/* Streaming indicator */}
+      <div className="flex items-center gap-2">
+        <motion.div
+          className="flex gap-1"
+          animate={{ opacity: [0.5, 1, 0.5] }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+        >
+          {[0, 1, 2].map((i) => (
+            <motion.span
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-primary"
+              animate={{ scale: [0.8, 1.2, 0.8] }}
+              transition={{
+                duration: 1,
+                repeat: Infinity,
+                delay: i * 0.15,
+                ease: "easeInOut",
+              }}
+            />
+          ))}
+        </motion.div>
+        <span className="text-[10px] font-mono text-muted-foreground/60">
+          tick {streaming.tick} generating...
+        </span>
+      </div>
+
+      {/* Streaming narration text with cursor */}
+      {streaming.narrator && (
+        <div className="text-sm leading-relaxed text-foreground/90 pl-2 border-l-2 border-primary/30">
+          <span>{streaming.narrator}</span>
+          <motion.span
+            className="inline-block w-0.5 h-4 bg-primary ml-0.5 align-middle"
+            animate={{ opacity: [1, 0] }}
+            transition={{ duration: 0.6, repeat: Infinity, ease: "steps(2)" }}
+          />
+        </div>
+      )}
+
+      {/* Streaming character thoughts (if attached) */}
+      {attachedTo && streaming.characters[attachedTo] && (
+        <div className="mt-3 text-xs text-foreground/70 italic pl-2 border-l-2 border-amber-500/30">
+          <span className="text-amber-400/60 text-[10px] uppercase tracking-wider block mb-1">
+            {attachedTo}'s thoughts
+          </span>
+          <span>{streaming.characters[attachedTo]}</span>
+          <motion.span
+            className="inline-block w-0.5 h-3 bg-amber-400/60 ml-0.5 align-middle"
+            animate={{ opacity: [1, 0] }}
+            transition={{ duration: 0.6, repeat: Infinity, ease: "steps(2)" }}
+          />
+        </div>
+      )}
     </motion.article>
   );
 }

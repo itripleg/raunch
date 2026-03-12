@@ -7,6 +7,7 @@ type Props = {
     characterNames: string[];
     characterDetails: Record<string, Record<string, unknown>>;
     attachedTo: string | null;
+    directorMode?: boolean;
   };
   actions: {
     attach: (name: string) => void;
@@ -14,6 +15,7 @@ type Props = {
     listCharacters: () => void;
     getHistory: (count?: number) => void;
     getCharacterHistory: (name: string, count?: number) => void;
+    toggleDirectorMode?: () => void;
   };
   onClose: () => void;
 };
@@ -63,6 +65,54 @@ export function Sidebar({ game, actions, onClose }: Props) {
 
       <ScrollArea className="flex-1 px-4">
         <div className="space-y-1.5 pb-4">
+          {/* Narrator - special entry for director mode */}
+          <button
+            onClick={() => {
+              // If in director mode, exit it. Otherwise enter it (and detach from any character)
+              if (game.directorMode) {
+                actions.toggleDirectorMode?.();
+              } else {
+                if (game.attachedTo) actions.detach();
+                actions.toggleDirectorMode?.();
+              }
+            }}
+            className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group ${
+              game.directorMode
+                ? "bg-amber-500/15 border border-amber-500/30"
+                : "hover:bg-secondary/50 border border-transparent"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${game.directorMode ? "bg-amber-400 animate-pulse" : "bg-muted-foreground/30"}`} />
+              <span className={`text-sm font-medium ${game.directorMode ? "text-amber-400" : "text-foreground/80 group-hover:text-foreground"}`}>
+                Narrator
+              </span>
+              {/* Megaphone icon */}
+              <svg
+                className={`w-3 h-3 ml-auto ${game.directorMode ? "text-amber-400/60" : "text-muted-foreground/40"}`}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M3 11l18-5v12L3 13v-2z" />
+                <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+              </svg>
+            </div>
+            <div className="ml-4 mt-1 text-[10px] text-muted-foreground">
+              <div className="truncate">Direct the scene</div>
+            </div>
+            {game.directorMode && (
+              <div className="ml-4 mt-1.5">
+                <span className="text-[10px] text-amber-400/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                  Click to deselect
+                </span>
+              </div>
+            )}
+          </button>
+
+          <Separator className="bg-border/20 my-2" />
+
           {game.characterNames.map((name) => {
             const info = game.characterDetails[name];
             const isAttached = name === game.attachedTo;
@@ -70,7 +120,15 @@ export function Sidebar({ game, actions, onClose }: Props) {
             return (
               <button
                 key={name}
-                onClick={() => isAttached ? actions.detach() : actions.attach(name)}
+                onClick={() => {
+                  if (isAttached) {
+                    actions.detach();
+                  } else {
+                    // Exit director mode when attaching to a character
+                    if (game.directorMode) actions.toggleDirectorMode?.();
+                    actions.attach(name);
+                  }
+                }}
                 className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group ${
                   isAttached
                     ? "bg-primary/15 border border-primary/30"

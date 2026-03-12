@@ -98,6 +98,17 @@ def start(save_name, world_name, scenario_name):
     ws_thread = threading.Thread(target=_run_ws, daemon=True)
     ws_thread.start()
 
+    # Wire up streaming callback for real-time text
+    def on_stream(tick_num: int, source: str, event_type: str, data: str):
+        if event_type == "start":
+            ws_server.broadcast_tick_start(tick_num)
+        elif event_type == "delta":
+            ws_server.broadcast_stream_delta(tick_num, source, data)
+        elif event_type == "done":
+            ws_server.broadcast_stream_done(tick_num, source)
+
+    orch.set_stream_callback(on_stream)
+
     # Wire up: orchestrator ticks → server broadcasts + local display
     def on_tick(results):
         try:
