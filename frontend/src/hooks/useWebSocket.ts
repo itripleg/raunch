@@ -13,6 +13,9 @@ export function useWebSocket(url: string) {
   const [messages, setMessages] = useState<ServerMessage[]>([]);
   const [lastMessage, setLastMessage] = useState<ServerMessage | null>(null);
 
+  // Callback ref for processing messages synchronously
+  const onMessageRef = useRef<((msg: ServerMessage) => void) | null>(null);
+
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
@@ -25,6 +28,10 @@ export function useWebSocket(url: string) {
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data) as ServerMessage;
+        // Call the callback synchronously for EVERY message
+        if (onMessageRef.current) {
+          onMessageRef.current(msg);
+        }
         setLastMessage(msg);
         setMessages((prev) => [...prev.slice(-200), msg]);
       } catch {
@@ -54,11 +61,16 @@ export function useWebSocket(url: string) {
     setState("disconnected");
   }, []);
 
+  // Set the message callback
+  const setOnMessage = useCallback((callback: ((msg: ServerMessage) => void) | null) => {
+    onMessageRef.current = callback;
+  }, []);
+
   useEffect(() => {
     return () => {
       wsRef.current?.close();
     };
   }, []);
 
-  return { state, messages, lastMessage, connect, send, disconnect };
+  return { state, messages, lastMessage, connect, send, disconnect, setOnMessage };
 }

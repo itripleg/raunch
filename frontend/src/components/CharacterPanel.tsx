@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { CharacterTick } from "@/hooks/useGame";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -7,9 +8,33 @@ type Props = {
   name: string;
   data?: CharacterTick;
   pendingInfluence?: string | null;
+  streamingText?: string;
 };
 
-export function CharacterPanel({ name, data, pendingInfluence }: Props) {
+/** Extract inner_thoughts from partial JSON stream */
+function extractThoughtsFromStream(raw: string): string {
+  if (!raw || typeof raw !== "string") return "";
+  try {
+    const match = raw.match(/"inner_thoughts"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|$)/);
+    if (match && match[1]) {
+      return match[1]
+        .replace(/\\n/g, "\n")
+        .replace(/\\t/g, "\t")
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, "\\");
+    }
+  } catch {
+    // Regex failed
+  }
+  return "";
+}
+
+export function CharacterPanel({ name, data, pendingInfluence, streamingText }: Props) {
+  const streamingThoughts = useMemo(
+    () => extractThoughtsFromStream(streamingText || ""),
+    [streamingText]
+  );
+
   return (
     <aside className="min-w-[320px] h-full border-l border-border/50 bg-card/30 flex flex-col shrink-0 pt-12 overflow-hidden">
       {/* Header */}
@@ -122,6 +147,27 @@ export function CharacterPanel({ name, data, pendingInfluence }: Props) {
                     </div>
                   </motion.div>
                 )}
+              </motion.div>
+            ) : streamingThoughts ? (
+              <motion.div
+                key="streaming"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                    Inner Thoughts
+                  </label>
+                  <div className="text-xs mt-0.5 text-foreground/80 leading-relaxed italic break-words">
+                    <span>{streamingThoughts}</span>
+                    <motion.span
+                      className="inline-block w-0.5 h-3 bg-amber-400/60 ml-0.5 align-middle"
+                      animate={{ opacity: [1, 1, 0, 0] }}
+                      transition={{ duration: 0.8, repeat: Infinity, times: [0, 0.45, 0.5, 1] }}
+                    />
+                  </div>
+                </div>
               </motion.div>
             ) : (
               <motion.p

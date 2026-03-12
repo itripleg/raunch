@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import type { TickData } from "@/hooks/useGame";
+import { motion, AnimatePresence } from "motion/react";
+import type { TickData, StreamingState } from "@/hooks/useGame";
 import { CharacterPanel } from "./CharacterPanel";
 import { TickFeed } from "./TickFeed";
 import { Sidebar } from "./Sidebar";
@@ -19,7 +19,11 @@ type GameState = {
   error: string | null;
   paused?: boolean;
   tickInterval?: number;
+  manualMode?: boolean;
   pendingInfluence?: { character: string; text: string } | null;
+  directorMode?: boolean;
+  pendingDirectorGuidance?: string | null;
+  streaming?: StreamingState;
 };
 
 type Actions = {
@@ -37,6 +41,9 @@ type Actions = {
   clearError: () => void;
   togglePause?: () => void;
   setTickInterval?: (seconds: number) => void;
+  triggerTick?: () => void;
+  toggleDirectorMode?: () => void;
+  submitDirectorGuidance?: (text: string) => void;
 };
 
 type Props = {
@@ -46,7 +53,7 @@ type Props = {
 
 export function GameLayout({ game, actions }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [autoScroll, _setAutoScroll] = useState(true);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [focusedTickNum, setFocusedTickNum] = useState<number | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -126,11 +133,12 @@ export function GameLayout({ game, actions }: Props) {
           {/* Tick interval selector */}
           {actions.setTickInterval && (
             <select
-              value={game.tickInterval ?? 30}
+              value={game.tickInterval ?? 0}
               onChange={(e) => actions.setTickInterval?.(parseInt(e.target.value))}
               className="bg-muted/50 text-muted-foreground text-xs px-2 py-1 rounded border-none outline-none cursor-pointer hover:bg-muted"
               title="Tick interval"
             >
+              <option value={0}>Manual</option>
               <option value={10}>10s</option>
               <option value={30}>30s</option>
               <option value={60}>1m</option>
@@ -142,32 +150,47 @@ export function GameLayout({ game, actions }: Props) {
             </select>
           )}
 
-          {/* Pause/Resume button */}
-          {actions.togglePause && (
-            <button
-              onClick={actions.togglePause}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
-                game.paused
-                  ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30"
-                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {game.paused ? (
-                <>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                  Resume
-                </>
-              ) : (
-                <>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                  </svg>
-                  Pause
-                </>
-              )}
-            </button>
+          {/* Manual: Next button / Auto: Pause/Resume button - same position */}
+          {game.manualMode ? (
+            actions.triggerTick && (
+              <button
+                onClick={actions.triggerTick}
+                disabled={game.streaming?.isStreaming}
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                Next
+              </button>
+            )
+          ) : (
+            actions.togglePause && (
+              <button
+                onClick={actions.togglePause}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                  game.paused
+                    ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30"
+                    : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {game.paused ? (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Resume
+                  </>
+                ) : (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                    </svg>
+                    Pause
+                  </>
+                )}
+              </button>
+            )
           )}
 
           {/* Status LED with hover tooltip */}
@@ -176,12 +199,14 @@ export function GameLayout({ game, actions }: Props) {
               className={`block w-2.5 h-2.5 rounded-full shadow-sm cursor-default transition-colors ${
                 game.paused
                   ? "bg-amber-500 shadow-amber-500/30"
+                  : game.manualMode
+                  ? "bg-sky-400 shadow-sky-400/30"
                   : "bg-emerald-500 shadow-emerald-500/50 animate-pulse"
               }`}
             />
             <div className="absolute right-0 top-full mt-2 px-2 py-1 bg-popover border border-border rounded text-xs text-popover-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-              {game.paused ? "Simulation paused" : "Simulation running"}
-              {game.tickInterval && ` · ${game.tickInterval}s intervals`}
+              {game.paused ? "Simulation paused" : game.manualMode ? "Manual mode" : "Auto-advancing"}
+              {!game.manualMode && game.tickInterval && ` · ${game.tickInterval}s intervals`}
             </div>
           </div>
 
@@ -232,11 +257,18 @@ export function GameLayout({ game, actions }: Props) {
               focusedTick={focusedTickNum}
               onTickFocus={handleTickFocus}
               containerRef={feedRef}
+              streaming={game.streaming}
             />
           </div>
 
-          {/* Action bar - influence whisper */}
-          <ActionBar onSubmit={actions.submitAction} attachedTo={game.attachedTo} />
+          {/* Action bar - influence whisper or director mode */}
+          <ActionBar
+            onSubmitInfluence={actions.submitAction}
+            onSubmitDirector={actions.submitDirectorGuidance ?? (() => {})}
+            attachedTo={game.attachedTo}
+            directorMode={game.directorMode ?? false}
+            pendingDirectorGuidance={game.pendingDirectorGuidance}
+          />
         </main>
 
         {/* Right panel: attached character - synced with scroll */}
@@ -256,6 +288,11 @@ export function GameLayout({ game, actions }: Props) {
                   game.pendingInfluence?.character === game.attachedTo
                     ? game.pendingInfluence.text
                     : null
+                }
+                streamingText={
+                  game.streaming?.isStreaming
+                    ? game.streaming.characters[game.attachedTo]
+                    : undefined
                 }
               />
             </motion.div>

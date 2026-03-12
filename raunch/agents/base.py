@@ -3,7 +3,7 @@
 import json
 import logging
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Generator, Tuple
 
 from ..client import get_client
 
@@ -100,6 +100,53 @@ class Agent:
         except (json.JSONDecodeError, IndexError):
             logger.debug(f"[{self.name}] Response was not valid JSON, returning raw")
             return {"raw": raw}
+
+    def tick_stream(
+        self,
+        world_context: str,
+        on_delta: Optional[callable] = None
+    ) -> Dict[str, Any]:
+        """
+        Run one tick with streaming. Calls on_delta(chunk) for each text chunk.
+        Returns the parsed JSON response when complete.
+        """
+        messages = self._build_messages(world_context)
+        client = get_client()
+
+        full_response = ""
+        try:
+            for chunk in client.chat_stream(system=self.system_prompt, messages=messages):
+                full_response += chunk
+                if on_delta:
+                    on_delta(chunk)
+        except Exception as e:
+            logger.error(f"[{self.name}] Streaming error: {e}")
+            # Fall back to non-streaming
+            if not full_response:
+                full_response = client.chat(system=self.system_prompt, messages=messages)
+
+        # Store in history
+        self.history.append({"role": "user", "content": world_context})
+        self.history.append({"role": "assistant", "content": full_response})
+        self._trim_history()
+
+        # Parse and return final result
+        try:
+            text = full_response.strip()
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                pass
+            fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
+            if fence_match:
+                return json.loads(fence_match.group(1).strip())
+            first = text.find("{")
+            last = text.rfind("}")
+            if first != -1 and last > first:
+                return json.loads(text[first:last + 1])
+        except (json.JSONDecodeError, IndexError):
+            pass
+        return {"raw": full_response}
 
     def get_state(self) -> Dict[str, Any]:
         """Serialize agent state for saving."""

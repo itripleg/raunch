@@ -43,11 +43,19 @@ class Character(Agent):
     def tick(self, world_context: str) -> Dict[str, Any]:
         """Run a character tick — returns inner thoughts + action."""
         result = super().tick(world_context)
+        self._update_from_result(result)
+        return result
 
-        # Update tracked state from response
+    def tick_stream(self, world_context: str, on_delta=None) -> Dict[str, Any]:
+        """Run a character tick with streaming — returns inner thoughts + action."""
+        result = super().tick_stream(world_context, on_delta=on_delta)
+        self._update_from_result(result)
+        return result
+
+    def _update_from_result(self, result: Dict[str, Any]) -> None:
+        """Update tracked state from tick response."""
         if isinstance(result, dict) and "raw" not in result:
             self.emotional_state = result.get("emotional_state", self.emotional_state)
-        return result
 
     def get_state(self) -> Dict[str, Any]:
         """Full character state for saving."""

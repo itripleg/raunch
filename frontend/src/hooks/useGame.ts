@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer } from "react";
+import { useEffect, useMemo, useReducer, useRef } from "react";
 import { useWebSocket, type ServerMessage } from "./useWebSocket";
 
 export type CharacterInfo = {
@@ -40,6 +40,7 @@ type HistoryTick = {
   world_time?: string;
   mood?: string;
   characters?: Record<string, CharacterTick>;
+  created_at?: string;
 };
 
 type CharHistoryTick = {
@@ -48,6 +49,15 @@ type CharHistoryTick = {
   action?: string;
   dialogue?: string;
   emotional_state?: string;
+};
+
+export type StreamingState = {
+  tick: number | null;
+  narrator: string;
+  characters: Record<string, string>;
+  isStreaming: boolean;
+  narratorDone: boolean;
+  charactersDone: string[];
 };
 
 type State = {
@@ -63,7 +73,13 @@ type State = {
   error: string | null;
   paused: boolean;
   tickInterval: number;
+  manualMode: boolean;
   pendingInfluence: { character: string; text: string } | null;
+  // Director mode
+  directorMode: boolean;
+  pendingDirectorGuidance: string | null;
+  // Streaming
+  streaming: StreamingState;
 };
 
 type Action =
@@ -78,11 +94,18 @@ type Action =
   | { type: "CHARACTER_HISTORY"; character: string; ticks: CharHistoryTick[] }
   | { type: "REPLAY"; data: Record<string, unknown> }
   | { type: "PAUSE_STATE"; paused: boolean }
-  | { type: "TICK_INTERVAL"; seconds: number }
+  | { type: "TICK_INTERVAL"; seconds: number; manual: boolean }
   | { type: "ERROR"; message: string }
   | { type: "CLEAR_ERROR" }
   | { type: "INFLUENCE_QUEUED"; character: string; text: string }
-  | { type: "RESET" };
+  | { type: "RESET" }
+  // Director mode
+  | { type: "TOGGLE_DIRECTOR_MODE" }
+  | { type: "DIRECTOR_QUEUED"; text: string }
+  // Streaming
+  | { type: "TICK_START"; tick: number }
+  | { type: "STREAM_SYNC"; tick: number; narrator: string; characters: Record<string, string> }
+  | { type: "STREAM_DONE"; tick: number; source: string };
 
 const initial: State = {
   world: null,
@@ -96,8 +119,19 @@ const initial: State = {
   status: null,
   error: null,
   paused: false,
-  tickInterval: 30,
+  tickInterval: 0,
+  manualMode: true,
   pendingInfluence: null,
+  directorMode: false,
+  pendingDirectorGuidance: null,
+  streaming: {
+    tick: null,
+    narrator: "",
+    characters: {},
+    isStreaming: false,
+    narratorDone: false,
+    charactersDone: [],
+  },
 };
 
 function reducer(state: State, action: Action): State {
@@ -105,13 +139,24 @@ function reducer(state: State, action: Action): State {
     case "WELCOME":
       return { ...initial, world: action.world, characterNames: action.characters };
     case "TICK": {
-      // Clear pending influence when tick arrives (it was consumed)
+      // Clear pending influence/director and streaming when tick arrives
       // Deduplicate - don't add if tick number already exists
       const tickExists = state.ticks.some(t => t.tick === action.data.tick);
       if (tickExists) {
-        return { ...state, pendingInfluence: null };
+        return {
+          ...state,
+          pendingInfluence: null,
+          pendingDirectorGuidance: null,
+          streaming: { ...initial.streaming },
+        };
       }
-      return { ...state, ticks: [...state.ticks.slice(-100), action.data], pendingInfluence: null };
+      return {
+        ...state,
+        ticks: [...state.ticks.slice(-100), action.data],
+        pendingInfluence: null,
+        pendingDirectorGuidance: null,
+        streaming: { ...initial.streaming },
+      };
     }
     case "ATTACHED":
       return { ...state, attachedTo: action.character };
@@ -146,7 +191,14 @@ function reducer(state: State, action: Action): State {
         }));
       const merged = [...historyAsTicks, ...state.ticks];
       merged.sort((a, b) => a.tick - b.tick);
-      return { ...state, ticks: merged, history: action.ticks };
+      // Final dedupe pass - keep last occurrence of each tick number
+      const seen = new Set<number>();
+      const deduped = merged.filter(t => {
+        if (seen.has(t.tick)) return false;
+        seen.add(t.tick);
+        return true;
+      });
+      return { ...state, ticks: deduped, history: action.ticks };
     }
     case "CHARACTER_HISTORY":
       return { ...state, characterHistory: { name: action.character, ticks: action.ticks } };
@@ -155,13 +207,59 @@ function reducer(state: State, action: Action): State {
     case "PAUSE_STATE":
       return { ...state, paused: action.paused };
     case "TICK_INTERVAL":
-      return { ...state, tickInterval: action.seconds };
+      return { ...state, tickInterval: action.seconds, manualMode: action.manual };
     case "ERROR":
       return { ...state, error: action.message };
     case "CLEAR_ERROR":
       return { ...state, error: null };
     case "INFLUENCE_QUEUED":
       return { ...state, pendingInfluence: { character: action.character, text: action.text } };
+    case "TOGGLE_DIRECTOR_MODE":
+      return { ...state, directorMode: !state.directorMode };
+    case "DIRECTOR_QUEUED":
+      return { ...state, pendingDirectorGuidance: action.text };
+    case "TICK_START":
+      return {
+        ...state,
+        streaming: {
+          tick: action.tick,
+          narrator: "",
+          characters: {},
+          isStreaming: true,
+          narratorDone: false,
+          charactersDone: [],
+        },
+      };
+    case "STREAM_SYNC":
+      // Throttled sync from ref - replace entire streaming content (preserve done states)
+      if (state.streaming.tick !== action.tick) return state;
+      return {
+        ...state,
+        streaming: {
+          ...state.streaming,
+          narrator: action.narrator,
+          characters: action.characters,
+          // Preserve narratorDone and charactersDone
+        },
+      };
+    case "STREAM_DONE":
+      // Track which sources are done (narrator or character names)
+      if (state.streaming.tick !== action.tick) return state;
+      if (action.source === "narrator") {
+        return {
+          ...state,
+          streaming: { ...state.streaming, narratorDone: true },
+        };
+      } else {
+        // Character done
+        return {
+          ...state,
+          streaming: {
+            ...state.streaming,
+            charactersDone: [...state.streaming.charactersDone, action.source],
+          },
+        };
+      }
     case "RESET":
       return initial;
     default:
@@ -170,13 +268,98 @@ function reducer(state: State, action: Action): State {
 }
 
 export function useGame(wsUrl: string) {
-  const { state: wsState, lastMessage, connect, send, disconnect } = useWebSocket(wsUrl);
+  const { state: wsState, lastMessage, connect, send, disconnect, setOnMessage } = useWebSocket(wsUrl);
   const [game, dispatch] = useReducer(reducer, initial);
 
-  // Process incoming messages
+  // Use ref for streaming accumulation - updates are throttled to avoid React batching all at once
+  const streamingRef = useRef<{
+    tick: number | null;
+    narrator: string;
+    characters: Record<string, string>;
+    dirty: boolean;
+  }>({
+    tick: null,
+    narrator: "",
+    characters: {},
+    dirty: false,
+  });
+
+  // Throttled UI updates for streaming (every 250ms for smoother chunked appearance)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      try {
+        const ref = streamingRef.current;
+        if (ref && ref.dirty && ref.tick !== null) {
+          ref.dirty = false;
+          dispatch({
+            type: "STREAM_SYNC",
+            tick: ref.tick,
+            narrator: ref.narrator || "",
+            characters: ref.characters ? { ...ref.characters } : {},
+          });
+        }
+      } catch (e) {
+        console.error("Streaming sync error:", e);
+      }
+    }, 250);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Process messages synchronously via callback (for streaming)
+  useEffect(() => {
+    setOnMessage((msg: ServerMessage) => {
+      // Handle streaming messages - accumulate in ref, mark dirty for throttled sync
+      if (msg.type === "tick_start") {
+        streamingRef.current = {
+          tick: msg.tick as number,
+          narrator: "",
+          characters: {},
+          dirty: false,
+        };
+        dispatch({ type: "TICK_START", tick: msg.tick as number });
+      } else if (msg.type === "stream_delta") {
+        const tick = msg.tick as number;
+        const source = msg.source as string;
+        const delta = msg.delta as string;
+        if (streamingRef.current.tick === tick) {
+          if (source === "narrator") {
+            streamingRef.current.narrator += delta;
+          } else {
+            streamingRef.current.characters[source] =
+              (streamingRef.current.characters[source] || "") + delta;
+          }
+          streamingRef.current.dirty = true;
+        }
+      } else if (msg.type === "stream_done") {
+        // Final sync before marking done
+        if (streamingRef.current.tick !== null) {
+          dispatch({
+            type: "STREAM_SYNC",
+            tick: streamingRef.current.tick,
+            narrator: streamingRef.current.narrator,
+            characters: { ...streamingRef.current.characters },
+          });
+        }
+        dispatch({
+          type: "STREAM_DONE",
+          tick: msg.tick as number,
+          source: msg.source as string,
+        });
+      }
+    });
+
+    return () => setOnMessage(null);
+  }, [setOnMessage]);
+
+  // Process other incoming messages via lastMessage
   useEffect(() => {
     if (!lastMessage) return;
     const msg = lastMessage as ServerMessage;
+
+    // Skip streaming messages (handled above)
+    if (msg.type === "tick_start" || msg.type === "stream_delta" || msg.type === "stream_done") {
+      return;
+    }
 
     switch (msg.type) {
       case "welcome":
@@ -191,7 +374,7 @@ export function useGame(wsUrl: string) {
         }
         // Process initial tick interval and pause state
         if (typeof msg.tick_interval === "number") {
-          dispatch({ type: "TICK_INTERVAL", seconds: msg.tick_interval });
+          dispatch({ type: "TICK_INTERVAL", seconds: msg.tick_interval, manual: msg.manual === true });
         }
         if (typeof msg.paused === "boolean") {
           dispatch({ type: "PAUSE_STATE", paused: msg.paused });
@@ -232,7 +415,7 @@ export function useGame(wsUrl: string) {
         dispatch({ type: "PAUSE_STATE", paused: msg.paused as boolean });
         break;
       case "tick_interval":
-        dispatch({ type: "TICK_INTERVAL", seconds: msg.seconds as number });
+        dispatch({ type: "TICK_INTERVAL", seconds: msg.seconds as number, manual: msg.manual === true });
         break;
       case "error":
         dispatch({ type: "ERROR", message: msg.message as string });
@@ -244,6 +427,13 @@ export function useGame(wsUrl: string) {
           text: (msg as Record<string, unknown>).text as string || "",
         });
         break;
+      case "director_queued":
+        dispatch({
+          type: "DIRECTOR_QUEUED",
+          text: (msg as Record<string, unknown>).text as string || "",
+        });
+        break;
+      // tick_start, stream_delta, stream_done handled synchronously above
     }
   }, [lastMessage]);
 
@@ -269,7 +459,11 @@ export function useGame(wsUrl: string) {
       resume: () => send({ cmd: "resume" }),
       setTickInterval: (seconds: number) => send({ cmd: "set_tick_interval", seconds }),
       getTickInterval: () => send({ cmd: "get_tick_interval" }),
+      triggerTick: () => send({ cmd: "tick" }),
       clearError: () => dispatch({ type: "CLEAR_ERROR" }),
+      // Director mode
+      toggleDirectorMode: () => dispatch({ type: "TOGGLE_DIRECTOR_MODE" }),
+      submitDirectorGuidance: (text: string) => send({ cmd: "director", text }),
     }),
     [connect, disconnect, send]
   );
