@@ -215,6 +215,25 @@ class Orchestrator:
         remaining = self.turn_timeout - self.get_turn_elapsed()
         return max(0.0, remaining)
 
+    def _check_turn_ready(self) -> tuple[bool, str]:
+        """Check if turn should proceed. Returns (ready, reason).
+
+        Reasons: 'all_ready', 'timeout', 'no_players', or '' if not ready.
+        """
+        # No players tracked - don't auto-tick (spec: "No auto-tick when 0 players connected")
+        if not self._player_ready_states:
+            return (False, 'no_players')
+
+        # All players ready
+        if self.all_players_ready():
+            return (True, 'all_ready')
+
+        # Timeout expired (only if timeout is enabled)
+        if self.turn_timeout > 0 and self.get_turn_remaining() <= 0:
+            return (True, 'timeout')
+
+        return (False, '')
+
     def _run_tick(self) -> Dict[str, Any]:
         """Execute one world tick. Returns all results."""
         self.world.tick_count += 1
@@ -402,11 +421,40 @@ class Orchestrator:
                     if not self._running:
                         break
 
+            # Turn-based multiplayer: wait for all players ready OR timeout
+            tick_trigger_reason = 'auto'  # Default for non-multiplayer mode
+            if self._player_ready_states:
+                # Initialize turn start time if not set
+                if self._turn_start_time is None:
+                    self._turn_start_time = time.time()
+
+                # Poll for turn ready condition
+                while self._running and not self._paused:
+                    ready, reason = self._check_turn_ready()
+                    if ready:
+                        tick_trigger_reason = reason
+                        logger.info(f"Turn ready: {reason}")
+                        break
+                    if reason == 'no_players':
+                        # No players connected - don't tick, wait for players
+                        time.sleep(0.5)
+                        continue
+                    # Not ready yet, sleep briefly and check again
+                    time.sleep(0.25)
+
+                if not self._running:
+                    break
+
             # Check pause again before running tick
             if self._paused:
                 continue
 
             results = self._run_tick()
+            results['triggered_by'] = tick_trigger_reason
+
+            # Reset ready states after tick completes (for multiplayer)
+            if self._player_ready_states:
+                self.reset_ready_states()
 
             # Check if tick had errors (narrator failed = all failed)
             narration = results.get("narration", "")
