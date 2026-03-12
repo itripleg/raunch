@@ -119,7 +119,8 @@ type Action =
   | { type: "STREAM_DONE"; tick: number; source: string }
   // Multiplayer
   | { type: "JOINED"; player_id: string; nickname: string }
-  | { type: "PLAYERS"; players: Player[] };
+  | { type: "PLAYERS"; players: Player[] }
+  | { type: "WORLD_LOADED"; world_id: string; name: string; characters: string[] };
 
 const initial: State = {
   world: null,
@@ -282,6 +283,17 @@ function reducer(state: State, action: Action): State {
       return { ...state, playerId: action.player_id, nickname: action.nickname };
     case "PLAYERS":
       return { ...state, players: action.players };
+    case "WORLD_LOADED":
+      return {
+        ...state,
+        world: {
+          world_id: action.world_id,
+          world_name: action.name,
+        },
+        characterNames: action.characters,
+        ticks: [],
+        history: [],
+      };
     case "RESET":
       return initial;
     default:
@@ -464,6 +476,14 @@ export function useGame(wsUrl: string) {
         break;
       case "players":
         dispatch({ type: "PLAYERS", players: msg.players as Player[] });
+        break;
+      case "world_loaded":
+        dispatch({
+          type: "WORLD_LOADED",
+          world_id: msg.world_id as string,
+          name: msg.name as string,
+          characters: msg.characters as string[],
+        });
         break;
       // tick_start, stream_delta, stream_done handled synchronously above
     }
