@@ -60,6 +60,13 @@ export type StreamingState = {
   charactersDone: string[];
 };
 
+export type Player = {
+  player_id: string;
+  nickname: string;
+  attached_to: string | null;
+  ready: boolean;
+};
+
 type State = {
   world: WorldInfo | null;
   characterNames: string[];
@@ -80,6 +87,10 @@ type State = {
   pendingDirectorGuidance: string | null;
   // Streaming
   streaming: StreamingState;
+  // Multiplayer
+  playerId: string | null;
+  nickname: string | null;
+  players: Player[];
 };
 
 type Action =
@@ -105,7 +116,10 @@ type Action =
   // Streaming
   | { type: "TICK_START"; tick: number }
   | { type: "STREAM_SYNC"; tick: number; narrator: string; characters: Record<string, string> }
-  | { type: "STREAM_DONE"; tick: number; source: string };
+  | { type: "STREAM_DONE"; tick: number; source: string }
+  // Multiplayer
+  | { type: "JOINED"; player_id: string; nickname: string }
+  | { type: "PLAYERS"; players: Player[] };
 
 const initial: State = {
   world: null,
@@ -132,6 +146,10 @@ const initial: State = {
     narratorDone: false,
     charactersDone: [],
   },
+  // Multiplayer
+  playerId: null,
+  nickname: null,
+  players: [],
 };
 
 function reducer(state: State, action: Action): State {
@@ -260,6 +278,10 @@ function reducer(state: State, action: Action): State {
           },
         };
       }
+    case "JOINED":
+      return { ...state, playerId: action.player_id, nickname: action.nickname };
+    case "PLAYERS":
+      return { ...state, players: action.players };
     case "RESET":
       return initial;
     default:
@@ -432,6 +454,16 @@ export function useGame(wsUrl: string) {
           type: "DIRECTOR_QUEUED",
           text: (msg as Record<string, unknown>).text as string || "",
         });
+        break;
+      case "joined":
+        dispatch({
+          type: "JOINED",
+          player_id: msg.player_id as string,
+          nickname: msg.nickname as string,
+        });
+        break;
+      case "players":
+        dispatch({ type: "PLAYERS", players: msg.players as Player[] });
         break;
       // tick_start, stream_delta, stream_done handled synchronously above
     }
