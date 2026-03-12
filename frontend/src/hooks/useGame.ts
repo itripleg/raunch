@@ -526,6 +526,7 @@ export function useGame(wsUrl: string) {
       join: (nickname: string) => send({ cmd: "join", nickname }),
       attach: (name: string) => send({ cmd: "attach", character: name }),
       detach: () => send({ cmd: "detach" }),
+      ready: () => send({ cmd: "ready" }),
       listCharacters: () => send({ cmd: "list" }),
       getWorld: () => send({ cmd: "world" }),
       getStatus: () => send({ cmd: "status" }),
@@ -533,7 +534,12 @@ export function useGame(wsUrl: string) {
       getCharacterHistory: (name: string, count = 20) =>
         send({ cmd: "character_history", character: name, count }),
       replay: (tick: number) => send({ cmd: "replay", tick }),
-      submitAction: (text: string) => send({ cmd: "action", text }),
+      submitAction: (text: string, autoReady = false) => {
+        send({ cmd: "action", text });
+        if (autoReady) {
+          send({ cmd: "ready" });
+        }
+      },
       togglePause: () => send({ cmd: "toggle_pause" }),
       pause: () => send({ cmd: "pause" }),
       resume: () => send({ cmd: "resume" }),
@@ -543,7 +549,12 @@ export function useGame(wsUrl: string) {
       clearError: () => dispatch({ type: "CLEAR_ERROR" }),
       // Director mode
       toggleDirectorMode: () => dispatch({ type: "TOGGLE_DIRECTOR_MODE" }),
-      submitDirectorGuidance: (text: string) => send({ cmd: "director", text }),
+      submitDirectorGuidance: (text: string, autoReady = false) => {
+        send({ cmd: "director", text });
+        if (autoReady) {
+          send({ cmd: "ready" });
+        }
+      },
     }),
     [connect, disconnect, send]
   );
