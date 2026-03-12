@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { TickData, StreamingState } from "@/hooks/useGame";
+import type { TickData, StreamingState, TurnState, Player } from "@/hooks/useGame";
 import { CharacterPanel } from "./CharacterPanel";
 import { DirectorPanel } from "./DirectorPanel";
 import { TickFeed } from "./TickFeed";
 import { Sidebar } from "./Sidebar";
 import { ActionBar } from "./ActionBar";
+import { TurnStateUI } from "./TurnStateUI";
+import { PlayerPresence } from "./PlayerPresence";
 
 type GameState = {
   world: Record<string, unknown> | null;
@@ -25,6 +27,10 @@ type GameState = {
   directorMode?: boolean;
   pendingDirectorGuidance?: string | null;
   streaming?: StreamingState;
+  // Multiplayer
+  turnState?: TurnState | null;
+  nickname?: string | null;
+  players?: Player[];
 };
 
 type Actions = {
@@ -45,6 +51,7 @@ type Actions = {
   triggerTick?: () => void;
   toggleDirectorMode?: () => void;
   submitDirectorGuidance?: (text: string) => void;
+  ready?: () => void;
 };
 
 type Props = {
@@ -178,6 +185,14 @@ export function GameLayout({ game, actions }: Props) {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Player presence indicator */}
+          {game.players && game.players.length > 0 && (
+            <PlayerPresence
+              players={game.players}
+              myPlayerId={game.players.find(p => p.nickname === game.nickname)?.player_id ?? null}
+            />
+          )}
+
           {/* Tick interval selector */}
           {actions.setTickInterval && (
             <select
@@ -379,6 +394,20 @@ export function GameLayout({ game, actions }: Props) {
             directorMode={game.directorMode ?? false}
             pendingDirectorGuidance={game.pendingDirectorGuidance}
             wideMode={wideMode}
+          />
+
+          {/* Turn state indicator - shows waiting players and countdown */}
+          <TurnStateUI
+            turnState={game.turnState ? {
+              timeout: game.turnState.countdown,
+              waitingFor: game.turnState.waiting_for,
+              allReady: game.turnState.all_ready,
+              playerCount: game.players?.length ?? 0,
+              turnStartedAt: null,
+            } : null}
+            myNickname={game.nickname ?? null}
+            isMyReady={game.nickname ? !game.turnState?.waiting_for.includes(game.nickname) : true}
+            onReady={actions.ready}
           />
         </main>
 

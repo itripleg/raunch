@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from typing import Dict, Any, Optional, Set
 
 import websockets
@@ -21,6 +22,10 @@ class WSClient:
     def __init__(self, ws):
         self.ws = ws
         self.attached_to: Optional[str] = None
+        # Multiplayer fields
+        self.player_id: Optional[str] = None
+        self.nickname: Optional[str] = None
+        self.ready: bool = False
 
     async def send(self, data: Dict[str, Any]) -> bool:
         try:
@@ -64,6 +69,7 @@ class WebSocketServer:
             "tick_interval": self.orch.tick_interval,
             "manual": self.orch.is_manual_mode,
             "paused": self.orch._paused,
+            "player_id": client.player_id,
         })
 
         try:
@@ -80,6 +86,14 @@ class WebSocketServer:
         finally:
             self.clients.discard(client)
             logger.info("WS client disconnected")
+            # Broadcast player_left and updated player list to all remaining clients
+            if client.player_id is not None:
+                # Remove from orchestrator's turn-based tracking
+                self.orch.clear_player_ready(client.player_id)
+                await self._broadcast_player_left(client)
+                await self._broadcast_players()
+                # Broadcast turn state - their departure may trigger tick if they were last non-ready
+                await self._broadcast_turn_state()
 
     async def _process_command(self, client: WSClient, msg: Dict[str, Any]):
         cmd = msg.get("cmd", "")
@@ -96,6 +110,32 @@ class WebSocketServer:
         elif cmd == "detach":
             client.attached_to = None
             await client.send({"type": "detached"})
+
+        elif cmd == "join":
+            nickname = msg.get("nickname", "").strip()
+            # Assign unique player ID
+            client.player_id = str(uuid.uuid4())
+            # Generate nickname if not provided
+            if not nickname:
+                # Count existing players to generate "Player N" name
+                player_count = sum(1 for c in self.clients if c.player_id is not None)
+                nickname = f"Player {player_count}"
+            client.nickname = nickname
+            client.ready = False
+            # Register player with orchestrator for turn-based tracking
+            self.orch.set_player_ready(client.player_id, False)
+            # Send confirmation to joining client
+            await client.send({
+                "type": "joined",
+                "player_id": client.player_id,
+                "nickname": client.nickname,
+            })
+            # Broadcast player_joined to all clients
+            await self._broadcast_player_joined(client)
+            # Broadcast updated player list to all clients
+            await self._broadcast_players()
+            # Broadcast turn state so new player sees waiting-for list
+            await self._broadcast_turn_state()
 
         elif cmd == "list":
             chars = {}
@@ -150,6 +190,7 @@ class WebSocketServer:
 
         elif cmd == "action":
             text = msg.get("text", "").strip()
+            auto_ready = msg.get("ready", True)  # Default to auto-ready on action submit (demo behavior)
             if not text:
                 await client.send({"type": "error", "message": "Empty message"})
             elif client.attached_to:
@@ -162,6 +203,11 @@ class WebSocketServer:
                         "character": client.attached_to,
                         "text": text,
                     })
+                    # Auto-ready player on action submission (spec: demo behavior)
+                    if auto_ready and client.player_id:
+                        client.ready = True
+                        self.orch.set_player_ready(client.player_id, True)
+                        await self._broadcast_turn_state()
                 else:
                     logger.warning(f"[WS] Influence FAILED to submit")
                     await client.send({"type": "error", "message": f"Character {client.attached_to} not found"})
@@ -169,6 +215,11 @@ class WebSocketServer:
                 # Legacy player control mode
                 self.orch.submit_player_action(text)
                 await client.send({"type": "ok", "message": "Action submitted"})
+                # Auto-ready in legacy mode too
+                if auto_ready and client.player_id:
+                    client.ready = True
+                    self.orch.set_player_ready(client.player_id, True)
+                    await self._broadcast_turn_state()
             else:
                 await client.send({"type": "error", "message": "Attach to a character first"})
 
@@ -189,6 +240,7 @@ class WebSocketServer:
 
         elif cmd == "director":
             text = msg.get("text", "").strip()
+            auto_ready = msg.get("ready", True)  # Default to auto-ready on director submit
             if not text:
                 await client.send({"type": "error", "message": "Empty guidance"})
             else:
@@ -197,11 +249,31 @@ class WebSocketServer:
                     "type": "director_queued",
                     "text": text,
                 })
+                # Auto-ready player on director guidance submission
+                if auto_ready and client.player_id:
+                    client.ready = True
+                    self.orch.set_player_ready(client.player_id, True)
+                    await self._broadcast_turn_state()
+
+        elif cmd == "ready":
+            # Mark player as ready for the current turn
+            if client.player_id is None:
+                await client.send({"type": "error", "message": "Must join before readying"})
+            else:
+                client.ready = True
+                # Sync with orchestrator for turn-based tick triggering
+                self.orch.set_player_ready(client.player_id, True)
+                await self._broadcast_turn_state()
 
         elif cmd == "set_tick_interval":
             seconds = msg.get("seconds", 30)
             self.orch.set_tick_interval(int(seconds))
             await self._broadcast_tick_interval()
+
+        elif cmd == "set_turn_timeout":
+            seconds = msg.get("seconds", 60)
+            self.orch.turn_timeout = int(seconds)
+            await self._broadcast_turn_timeout()
 
         elif cmd == "get_tick_interval":
             await client.send({
@@ -234,18 +306,108 @@ class WebSocketServer:
         for client in list(self.clients):
             await client.send(msg)
 
+    async def _broadcast_turn_timeout(self):
+        """Notify all clients of current turn timeout."""
+        turn_timeout = getattr(self.orch, 'turn_timeout', 60)
+        msg = {
+            "type": "turn_timeout",
+            "seconds": turn_timeout,
+        }
+        for client in list(self.clients):
+            await client.send(msg)
+
     async def _broadcast_pause_state(self):
         """Notify all clients of current pause state."""
         msg = {"type": "pause_state", "paused": self.orch._paused}
         for client in list(self.clients):
             await client.send(msg)
 
-    def broadcast_tick_start(self, tick_num: int):
-        """Notify clients that a new tick is starting (for streaming)."""
+    async def _broadcast_player_joined(self, joined_client: WSClient):
+        """Notify all clients that a player has joined."""
+        msg = {
+            "type": "player_joined",
+            "player_id": joined_client.player_id,
+            "nickname": joined_client.nickname,
+        }
+        for client in list(self.clients):
+            await client.send(msg)
+
+    async def _broadcast_player_left(self, left_client: WSClient):
+        """Notify all clients that a player has left."""
+        msg = {
+            "type": "player_left",
+            "player_id": left_client.player_id,
+            "nickname": left_client.nickname,
+        }
+        for client in list(self.clients):
+            await client.send(msg)
+
+    async def _broadcast_players(self):
+        """Notify all clients of current player list."""
+        players = [
+            {
+                "player_id": c.player_id,
+                "nickname": c.nickname,
+                "attached_to": c.attached_to,
+                "ready": c.ready
+            }
+            for c in self.clients
+            if c.player_id is not None  # Only include joined players
+        ]
+        msg = {"type": "players", "players": players}
+        for client in list(self.clients):
+            await client.send(msg)
+
+    async def _broadcast_turn_state(self):
+        """Notify all clients of current turn state (ready states, waiting for, countdown)."""
+        # Get all joined players
+        players = [c for c in self.clients if c.player_id is not None]
+
+        # Build ready states dict
+        ready_states = {
+            c.player_id: c.ready
+            for c in players
+        }
+
+        # Build waiting_for list (nicknames of players not ready)
+        waiting_for = [
+            c.nickname
+            for c in players
+            if not c.ready
+        ]
+
+        # Get timeout and remaining time from orchestrator
+        turn_timeout = getattr(self.orch, 'turn_timeout', 60)
+        turn_remaining = self.orch.get_turn_remaining() if hasattr(self.orch, 'get_turn_remaining') else turn_timeout
+
+        msg = {
+            "type": "turn_state",
+            "ready_states": ready_states,
+            "waiting_for": waiting_for,
+            "all_ready": len(waiting_for) == 0 and len(players) > 0,
+            "player_count": len(players),
+            "timeout": turn_timeout,
+            "countdown": int(turn_remaining) if turn_remaining != float('inf') else turn_timeout,
+        }
+        for client in list(self.clients):
+            await client.send(msg)
+
+    def broadcast_tick_start(self, tick_num: int, triggered_by: str = 'auto'):
+        """Notify clients that a new tick is starting (for streaming).
+
+        Args:
+            tick_num: The tick number starting
+            triggered_by: Reason for tick trigger ('all_ready', 'timeout', 'host', 'auto')
+        """
         if not self._loop or not self.clients:
             return
         from datetime import datetime
-        msg = {"type": "tick_start", "tick": tick_num, "timestamp": datetime.utcnow().isoformat()}
+        msg = {
+            "type": "tick_start",
+            "tick": tick_num,
+            "timestamp": datetime.utcnow().isoformat(),
+            "triggered_by": triggered_by,
+        }
         for client in list(self.clients):
             try:
                 asyncio.run_coroutine_threadsafe(client.send(msg), self._loop)
@@ -307,6 +469,17 @@ class WebSocketServer:
             return
 
         from datetime import datetime
+
+        # Reset all client ready states after tick completes (turn-based multiplayer)
+        for client in list(self.clients):
+            if client.player_id is not None:
+                client.ready = False
+
+        # Schedule turn state broadcast (async from sync context)
+        try:
+            asyncio.run_coroutine_threadsafe(self._broadcast_turn_state(), self._loop)
+        except Exception:
+            pass
 
         for client in list(self.clients):
             view = {

@@ -102,7 +102,7 @@ def start(save_name, world_name, scenario_name):
     # Wire up streaming callback for real-time text
     def on_stream(tick_num: int, source: str, event_type: str, data: str):
         if event_type == "start":
-            ws_server.broadcast_tick_start(tick_num)
+            ws_server.broadcast_tick_start(tick_num, orch._last_tick_trigger_reason)
         elif event_type == "delta":
             ws_server.broadcast_stream_delta(tick_num, source, data)
         elif event_type == "done":
