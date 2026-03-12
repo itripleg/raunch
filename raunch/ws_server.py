@@ -21,6 +21,10 @@ class WSClient:
     def __init__(self, ws):
         self.ws = ws
         self.attached_to: Optional[str] = None
+        # Multiplayer fields
+        self.player_id: Optional[str] = None
+        self.nickname: Optional[str] = None
+        self.ready: bool = False
 
     async def send(self, data: Dict[str, Any]) -> bool:
         try:
