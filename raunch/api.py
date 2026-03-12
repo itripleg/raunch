@@ -1,7 +1,7 @@
 """FastAPI REST API for raunch multiplayer endpoints."""
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +9,27 @@ from pydantic import BaseModel
 
 from .wizard import list_scenarios, random_scenario
 
+if TYPE_CHECKING:
+    from .orchestrator import Orchestrator
+
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Module-level orchestrator reference for API access to game state
+# =============================================================================
+
+_orchestrator: Optional["Orchestrator"] = None
+
+
+def set_orchestrator(orch: "Orchestrator") -> None:
+    """Set the orchestrator instance for API access to game state."""
+    global _orchestrator
+    _orchestrator = orch
+
+
+def get_orchestrator() -> Optional["Orchestrator"]:
+    """Get the current orchestrator instance."""
+    return _orchestrator
 
 
 # =============================================================================
@@ -109,3 +129,23 @@ async def roll_scenario():
     """Generate a random scenario using the Smut Wizard."""
     scenario = random_scenario()
     return scenario
+
+
+@app.get("/api/v1/world", response_model=WorldResponse)
+async def get_world():
+    """Get current world state."""
+    orch = get_orchestrator()
+    if orch is None or not orch._running:
+        return WorldResponse(running=False)
+
+    world = orch.world
+    character_names = list(orch.characters.keys())
+
+    return WorldResponse(
+        running=True,
+        world_id=world.world_id,
+        name=world.world_name,
+        tick=world.tick_count,
+        characters=character_names,
+        turn_timeout=orch.tick_interval if orch.tick_interval > 0 else 60,
+    )
