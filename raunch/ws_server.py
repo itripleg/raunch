@@ -228,6 +228,14 @@ class WebSocketServer:
                     "text": text,
                 })
 
+        elif cmd == "ready":
+            # Mark player as ready for the current turn
+            if client.player_id is None:
+                await client.send({"type": "error", "message": "Must join before readying"})
+            else:
+                client.ready = True
+                await self._broadcast_turn_state()
+
         elif cmd == "set_tick_interval":
             seconds = msg.get("seconds", 30)
             self.orch.set_tick_interval(int(seconds))
@@ -293,6 +301,38 @@ class WebSocketServer:
             if c.player_id is not None  # Only include joined players
         ]
         msg = {"type": "players", "players": players}
+        for client in list(self.clients):
+            await client.send(msg)
+
+    async def _broadcast_turn_state(self):
+        """Notify all clients of current turn state (ready states, waiting for, timeout)."""
+        # Get all joined players
+        players = [c for c in self.clients if c.player_id is not None]
+
+        # Build ready states dict
+        ready_states = {
+            c.player_id: c.ready
+            for c in players
+        }
+
+        # Build waiting_for list (nicknames of players not ready)
+        waiting_for = [
+            c.nickname
+            for c in players
+            if not c.ready
+        ]
+
+        # Get timeout from orchestrator if available
+        turn_timeout = getattr(self.orch, 'turn_timeout', 60)
+
+        msg = {
+            "type": "turn_state",
+            "ready_states": ready_states,
+            "waiting_for": waiting_for,
+            "all_ready": len(waiting_for) == 0 and len(players) > 0,
+            "player_count": len(players),
+            "timeout": turn_timeout,
+        }
         for client in list(self.clients):
             await client.send(msg)
 
