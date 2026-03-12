@@ -85,6 +85,9 @@ class WebSocketServer:
         finally:
             self.clients.discard(client)
             logger.info("WS client disconnected")
+            # Broadcast updated player list to all remaining clients
+            if client.player_id is not None:
+                await self._broadcast_players()
 
     async def _process_command(self, client: WSClient, msg: Dict[str, Any]):
         cmd = msg.get("cmd", "")
@@ -121,6 +124,8 @@ class WebSocketServer:
             })
             # Broadcast player_joined to all clients
             await self._broadcast_player_joined(client)
+            # Broadcast updated player list to all clients
+            await self._broadcast_players()
 
         elif cmd == "list":
             chars = {}
@@ -272,6 +277,22 @@ class WebSocketServer:
             "player_id": joined_client.player_id,
             "nickname": joined_client.nickname,
         }
+        for client in list(self.clients):
+            await client.send(msg)
+
+    async def _broadcast_players(self):
+        """Notify all clients of current player list."""
+        players = [
+            {
+                "player_id": c.player_id,
+                "nickname": c.nickname,
+                "attached_to": c.attached_to,
+                "ready": c.ready
+            }
+            for c in self.clients
+            if c.player_id is not None  # Only include joined players
+        ]
+        msg = {"type": "players", "players": players}
         for client in list(self.clients):
             await client.send(msg)
 
