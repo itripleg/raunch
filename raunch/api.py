@@ -3,11 +3,12 @@
 import logging
 from typing import List, Optional, TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .wizard import list_scenarios, random_scenario
+from .wizard import list_scenarios, random_scenario, load_scenario
+from .agents.character import Character
 
 if TYPE_CHECKING:
     from .orchestrator import Orchestrator
@@ -93,6 +94,14 @@ class GeneratedScenarioResponse(BaseModel):
     opening_situation: Optional[str] = None
     characters: List[CharacterDetail] = []
 
+
+class StopResponse(BaseModel):
+    """Response schema for stopping the world."""
+
+    stopped: bool
+    message: str
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Raunch API",
@@ -148,4 +157,103 @@ async def get_world():
         tick=world.tick_count,
         characters=character_names,
         turn_timeout=orch.tick_interval if orch.tick_interval > 0 else 60,
+    )
+
+
+@app.post("/api/v1/world/load", response_model=WorldResponse)
+async def load_world(request: LoadWorldRequest):
+    """Load a scenario and start the world."""
+    global _orchestrator
+
+    # Check if a world is already running
+    if _orchestrator is not None and _orchestrator._running:
+        raise HTTPException(
+            status_code=409,
+            detail="A world is already running. Stop it first with POST /api/v1/world/stop"
+        )
+
+    # Load the scenario
+    scenario = load_scenario(request.scenario)
+    if scenario is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Scenario '{request.scenario}' not found"
+        )
+
+    # Import Orchestrator here to avoid circular imports
+    from .orchestrator import Orchestrator
+
+    # Create a new orchestrator
+    orch = Orchestrator()
+
+    # Apply the scenario to the orchestrator
+    orch.world.scenario = scenario
+    orch.world.world_name = scenario.get("scenario_name", orch.world.world_name)
+
+    # Update starting location from scenario setting
+    setting = scenario.get("setting", "")
+    if setting:
+        loc_name = scenario.get("scenario_name", "The Scene")
+        orch.world.locations = {
+            loc_name: {
+                "description": setting,
+                "characters": [],
+            }
+        }
+        location = loc_name
+    else:
+        location = list(orch.world.locations.keys())[0] if orch.world.locations else "The Scene"
+
+    # Create characters from scenario
+    for char_data in scenario.get("characters", []):
+        char = Character(
+            name=char_data["name"],
+            species=char_data.get("species", "Human"),
+            personality=char_data.get("personality", ""),
+            appearance=char_data.get("appearance", ""),
+            desires=char_data.get("desires", ""),
+            backstory=char_data.get("backstory", ""),
+            kinks=char_data.get("kinks", ""),
+        )
+        orch.add_character(char, location=location)
+
+    # Set the module-level orchestrator
+    _orchestrator = orch
+
+    # Start the world simulation
+    orch.start()
+
+    logger.info(f"World loaded: {orch.world.world_name} with {len(orch.characters)} characters")
+
+    return WorldResponse(
+        running=True,
+        world_id=orch.world.world_id,
+        name=orch.world.world_name,
+        tick=orch.world.tick_count,
+        characters=list(orch.characters.keys()),
+        turn_timeout=orch.tick_interval if orch.tick_interval > 0 else 60,
+    )
+
+
+@app.post("/api/v1/world/stop", response_model=StopResponse)
+async def stop_world():
+    """Stop the current world."""
+    global _orchestrator
+
+    orch = get_orchestrator()
+    if orch is None or not orch._running:
+        raise HTTPException(
+            status_code=404,
+            detail="No world is currently running"
+        )
+
+    world_name = orch.world.world_name
+    orch.stop()
+    _orchestrator = None
+
+    logger.info(f"World stopped: {world_name}")
+
+    return StopResponse(
+        stopped=True,
+        message=f"World '{world_name}' has been stopped and saved"
     )
