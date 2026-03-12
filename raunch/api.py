@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .wizard import list_scenarios
+from .wizard import list_scenarios, random_scenario
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,29 @@ class WorldResponse(BaseModel):
     characters: Optional[List[str]] = None
     turn_timeout: int = 60
 
+
+class CharacterDetail(BaseModel):
+    """Full character details for generated scenarios."""
+
+    name: str
+    species: Optional[str] = None
+    personality: Optional[str] = None
+    appearance: Optional[str] = None
+    desires: Optional[str] = None
+    backstory: Optional[str] = None
+    kinks: Optional[str] = None
+
+
+class GeneratedScenarioResponse(BaseModel):
+    """Response schema for a generated scenario from the wizard."""
+
+    scenario_name: str
+    setting: Optional[str] = None
+    premise: Optional[str] = None
+    themes: List[str] = []
+    opening_situation: Optional[str] = None
+    characters: List[CharacterDetail] = []
+
 # Create FastAPI app
 app = FastAPI(
     title="Raunch API",
@@ -79,3 +102,10 @@ async def get_scenarios():
     """List all available scenarios."""
     scenarios = list_scenarios()
     return scenarios
+
+
+@app.post("/api/v1/scenarios/roll", response_model=GeneratedScenarioResponse)
+async def roll_scenario():
+    """Generate a random scenario using the Smut Wizard."""
+    scenario = random_scenario()
+    return scenario
