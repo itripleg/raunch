@@ -62,6 +62,7 @@ class WebSocketServer:
             "characters": char_names,
             "history": initial_history,
             "tick_interval": self.orch.tick_interval,
+            "manual": self.orch.is_manual_mode,
             "paused": self.orch._paused,
         })
 
@@ -206,14 +207,30 @@ class WebSocketServer:
             await client.send({
                 "type": "tick_interval",
                 "seconds": self.orch.tick_interval,
+                "manual": self.orch.is_manual_mode,
             })
+
+        elif cmd == "tick":
+            # Manually trigger next tick (only works in manual mode)
+            if not self.orch.is_manual_mode:
+                await client.send({"type": "error", "message": "Not in manual mode"})
+            elif self.orch._paused:
+                await client.send({"type": "error", "message": "Simulation is paused"})
+            elif self.orch.trigger_tick():
+                await client.send({"type": "tick_triggered"})
+            else:
+                await client.send({"type": "error", "message": "Could not trigger tick"})
 
         else:
             await client.send({"type": "error", "message": f"Unknown command: {cmd}"})
 
     async def _broadcast_tick_interval(self):
         """Notify all clients of current tick interval."""
-        msg = {"type": "tick_interval", "seconds": self.orch.tick_interval}
+        msg = {
+            "type": "tick_interval",
+            "seconds": self.orch.tick_interval,
+            "manual": self.orch.is_manual_mode,
+        }
         for client in list(self.clients):
             await client.send(msg)
 

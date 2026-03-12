@@ -18,6 +18,7 @@ from .display import render_tick, render_character_list, render_world_state
 from .config import CHARACTERS_DIR, CLIENT_HOST, SERVER_PORT, SAVES_DIR
 from .wizard import generate_scenario, random_scenario, save_scenario, load_scenario, list_scenarios
 from .wizard import SETTINGS, KINK_POOLS, VIBES
+from .client import get_client
 
 console = Console()
 logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
@@ -136,11 +137,13 @@ def start(save_name, world_name, scenario_name):
             f"  [bold]raunch attach <character_name>[/bold]\n"
             f"  [bold]raunch status[/bold]\n\n"
             "Server commands:\n"
+            "  [bold]n[/bold] or [bold]Enter[/bold] — Next tick (manual mode)\n"
             "  [bold]c[/bold]  — List characters\n"
             "  [bold]w[/bold]  — Show world state\n"
             "  [bold]p[/bold]  — Pause/resume\n"
             "  [bold]t[/bold]  — Show tick interval\n"
-            "  [bold]t N[/bold] — Set tick interval to N seconds\n"
+            "  [bold]t N[/bold] — Set tick interval (0=manual, 10+=auto)\n"
+            "  [bold]r[/bold]  — Refresh OAuth token\n"
             "  [bold]q[/bold]  — Quit & save",
             border_style="bright_magenta",
         )
@@ -156,7 +159,15 @@ def start(save_name, world_name, scenario_name):
             except EOFError:
                 break
 
-            if not cmd:
+            if not cmd or cmd == "n":
+                # Empty input or 'n' = trigger next tick in manual mode
+                if orch.is_manual_mode:
+                    if orch.trigger_tick():
+                        console.print("[dim]Advancing...[/dim]")
+                    else:
+                        console.print("[yellow]Cannot tick (paused?)[/yellow]")
+                elif cmd == "n":
+                    console.print("[dim]Not in manual mode (use 't 0' to enable)[/dim]")
                 continue
             elif cmd == "q":
                 break
@@ -186,11 +197,24 @@ def start(save_name, world_name, scenario_name):
                 try:
                     seconds = int(cmd[2:].strip())
                     orch.set_tick_interval(seconds)
-                    console.print(f"[green]Tick interval set to {orch.tick_interval}s[/green]")
+                    if orch.is_manual_mode:
+                        console.print("[green]Manual mode enabled (press Enter or 'n' to tick)[/green]")
+                    else:
+                        console.print(f"[green]Tick interval set to {orch.tick_interval}s[/green]")
                 except ValueError:
-                    console.print("[red]Usage: t <seconds>[/red]")
+                    console.print("[red]Usage: t <seconds> (0=manual, 10+=auto)[/red]")
             elif cmd == "t":
-                console.print(f"[cyan]Tick interval: {orch.tick_interval}s[/cyan]")
+                if orch.is_manual_mode:
+                    console.print("[cyan]Tick mode: manual (press Enter or 'n' to tick)[/cyan]")
+                else:
+                    console.print(f"[cyan]Tick interval: {orch.tick_interval}s[/cyan]")
+            elif cmd == "r":
+                # Force token refresh
+                client = get_client()
+                if client.force_refresh():
+                    console.print("[green]Token refreshed successfully[/green]")
+                else:
+                    console.print("[red]Token refresh failed - try logging in again with `claude`[/red]")
             else:
                 console.print("[dim]Unknown command.[/dim]")
     except KeyboardInterrupt:

@@ -14,7 +14,7 @@ DEFAULT_MAX_TOKENS = 2048
 DEFAULT_TEMPERATURE = 0.9
 
 # World tick
-BASE_TICK_SECONDS = 30  # How often the world advances
+BASE_TICK_SECONDS = 0  # 0 = manual mode (default), >0 = auto-tick interval
 NARRATOR_TICK_MULTIPLIER = 1  # Narrator runs every tick
 CHARACTER_TICK_MULTIPLIER = 1  # Characters react every tick
 

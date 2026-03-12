@@ -119,7 +119,7 @@ function parseIntensityWords(text: string) {
   let match;
 
   while ((match = phraseRegex.exec(text)) !== null) {
-    const [fullMatch, prep, pronBefore, intensityWord, afterWord, pronAfter] = match;
+    const [fullMatch, , , intensityWord] = match;
     const level = INTENSITY_WORDS[intensityWord.toLowerCase()];
 
     if (level) {
@@ -217,14 +217,16 @@ type Props = {
 export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, onTickFocus, containerRef, streaming }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const tickRefs = useRef<Map<number, HTMLElement>>(new Map());
-  const [newestTick, setNewestTick] = useState<number | null>(null);
 
-  // Track the newest tick for animation purposes
-  useEffect(() => {
-    if (ticks.length > 0) {
-      const latest = ticks[ticks.length - 1].tick;
-      setNewestTick(latest);
-    }
+  // Track which tick was streamed so we don't re-animate it when finalized
+  const streamedTickRef = useRef<number | null>(null);
+  if (streaming?.isStreaming && streaming.tick) {
+    streamedTickRef.current = streaming.tick;
+  }
+
+  // Track newest tick synchronously (not in effect) so isNew works on first render
+  const newestTick = useMemo(() => {
+    return ticks.length > 0 ? ticks[ticks.length - 1].tick : null;
   }, [ticks]);
 
   // Register tick element refs
@@ -303,6 +305,7 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
             attachedTo={attachedTo}
             isFocused={focusedTick === tick.tick}
             isNew={tick.tick === newestTick}
+            wasStreamed={tick.tick === streamedTickRef.current}
             setRef={(el) => setTickRef(tick.tick, el)}
           />
         ))}
@@ -310,7 +313,7 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
 
       {/* Currently streaming tick */}
       {streaming?.isStreaming && (
-        <StreamingTickEntry streaming={streaming} attachedTo={attachedTo} />
+        <StreamingTickEntry streaming={streaming} />
       )}
 
       <div ref={endRef} />
@@ -323,10 +326,11 @@ type TickEntryProps = {
   attachedTo: string | null;
   isFocused: boolean;
   isNew: boolean;
+  wasStreamed?: boolean;
   setRef: (el: HTMLElement | null) => void;
 };
 
-function TickEntry({ tick, attachedTo, isFocused, isNew, setRef }: TickEntryProps) {
+function TickEntry({ tick, attachedTo: _attachedTo, isFocused, isNew, wasStreamed, setRef }: TickEntryProps) {
   const localRef = useRef<HTMLElement>(null);
   const [firstRevealDone, setFirstRevealDone] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
@@ -356,11 +360,14 @@ function TickEntry({ tick, attachedTo, isFocused, isNew, setRef }: TickEntryProp
     setIsHovering(false);
   }, []);
 
+  // Skip entrance animation if this tick was just streamed (prevents jarring re-render)
+  const skipAnimation = wasStreamed;
+
   return (
     <motion.article
       ref={handleRef}
       layout
-      initial={{ opacity: 0, y: 20, scale: 0.98 }}
+      initial={skipAnimation ? false : { opacity: 0, y: 20, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -10, scale: 0.98 }}
       transition={{
@@ -377,7 +384,7 @@ function TickEntry({ tick, attachedTo, isFocused, isNew, setRef }: TickEntryProp
       {/* Timestamp header */}
       <motion.div
         className="flex items-center gap-2"
-        initial={{ opacity: 0, x: -10 }}
+        initial={skipAnimation ? false : { opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.1, duration: 0.3 }}
       >
@@ -419,113 +426,184 @@ function TickEntry({ tick, attachedTo, isFocused, isNew, setRef }: TickEntryProp
       {/* Narration with highlighted dialogue and intensity words */}
       <motion.div
         className="text-sm leading-relaxed text-foreground/90 pl-2 border-l-2 border-primary/20 whitespace-pre-line"
-        initial={{ opacity: 0, x: -5 }}
+        initial={skipAnimation ? false : { opacity: 0, x: -5 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.2, duration: 0.4 }}
       >
-        <NarrationText text={tick.narration} isNew={isNew} />
+        <NarrationText text={tick.narration} isNew={isNew && !skipAnimation} />
       </motion.div>
 
-      {/* Character actions and dialogue */}
-      <div className="space-y-2 pl-2 mt-3">
-        {Object.entries(tick.characters).map(([name, data]) => {
-          if (!data) return null;
-          const hasContent = data.action || data.dialogue;
-          if (!hasContent) return null;
-
-          const isAttached = name === attachedTo;
-
-          return (
-            <motion.div
-              key={name}
-              initial={{ opacity: 0, x: -5 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3, duration: 0.3 }}
-              className={`text-sm space-y-1 ${isAttached ? "border-l-2 border-primary/30 pl-2" : ""}`}
-            >
-              <span className={`text-xs font-medium ${isAttached ? "text-primary" : "text-muted-foreground"}`}>
-                {name}
-              </span>
-              {data.action && (
-                <p className="text-foreground/80 leading-relaxed">
-                  <NarrationText text={data.action} isNew={isNew} />
-                </p>
-              )}
-              {data.dialogue && (
-                <p className="italic text-emerald-400/90">
-                  "{data.dialogue}"
-                </p>
-              )}
-            </motion.div>
-          );
-        })}
-      </div>
+      {/* Character dialogue (speech) shown here - actions/thoughts go to CharacterPanel */}
+      {Object.entries(tick.characters).some(([, data]) => data?.dialogue) && (
+        <div className="space-y-2 pl-2 mt-3">
+          {Object.entries(tick.characters).map(([name, data]) => {
+            if (!data?.dialogue) return null;
+            return (
+              <motion.div
+                key={name}
+                initial={skipAnimation ? false : { opacity: 0, x: -5 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3, duration: 0.3 }}
+                className="text-sm"
+              >
+                <span className="text-xs font-medium text-muted-foreground">{name}: </span>
+                <span className="italic text-emerald-400/90">"{data.dialogue}"</span>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
     </motion.article>
   );
 }
 
-/** Streaming tick entry - shows text as it generates */
-function StreamingTickEntry({ streaming, attachedTo }: { streaming: StreamingState; attachedTo: string | null }) {
-  if (!streaming.isStreaming || !streaming.tick) return null;
+/** Extract narration text from partial or complete JSON stream */
+function extractNarrationFromStream(raw: string): string {
+  if (!raw || typeof raw !== "string") return "";
+
+  try {
+    // Strip markdown code fences (```json ... ``` or just ```)
+    let text = raw
+      .replace(/^[\s\S]*?```json\s*/i, "")  // Strip everything up to and including ```json
+      .replace(/```[\s\S]*$/i, "")           // Strip ``` and everything after
+      .trim();
+
+    // If no fences were found, use original
+    if (text === raw.trim()) {
+      text = raw.trim();
+    }
+
+    // Try to parse as complete JSON first (most reliable when narrator is done)
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed.narration === "string") {
+        return parsed.narration;
+      }
+    } catch {
+      // Not complete JSON yet, fall through to regex
+    }
+
+    // Regex for partial JSON: "narration": "content...
+    // Use DOTALL-like matching with [\s\S] to handle newlines in pretty-printed JSON
+    const match = text.match(/"narration"\s*:\s*"((?:[^"\\]|\\[\s\S])*)(?:"|$)/);
+    if (match && match[1]) {
+      return match[1]
+        .replace(/\\n/g, "\n")
+        .replace(/\\t/g, "\t")
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, "\\");
+    }
+  } catch {
+    // Extraction failed
+  }
+  return "";
+}
+
+/** Extract dialogue from character's streaming JSON */
+function extractDialogueFromStream(raw: string): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  try {
+    // Try complete JSON parse first
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.dialogue === "string") {
+        return parsed.dialogue;
+      }
+    } catch { /* fall through */ }
+
+    // Regex for partial/complete
+    const match = raw.match(/"dialogue"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/);
+    if (match && match[1]) {
+      return match[1]
+        .replace(/\\n/g, "\n")
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, "\\");
+    }
+  } catch { /* extraction failed */ }
+  return null;
+}
+
+/** Streaming tick entry - smooth word-by-word display */
+function StreamingTickEntry({ streaming }: { streaming: StreamingState }) {
+  // Defensive checks to prevent crashes
+  if (!streaming || !streaming.isStreaming || !streaming.tick) return null;
+
+  // Extract narration continuously
+  const cleanNarration = extractNarrationFromStream(streaming.narrator || "");
+
+  // Extract dialogue from completed characters
+  const completedDialogues = useMemo(() => {
+    const dialogues: Array<{ name: string; dialogue: string }> = [];
+    for (const charName of streaming.charactersDone) {
+      const rawText = streaming.characters[charName];
+      if (rawText) {
+        const dialogue = extractDialogueFromStream(rawText);
+        if (dialogue) {
+          dialogues.push({ name: charName, dialogue });
+        }
+      }
+    }
+    return dialogues;
+  }, [streaming.charactersDone, streaming.characters]);
+
+  const isNarratorDone = streaming.narratorDone;
 
   return (
-    <motion.article
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-3"
-    >
-      {/* Streaming indicator */}
+    <article className="space-y-3">
+      {/* Header with streaming indicator */}
       <div className="flex items-center gap-2">
-        <motion.div
-          className="flex gap-1"
-          animate={{ opacity: [0.5, 1, 0.5] }}
-          transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-        >
-          {[0, 1, 2].map((i) => (
-            <motion.span
-              key={i}
-              className="w-1.5 h-1.5 rounded-full bg-primary"
-              animate={{ scale: [0.8, 1.2, 0.8] }}
-              transition={{
-                duration: 1,
-                repeat: Infinity,
-                delay: i * 0.15,
-                ease: "easeInOut",
-              }}
-            />
-          ))}
-        </motion.div>
-        <span className="text-[10px] font-mono text-muted-foreground/60">
-          tick {streaming.tick} generating...
-        </span>
+        {!isNarratorDone ? (
+          <>
+            <div className="flex gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse [animation-delay:200ms]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse [animation-delay:400ms]" />
+            </div>
+          </>
+        ) : (
+          <span className="text-[10px] font-mono text-muted-foreground/60">
+            just now
+          </span>
+        )}
       </div>
 
-      {/* Streaming narration text with cursor */}
-      {streaming.narrator && (
-        <div className="text-sm leading-relaxed text-foreground/90 pl-2 border-l-2 border-primary/30">
-          <span>{streaming.narrator}</span>
-          <motion.span
-            className="inline-block w-0.5 h-4 bg-primary ml-0.5 align-middle"
-            animate={{ opacity: [1, 0] }}
-            transition={{ duration: 0.6, repeat: Infinity, ease: "steps(2)" }}
-          />
+      {/* Narration - with color formatting */}
+      {cleanNarration && (
+        <div className="text-sm leading-relaxed text-foreground/90 pl-2 border-l-2 border-primary/20 whitespace-pre-wrap">
+          <NarrationText text={cleanNarration} isNew={false} />
+          {!isNarratorDone && (
+            <span
+              className="inline-block w-1 h-4 bg-primary/80 ml-0.5 align-middle rounded-sm"
+              style={{
+                animation: 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                boxShadow: '0 0 8px hsl(var(--primary) / 0.5)',
+              }}
+            />
+          )}
         </div>
       )}
 
-      {/* Streaming character thoughts (if attached) */}
-      {attachedTo && streaming.characters[attachedTo] && (
-        <div className="mt-3 text-xs text-foreground/70 italic pl-2 border-l-2 border-amber-500/30">
-          <span className="text-amber-400/60 text-[10px] uppercase tracking-wider block mb-1">
-            {attachedTo}'s thoughts
-          </span>
-          <span>{streaming.characters[attachedTo]}</span>
-          <motion.span
-            className="inline-block w-0.5 h-3 bg-amber-400/60 ml-0.5 align-middle"
-            animate={{ opacity: [1, 0] }}
-            transition={{ duration: 0.6, repeat: Infinity, ease: "steps(2)" }}
-          />
+      {/* Character dialogue - shown as each completes */}
+      {completedDialogues.length > 0 && (
+        <div className="space-y-2 pl-2 mt-3">
+          {completedDialogues.map(({ name, dialogue }) => (
+            <div key={name} className="text-sm animate-in fade-in duration-300">
+              <span className="text-xs font-medium text-muted-foreground">{name}: </span>
+              <span className="italic text-emerald-400/90">"{dialogue}"</span>
+            </div>
+          ))}
         </div>
       )}
-    </motion.article>
+
+      {/* Still processing characters indicator */}
+      {streaming.narratorDone && streaming.charactersDone.length === 0 && (
+        <div className="flex items-center gap-2 pl-2 mt-2">
+          <span className="w-1 h-1 rounded-full bg-muted-foreground/40 animate-pulse" />
+          <span className="text-[10px] text-muted-foreground/40">
+            characters responding...
+          </span>
+        </div>
+      )}
+    </article>
   );
 }

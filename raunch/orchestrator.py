@@ -80,6 +80,7 @@ class Orchestrator:
         self._player_event = threading.Event()
         self._pause_event = threading.Event()  # Signaled when pause state changes
         self._pause_event.set()  # Start unpaused (set = not paused)
+        self._manual_tick_event = threading.Event()  # For manual tick mode
 
         # Influence system - whisper suggestions to characters
         self._influences: Dict[str, str] = {}  # character_name -> influence text
@@ -92,7 +93,7 @@ class Orchestrator:
         self.save_name: Optional[str] = None  # Name to save under (derived from scenario/world)
         self._initial_save_done = False  # Track if we've done the first auto-save
 
-        # Tick interval (can be changed at runtime)
+        # Tick interval (can be changed at runtime, 0 = manual mode)
         self.tick_interval = BASE_TICK_SECONDS
 
         # Streaming support
@@ -128,21 +129,16 @@ class Orchestrator:
 
     def submit_influence(self, character_name: str, text: str) -> bool:
         """Whisper an influence/suggestion to a character for their next tick."""
-        logger.warning(f"[INFLUENCE] submit_influence called for '{character_name}'")
-        logger.warning(f"[INFLUENCE] Available characters: {list(self.characters.keys())}")
         if character_name not in self.characters:
-            logger.warning(f"[INFLUENCE] Character '{character_name}' NOT FOUND!")
+            logger.warning(f"Influence rejected: character '{character_name}' not found")
             return False
         self._influences[character_name] = text
-        logger.warning(f"[INFLUENCE] Queued for {character_name}: {text[:50]}...")
+        logger.debug(f"Influence queued for {character_name}")
         return True
 
     def get_pending_influence(self, character_name: str) -> Optional[str]:
         """Get and clear any pending influence for a character."""
-        influence = self._influences.pop(character_name, None)
-        if influence:
-            logger.warning(f"[INFLUENCE] Retrieved for {character_name}: {influence[:50]}...")
-        return influence
+        return self._influences.pop(character_name, None)
 
     def submit_director_guidance(self, text: str) -> bool:
         """Queue guidance for the narrator for the next tick."""
@@ -189,18 +185,12 @@ class Orchestrator:
         try:
             if self.streaming_enabled and self._stream_callback:
                 # Streaming mode
-                logger.warning(f"[STREAM] Starting narrator stream for tick {tick_num}")
                 self._stream_callback(tick_num, "narrator", "start", "")
-                chunk_count = 0
                 def on_chunk(chunk):
-                    nonlocal chunk_count
-                    chunk_count += 1
                     self._stream_callback(tick_num, "narrator", "delta", chunk)
                 narrator_result = self.narrator.tick_stream(narrator_input, on_delta=on_chunk)
-                logger.warning(f"[STREAM] Narrator done, sent {chunk_count} chunks")
                 self._stream_callback(tick_num, "narrator", "done", "")
             else:
-                logger.warning(f"[STREAM] Streaming disabled or no callback, streaming_enabled={self.streaming_enabled}, has_callback={self._stream_callback is not None}")
                 narrator_result = self.narrator.tick(narrator_input)
 
             self.world.apply_narrator_update(narrator_result)
@@ -220,8 +210,6 @@ class Orchestrator:
 
         # 2. Each character reacts
         narration_text = results["narration"]
-        logger.warning(f"[TICK] Processing characters: {list(self.characters.keys())}")
-        logger.warning(f"[TICK] Pending influences: {list(self._influences.keys())}")
         for name, char in self.characters.items():
             # Check for pending influence (whispered suggestion)
             influence = self.get_pending_influence(name)
@@ -248,7 +236,6 @@ class Orchestrator:
                     continue
             elif influence:
                 # Character has an influence whispered to them
-                logger.warning(f"[INFLUENCE] APPLYING to {name}: {influence[:50]}...")
                 char_input = (
                     f"{world_snapshot}\n\n"
                     f"[NARRATOR]: {narration_text}\n\n"
@@ -265,7 +252,8 @@ class Orchestrator:
 
             try:
                 if self.streaming_enabled and self._stream_callback:
-                    self._stream_callback(tick_num, name, "start", "")
+                    # Don't send "start" for characters - only narrator gets tick_start
+                    # This preserves the narrator content in the frontend streaming state
                     char_result = char.tick_stream(
                         char_input,
                         on_delta=lambda chunk, n=name: self._stream_callback(tick_num, n, "delta", chunk)
@@ -290,16 +278,12 @@ class Orchestrator:
         except Exception as e:
             logger.error(f"DB save failed: {e}")
 
-        # 4. Autosave world state
-        # - First tick of new session: always save immediately
-        # - Otherwise: save every 10 ticks
+        # 4. Autosave world state every tick (JSON is small, prevents data loss)
         save_name = self.save_name or self._derive_save_name()
+        self.world.save(save_name)
         if not self._initial_save_done:
-            self.world.save(save_name)
             self._initial_save_done = True
             logger.info(f"Initial save: {save_name}")
-        elif tick_num % 10 == 0:
-            self.world.save(save_name)
 
         return results
 
@@ -336,6 +320,13 @@ class Orchestrator:
 
             if not self._running:
                 break
+
+            # Manual mode: wait for trigger_tick() to be called
+            if self.tick_interval == 0:
+                self._manual_tick_event.clear()
+                self._manual_tick_event.wait()
+                if not self._running:
+                    break
 
             # If player mode, wait for player input before ticking
             if self.player_character and self.player_character in self.characters:
@@ -394,7 +385,8 @@ class Orchestrator:
     def stop(self) -> None:
         """Stop the simulation."""
         self._running = False
-        self._player_event.set()  # Unblock if waiting
+        self._player_event.set()  # Unblock if waiting for player
+        self._manual_tick_event.set()  # Unblock if waiting for manual tick
         if self._thread:
             self._thread.join(timeout=5)
         save_name = self.save_name or self._derive_save_name()
@@ -410,14 +402,32 @@ class Orchestrator:
         logger.info("World resumed")
 
     def set_tick_interval(self, seconds: int) -> None:
-        """Set the tick interval in seconds (min 10, max 86400 / 24h)."""
-        self.tick_interval = max(10, min(86400, seconds))
-        logger.info(f"Tick interval set to {self.tick_interval}s")
+        """Set the tick interval in seconds. 0 = manual mode, otherwise min 10, max 86400."""
+        if seconds == 0:
+            self.tick_interval = 0
+            logger.info("Tick interval set to manual mode")
+        else:
+            self.tick_interval = max(10, min(86400, seconds))
+            logger.info(f"Tick interval set to {self.tick_interval}s")
+
+    def trigger_tick(self) -> bool:
+        """Manually trigger the next tick (only works in manual mode)."""
+        if self.tick_interval != 0:
+            logger.warning("trigger_tick() called but not in manual mode")
+            return False
+        if self._paused:
+            logger.warning("trigger_tick() called but simulation is paused")
+            return False
+        self._manual_tick_event.set()
+        return True
+
+    @property
+    def is_manual_mode(self) -> bool:
+        return self.tick_interval == 0
 
     def set_stream_callback(self, callback: Optional[Callable[[int, str, str, str], None]]) -> None:
         """Set callback for streaming: callback(tick_num, source, event_type, data)."""
         self._stream_callback = callback
-        logger.warning(f"[STREAM] Stream callback set: {callback is not None}")
 
     @property
     def is_paused(self) -> bool:

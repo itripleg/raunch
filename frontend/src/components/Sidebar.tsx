@@ -156,9 +156,9 @@ export function Sidebar({ game, actions, onClose }: Props) {
                     <span className="text-[10px] text-primary/60 opacity-0 group-hover:opacity-100 transition-opacity">
                       Click to detach
                     </span>
-                    {world?.tick_count && (
+                    {typeof world?.tick_count === "number" && (
                       <span className="text-[9px] font-mono text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
-                        tick {world.tick_count as number}
+                        tick {world.tick_count}
                       </span>
                     )}
                   </div>
