@@ -243,6 +243,11 @@ class WebSocketServer:
             self.orch.set_tick_interval(int(seconds))
             await self._broadcast_tick_interval()
 
+        elif cmd == "set_turn_timeout":
+            seconds = msg.get("seconds", 60)
+            self.orch.turn_timeout = int(seconds)
+            await self._broadcast_turn_timeout()
+
         elif cmd == "get_tick_interval":
             await client.send({
                 "type": "tick_interval",
@@ -270,6 +275,16 @@ class WebSocketServer:
             "type": "tick_interval",
             "seconds": self.orch.tick_interval,
             "manual": self.orch.is_manual_mode,
+        }
+        for client in list(self.clients):
+            await client.send(msg)
+
+    async def _broadcast_turn_timeout(self):
+        """Notify all clients of current turn timeout."""
+        turn_timeout = getattr(self.orch, 'turn_timeout', 60)
+        msg = {
+            "type": "turn_timeout",
+            "seconds": turn_timeout,
         }
         for client in list(self.clients):
             await client.send(msg)
