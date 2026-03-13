@@ -7,6 +7,7 @@ type Props = {
   attachedTo?: string | null;
   directorMode: boolean;
   pendingDirectorGuidance?: string | null;
+  wideMode?: boolean;
 };
 
 export function ActionBar({
@@ -15,6 +16,7 @@ export function ActionBar({
   attachedTo,
   directorMode,
   pendingDirectorGuidance,
+  wideMode,
 }: Props) {
   const [value, setValue] = useState("");
   const [flash, setFlash] = useState(false);
@@ -60,7 +62,7 @@ export function ActionBar({
           flash ? (directorMode ? "bg-amber-500/10" : "bg-primary/10") : ""
         }`}
       >
-        <div className="max-w-3xl mx-auto flex gap-2">
+        <div className={`mx-auto flex gap-2 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
           {/* Mode indicator icon */}
           <div
             className={`px-3 py-2.5 rounded-lg flex items-center ${
@@ -118,7 +120,7 @@ export function ActionBar({
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
-            className="max-w-3xl mx-auto mt-2 text-xs text-amber-400/70 italic"
+            className={`mx-auto mt-2 text-xs text-amber-400/70 italic transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
           >
             Queued: "{pendingDirectorGuidance}" — takes effect next tick
           </motion.div>

@@ -1,6 +1,13 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
+type CharacterTick = {
+  emotional_state?: string;
+  action?: string;
+  dialogue?: string;
+  inner_thoughts?: string;
+};
+
 type Props = {
   game: {
     world: Record<string, unknown> | null;
@@ -8,6 +15,7 @@ type Props = {
     characterDetails: Record<string, Record<string, unknown>>;
     attachedTo: string | null;
     directorMode?: boolean;
+    ticks?: { characters: Record<string, CharacterTick> }[];
   };
   actions: {
     attach: (name: string) => void;
@@ -18,9 +26,11 @@ type Props = {
     toggleDirectorMode?: () => void;
   };
   onClose: () => void;
+  onCharacterAttached?: () => void;
+  onAddCharacter?: () => void;
 };
 
-export function Sidebar({ game, actions, onClose }: Props) {
+export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddCharacter }: Props) {
   const world = game.world as Record<string, unknown> | null;
 
   return (
@@ -57,18 +67,28 @@ export function Sidebar({ game, actions, onClose }: Props) {
       <Separator className="bg-border/30" />
 
       {/* Characters */}
-      <div className="p-4 pb-2">
-        <h2 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+      <div className="p-4 pb-2 flex items-center justify-between">
+        <h2 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
           Characters
         </h2>
+        {onAddCharacter && (
+          <button
+            onClick={onAddCharacter}
+            className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Add
+          </button>
+        )}
       </div>
 
       <ScrollArea className="flex-1 px-4">
         <div className="space-y-1.5 pb-4">
-          {/* Narrator - special entry for director mode */}
+          {/* Narrator - compact entry for director mode */}
           <button
             onClick={() => {
-              // If in director mode, exit it. Otherwise enter it (and detach from any character)
               if (game.directorMode) {
                 actions.toggleDirectorMode?.();
               } else {
@@ -76,20 +96,15 @@ export function Sidebar({ game, actions, onClose }: Props) {
                 actions.toggleDirectorMode?.();
               }
             }}
-            className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group ${
+            className={`w-full text-left p-2 rounded-lg transition-all duration-200 group ${
               game.directorMode
                 ? "bg-amber-500/15 border border-amber-500/30"
                 : "hover:bg-secondary/50 border border-transparent"
             }`}
           >
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${game.directorMode ? "bg-amber-400 animate-pulse" : "bg-muted-foreground/30"}`} />
-              <span className={`text-sm font-medium ${game.directorMode ? "text-amber-400" : "text-foreground/80 group-hover:text-foreground"}`}>
-                Narrator
-              </span>
-              {/* Megaphone icon */}
               <svg
-                className={`w-3 h-3 ml-auto ${game.directorMode ? "text-amber-400/60" : "text-muted-foreground/40"}`}
+                className={`w-4 h-4 shrink-0 ${game.directorMode ? "text-amber-400" : "text-muted-foreground/50 group-hover:text-muted-foreground"}`}
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -98,17 +113,13 @@ export function Sidebar({ game, actions, onClose }: Props) {
                 <path d="M3 11l18-5v12L3 13v-2z" />
                 <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
               </svg>
+              <span className={`text-sm font-medium ${game.directorMode ? "text-amber-400" : "text-foreground/80 group-hover:text-foreground"}`}>
+                Director
+              </span>
+              {game.directorMode && (
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse ml-auto" />
+              )}
             </div>
-            <div className="ml-4 mt-1 text-[10px] text-muted-foreground">
-              <div className="truncate">Direct the scene</div>
-            </div>
-            {game.directorMode && (
-              <div className="ml-4 mt-1.5">
-                <span className="text-[10px] text-amber-400/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                  Click to deselect
-                </span>
-              </div>
-            )}
           </button>
 
           <Separator className="bg-border/20 my-2" />
@@ -116,6 +127,9 @@ export function Sidebar({ game, actions, onClose }: Props) {
           {game.characterNames.map((name) => {
             const info = game.characterDetails[name];
             const isAttached = name === game.attachedTo;
+            // Get live emotional state from latest tick
+            const latestTick = game.ticks?.[game.ticks.length - 1];
+            const liveState = latestTick?.characters?.[name]?.emotional_state;
 
             return (
               <button
@@ -127,6 +141,7 @@ export function Sidebar({ game, actions, onClose }: Props) {
                     // Exit director mode when attaching to a character
                     if (game.directorMode) actions.toggleDirectorMode?.();
                     actions.attach(name);
+                    onCharacterAttached?.();
                   }
                 }}
                 className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group ${
@@ -146,8 +161,8 @@ export function Sidebar({ game, actions, onClose }: Props) {
                     {info.species && !["?", "unknown"].includes(String(info.species).toLowerCase()) ? (
                       <div className="truncate">{String(info.species)}</div>
                     ) : null}
-                    {info.emotional_state ? (
-                      <div className="text-amber-400/60 italic truncate">{String(info.emotional_state)}</div>
+                    {(liveState || info.emotional_state) ? (
+                      <div className="text-amber-400/60 italic truncate">{String(liveState || info.emotional_state)}</div>
                     ) : null}
                   </div>
                 )}

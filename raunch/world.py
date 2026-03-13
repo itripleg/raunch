@@ -27,6 +27,7 @@ class WorldState:
             }
         }
         self.scenario: Optional[Dict[str, Any]] = None  # Generated scenario context
+        self.multiplayer: bool = False  # Solo mode by default
         self.active_events: List[str] = []
         self.event_log: List[Dict[str, Any]] = []
 
@@ -116,6 +117,7 @@ class WorldState:
             "world_time": self.world_time,
             "mood": self.mood,
             "characters": char_count,
+            "multiplayer": self.multiplayer,
         }
 
     def save(self, name: str = "autosave") -> str:
@@ -130,6 +132,7 @@ class WorldState:
             "mood": self.mood,
             "locations": self.locations,
             "scenario": self.scenario,
+            "multiplayer": self.multiplayer,
             "active_events": self.active_events,
             "event_log": self.event_log,
             "saved_at": time.time(),
@@ -153,6 +156,7 @@ class WorldState:
         self.mood = data["mood"]
         self.locations = data["locations"]
         self.scenario = data.get("scenario")
+        self.multiplayer = data.get("multiplayer", False)
         self.active_events = data["active_events"]
         self.event_log = data["event_log"]
         return True

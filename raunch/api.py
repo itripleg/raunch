@@ -257,3 +257,54 @@ async def stop_world():
         stopped=True,
         message=f"World '{world_name}' has been stopped and saved"
     )
+
+
+class AddCharacterRequest(BaseModel):
+    """Request to add a character to the running world."""
+    name: str
+    species: str = "Human"
+    personality: str = "Curious and adaptable"
+    appearance: str = "Average build"
+    desires: str = "To find their place"
+    backstory: str = "A mysterious stranger"
+    location: Optional[str] = None
+
+
+class AddCharacterResponse(BaseModel):
+    """Response after adding a character."""
+    success: bool
+    name: str
+    message: str
+
+
+@app.post("/api/v1/characters", response_model=AddCharacterResponse)
+async def add_character(req: AddCharacterRequest):
+    """Add a character to the running world."""
+    from .agents.character import Character
+
+    orch = get_orchestrator()
+    if orch is None:
+        raise HTTPException(status_code=404, detail="No world is running")
+
+    if req.name in orch.characters:
+        raise HTTPException(status_code=400, detail=f"Character '{req.name}' already exists")
+
+    char = Character(
+        name=req.name,
+        species=req.species,
+        personality=req.personality,
+        appearance=req.appearance,
+        desires=req.desires,
+        backstory=req.backstory,
+    )
+
+    location = req.location or list(orch.world.locations.keys())[0] if orch.world.locations else "unknown"
+    orch.add_character(char, location=location)
+
+    logger.info(f"Added character: {req.name} ({req.species}) at {location}")
+
+    return AddCharacterResponse(
+        success=True,
+        name=req.name,
+        message=f"Character '{req.name}' added to world at {location}"
+    )

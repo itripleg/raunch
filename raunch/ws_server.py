@@ -454,6 +454,16 @@ class WebSocketServer:
         if not self._loop or not self.clients:
             return
 
+        # Handle error ticks - send as error message, not tick
+        if "error" in results:
+            error_msg = {"type": "error", "message": results["error"]}
+            for client in list(self.clients):
+                try:
+                    asyncio.run_coroutine_threadsafe(client.send(error_msg), self._loop)
+                except Exception:
+                    pass
+            return
+
         from datetime import datetime
 
         # Reset all client ready states after tick completes (turn-based multiplayer)

@@ -5,6 +5,7 @@ import { SplashScreen } from "./components/SplashScreen";
 import { GameLayout } from "./components/GameLayout";
 import { NicknamePrompt } from "./components/NicknamePrompt";
 import { ScenarioSelector } from "./components/ScenarioSelector";
+import { CharacterWizard } from "./components/CharacterWizard";
 
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
 
@@ -129,6 +130,16 @@ function App() {
   // Scenarios list from REST API (for pre-fetching)
   const [scenariosAvailable, setScenariosAvailable] = useState<boolean>(false);
 
+  // Character wizard state
+  const [showCharacterWizard, setShowCharacterWizard] = useState(false);
+
+  // Handle character added via wizard
+  const handleCharacterAdded = useCallback(() => {
+    setShowCharacterWizard(false);
+    // Refresh character list
+    actions.listCharacters();
+  }, [actions]);
+
   // Check world status and scenarios from REST API
   const checkWorldStatus = useCallback(async () => {
     try {
@@ -242,8 +253,24 @@ function App() {
           className="min-h-screen"
         >
           <ErrorBoundary onReset={() => window.location.reload()}>
-            <GameLayout game={game} actions={actions} />
+            <GameLayout
+              game={game}
+              actions={actions}
+              onAddCharacter={() => setShowCharacterWizard(true)}
+            />
           </ErrorBoundary>
+
+          {/* Character creation wizard */}
+          <AnimatePresence>
+            {showCharacterWizard && (
+              <CharacterWizard
+                apiUrl={apiUrl}
+                onCharacterAdded={handleCharacterAdded}
+                onClose={() => setShowCharacterWizard(false)}
+                existingCharacters={game.characterNames}
+              />
+            )}
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>
