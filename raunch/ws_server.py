@@ -149,7 +149,11 @@ class WebSocketServer:
             await client.send({"type": "characters", "characters": chars})
 
         elif cmd == "world":
-            await client.send({"type": "world", "snapshot": self.orch.world.snapshot()})
+            await client.send({
+                "type": "world",
+                "snapshot": self.orch.world.snapshot(),
+                "multiplayer": self.orch.world.multiplayer,
+            })
 
         elif cmd == "status":
             await client.send({
@@ -159,6 +163,7 @@ class WebSocketServer:
                 "paused": self.orch._paused,
                 "clients": len(self.clients),
                 "tick_interval": self.orch.tick_interval,
+                "multiplayer": self.orch.world.multiplayer,
             })
 
         elif cmd == "history":
