@@ -27,6 +27,7 @@ type GameState = {
   pendingDirectorGuidance?: string | null;
   streaming?: StreamingState;
   // Multiplayer
+  multiplayer?: boolean;
   turnState?: TurnState | null;
   nickname?: string | null;
   players?: Player[];
@@ -137,8 +138,8 @@ export function GameLayout({ game, actions }: Props) {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Player presence indicator */}
-          {game.players && game.players.length > 0 && (
+          {/* Player presence indicator - only in multiplayer mode */}
+          {game.multiplayer && game.players && game.players.length > 0 && (
             <PlayerPresence
               players={game.players}
               myPlayerId={game.players.find(p => p.nickname === game.nickname)?.player_id ?? null}
@@ -285,19 +286,21 @@ export function GameLayout({ game, actions }: Props) {
             pendingDirectorGuidance={game.pendingDirectorGuidance}
           />
 
-          {/* Turn state indicator - shows waiting players and countdown */}
-          <TurnStateUI
-            turnState={game.turnState ? {
-              timeout: game.turnState.countdown,
-              waitingFor: game.turnState.waiting_for,
-              allReady: game.turnState.all_ready,
-              playerCount: game.players?.length ?? 0,
-              turnStartedAt: null,
-            } : null}
-            myNickname={game.nickname ?? null}
-            isMyReady={game.nickname ? !game.turnState?.waiting_for.includes(game.nickname) : true}
-            onReady={actions.ready}
-          />
+          {/* Turn state indicator - shows waiting players and countdown (multiplayer only) */}
+          {game.multiplayer && (
+            <TurnStateUI
+              turnState={game.turnState ? {
+                timeout: game.turnState.countdown,
+                waitingFor: game.turnState.waiting_for,
+                allReady: game.turnState.all_ready,
+                playerCount: game.players?.length ?? 0,
+                turnStartedAt: null,
+              } : null}
+              myNickname={game.nickname ?? null}
+              isMyReady={game.nickname ? !game.turnState?.waiting_for.includes(game.nickname) : true}
+              onReady={actions.ready}
+            />
+          )}
         </main>
 
         {/* Right panel: attached character - synced with scroll */}
