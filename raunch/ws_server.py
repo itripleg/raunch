@@ -69,6 +69,7 @@ class WebSocketServer:
             "tick_interval": self.orch.tick_interval,
             "manual": self.orch.is_manual_mode,
             "paused": self.orch._paused,
+            "multiplayer": self.orch.world.multiplayer,
             "player_id": client.player_id,
         })
 
