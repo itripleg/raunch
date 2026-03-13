@@ -29,6 +29,7 @@ class WorldState:
         self.scenario: Optional[Dict[str, Any]] = None  # Generated scenario context
         self.active_events: List[str] = []
         self.event_log: List[Dict[str, Any]] = []
+        self.multiplayer: bool = False  # Whether this is a multiplayer session
 
     def snapshot(self) -> str:
         """Produce a text summary of current world state for agents."""
@@ -132,6 +133,7 @@ class WorldState:
             "scenario": self.scenario,
             "active_events": self.active_events,
             "event_log": self.event_log,
+            "multiplayer": self.multiplayer,
             "saved_at": time.time(),
         }
         with open(path, "w") as f:
@@ -155,4 +157,5 @@ class WorldState:
         self.scenario = data.get("scenario")
         self.active_events = data["active_events"]
         self.event_log = data["event_log"]
+        self.multiplayer = data.get("multiplayer", False)
         return True
