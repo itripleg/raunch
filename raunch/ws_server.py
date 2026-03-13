@@ -113,6 +113,14 @@ class WebSocketServer:
             await client.send({"type": "detached"})
 
         elif cmd == "join":
+            # Handle solo mode gracefully - reject join attempts
+            if not self.orch.world.multiplayer:
+                await client.send({
+                    "type": "error",
+                    "message": "This world is in solo mode. Multiplayer features are not available."
+                })
+                return
+
             nickname = msg.get("nickname", "").strip()
             # Assign unique player ID
             client.player_id = str(uuid.uuid4())
