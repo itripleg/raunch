@@ -94,6 +94,7 @@ type State = {
   // Streaming
   streaming: StreamingState;
   // Multiplayer
+  multiplayer: boolean;
   playerId: string | null;
   nickname: string | null;
   players: Player[];
@@ -101,7 +102,7 @@ type State = {
 };
 
 type Action =
-  | { type: "WELCOME"; world: WorldInfo; characters: string[] }
+  | { type: "WELCOME"; world: WorldInfo; characters: string[]; multiplayer: boolean }
   | { type: "TICK"; data: TickData }
   | { type: "ATTACHED"; character: string }
   | { type: "DETACHED" }
@@ -156,6 +157,7 @@ const initial: State = {
     charactersDone: [],
   },
   // Multiplayer
+  multiplayer: false,
   playerId: null,
   nickname: null,
   players: [],
@@ -165,7 +167,7 @@ const initial: State = {
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "WELCOME":
-      return { ...initial, world: action.world, characterNames: action.characters };
+      return { ...initial, world: action.world, characterNames: action.characters, multiplayer: action.multiplayer };
     case "TICK": {
       // Clear pending influence/director and streaming when tick arrives
       // Deduplicate - don't add if tick number already exists
@@ -419,6 +421,7 @@ export function useGame(wsUrl: string) {
           type: "WELCOME",
           world: msg.world as WorldInfo,
           characters: msg.characters as string[],
+          multiplayer: (msg.multiplayer as boolean) ?? false,
         });
         // Process initial history if included
         if (msg.history && Array.isArray(msg.history)) {
