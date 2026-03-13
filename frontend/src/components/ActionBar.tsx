@@ -7,7 +7,6 @@ type Props = {
   attachedTo?: string | null;
   directorMode: boolean;
   pendingDirectorGuidance?: string | null;
-  wideMode?: boolean;
 };
 
 export function ActionBar({
@@ -16,7 +15,6 @@ export function ActionBar({
   attachedTo,
   directorMode,
   pendingDirectorGuidance,
-  wideMode,
 }: Props) {
   const [value, setValue] = useState("");
   const [flash, setFlash] = useState(false);
@@ -58,14 +56,14 @@ export function ActionBar({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 20 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
-        className={`border-t border-border/50 bg-card/30 p-2 sm:p-3 shrink-0 transition-colors ${
+        className={`border-t border-border/50 bg-card/30 p-3 shrink-0 transition-colors ${
           flash ? (directorMode ? "bg-amber-500/10" : "bg-primary/10") : ""
         }`}
       >
-        <div className={`mx-auto flex gap-2 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
-          {/* Mode indicator icon - hidden on very small screens */}
+        <div className="max-w-3xl mx-auto flex gap-2">
+          {/* Mode indicator icon */}
           <div
-            className={`hidden sm:flex px-3 py-2.5 rounded-lg items-center ${
+            className={`px-3 py-2.5 rounded-lg flex items-center ${
               directorMode
                 ? "bg-amber-500/20 text-amber-400"
                 : "bg-primary/20 text-primary"
@@ -92,10 +90,10 @@ export function ActionBar({
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
             placeholder={
               directorMode
-                ? "Direct the scene..."
+                ? "Direct the scene... (e.g., 'make it rain', 'introduce tension')"
                 : `Whisper to ${attachedTo}...`
             }
-            className={`flex-1 min-w-0 px-3 sm:px-4 py-3 sm:py-2.5 bg-secondary/50 border rounded-lg text-base sm:text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 transition-all ${
+            className={`flex-1 px-4 py-2.5 bg-secondary/50 border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 transition-all ${
               directorMode
                 ? "border-amber-500/30 focus:ring-amber-500/50 focus:border-amber-500/40"
                 : "border-border/50 focus:ring-primary/50 focus:border-primary/30"
@@ -105,7 +103,7 @@ export function ActionBar({
           <button
             onClick={handleSubmit}
             disabled={!value.trim()}
-            className={`px-3 sm:px-4 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-30 shrink-0 ${
+            className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-30 ${
               directorMode
                 ? "bg-amber-500/80 hover:bg-amber-500 text-black hover:shadow-[0_0_20px_oklch(0.7_0.15_80_/_0.3)]"
                 : "bg-primary/80 hover:bg-primary text-primary-foreground hover:shadow-[0_0_20px_oklch(0.65_0.22_340_/_0.2)]"
@@ -120,7 +118,7 @@ export function ActionBar({
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
-            className={`mx-auto mt-2 text-xs text-amber-400/70 italic transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
+            className="max-w-3xl mx-auto mt-2 text-xs text-amber-400/70 italic"
           >
             Queued: "{pendingDirectorGuidance}" — takes effect next tick
           </motion.div>

@@ -212,12 +212,9 @@ type Props = {
   onTickFocus?: (tickNum: number) => void;
   containerRef?: React.RefObject<HTMLDivElement | null>;
   streaming?: StreamingState;
-  onHoverCharacter?: (name: string | null) => void;
-  onTapCharacter?: (name: string) => void;
-  wideMode?: boolean;
 };
 
-export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, onTickFocus, containerRef, streaming, onHoverCharacter, onTapCharacter, wideMode }: Props) {
+export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, onTickFocus, containerRef, streaming }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const tickRefs = useRef<Map<number, HTMLElement>>(new Map());
 
@@ -299,7 +296,7 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
   }
 
   return (
-    <div className={`mx-auto px-4 sm:px-6 py-4 space-y-6 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
+    <div className="max-w-3xl mx-auto px-6 py-4 space-y-6">
       <AnimatePresence mode="popLayout">
         {ticks.map((tick) => (
           <TickEntry
@@ -310,8 +307,6 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
             isNew={tick.tick === newestTick}
             wasStreamed={tick.tick === streamedTickRef.current}
             setRef={(el) => setTickRef(tick.tick, el)}
-            onHoverCharacter={onHoverCharacter}
-            onTapCharacter={onTapCharacter}
           />
         ))}
       </AnimatePresence>
@@ -333,11 +328,9 @@ type TickEntryProps = {
   isNew: boolean;
   wasStreamed?: boolean;
   setRef: (el: HTMLElement | null) => void;
-  onHoverCharacter?: (name: string | null) => void;
-  onTapCharacter?: (name: string) => void;
 };
 
-function TickEntry({ tick, attachedTo: _attachedTo, isFocused, isNew, wasStreamed, setRef, onHoverCharacter, onTapCharacter }: TickEntryProps) {
+function TickEntry({ tick, attachedTo: _attachedTo, isFocused, isNew, wasStreamed, setRef }: TickEntryProps) {
   const localRef = useRef<HTMLElement>(null);
   const [firstRevealDone, setFirstRevealDone] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
@@ -453,15 +446,7 @@ function TickEntry({ tick, attachedTo: _attachedTo, isFocused, isNew, wasStreame
                 transition={{ delay: 0.3, duration: 0.3 }}
                 className="text-sm"
               >
-                <span
-                  className="text-xs font-medium text-muted-foreground hover:text-primary cursor-pointer transition-colors"
-                  onMouseEnter={() => onHoverCharacter?.(name)}
-                  onMouseLeave={() => onHoverCharacter?.(null)}
-                  onClick={() => onTapCharacter?.(name)}
-                >
-                  {name}
-                </span>
-                <span className="text-muted-foreground">: </span>
+                <span className="text-xs font-medium text-muted-foreground">{name}: </span>
                 <span className="italic text-emerald-400/90">"{data.dialogue}"</span>
               </motion.div>
             );

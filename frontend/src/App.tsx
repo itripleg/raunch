@@ -6,9 +6,41 @@ import { GameLayout } from "./components/GameLayout";
 import { NicknamePrompt } from "./components/NicknamePrompt";
 import { ScenarioSelector } from "./components/ScenarioSelector";
 
-const DEFAULT_WS_URL = "ws://127.0.0.1:7667";
-const DEFAULT_API_URL = "http://127.0.0.1:8000";
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
+
+// Smart URL detection for local vs remote/production
+function getServerUrls(): { wsUrl: string; apiUrl: string } {
+  const hostname = window.location.hostname;
+  const protocol = window.location.protocol;
+  const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname.startsWith("192.168.");
+
+  // Check for environment overrides (set at build time)
+  const envWsUrl = import.meta.env.VITE_WS_URL;
+  const envApiUrl = import.meta.env.VITE_API_URL;
+
+  if (envWsUrl && envApiUrl) {
+    return { wsUrl: envWsUrl, apiUrl: envApiUrl };
+  }
+
+  if (isLocal) {
+    // Local development - use hardcoded ports
+    return {
+      wsUrl: `ws://${hostname}:7667`,
+      apiUrl: `http://${hostname}:8000`
+    };
+  }
+
+  // Remote/tunneled - assume same host, different ports via path or subdomain
+  // For cloudflare tunnels, we need separate tunnel URLs passed via env
+  // Fallback: try same host with standard ports (won't work for most tunnels)
+  const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
+  return {
+    wsUrl: envWsUrl || `${wsProtocol}//${hostname}:7667`,
+    apiUrl: envApiUrl || `${protocol}//${hostname}:8000`
+  };
+}
+
+const { wsUrl: DEFAULT_WS_URL, apiUrl: DEFAULT_API_URL } = getServerUrls();
 
 // Helper to read nickname from localStorage
 function getStoredNickname(): string | null {

@@ -162,61 +162,11 @@ const initial: State = {
   turnState: null,
 };
 
-/** Check if tick data looks like an error response */
-function isErrorTick(data: TickData): string | null {
-  const narration = data.narration?.toLowerCase() ?? "";
-
-  // Check for HTTP error codes
-  if (/\b(401|403|404|500|502|503)\b/.test(narration)) {
-    return `Server error in tick: ${data.narration.slice(0, 100)}`;
-  }
-
-  // Check for common error patterns
-  if (
-    narration.includes("unauthorized") ||
-    narration.includes("authentication") ||
-    narration.includes("api error") ||
-    narration.includes("rate limit") ||
-    narration.includes("quota exceeded") ||
-    narration.includes("invalid api key") ||
-    narration.includes("\"error\"") ||
-    narration.includes("\"message\":")
-  ) {
-    return `API error: ${data.narration.slice(0, 100)}`;
-  }
-
-  // Check for JSON error structures
-  if (narration.startsWith("{") && narration.includes("error")) {
-    try {
-      const parsed = JSON.parse(data.narration);
-      if (parsed.error || parsed.message) {
-        return parsed.error?.message || parsed.message || "Unknown API error";
-      }
-    } catch {
-      // Not valid JSON, might still be an error
-    }
-  }
-
-  return null;
-}
-
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "WELCOME":
       return { ...initial, world: action.world, characterNames: action.characters };
     case "TICK": {
-      // Check for error ticks - show as error toast instead of adding to feed
-      const errorMsg = isErrorTick(action.data);
-      if (errorMsg) {
-        return {
-          ...state,
-          error: errorMsg,
-          pendingInfluence: null,
-          pendingDirectorGuidance: null,
-          streaming: { ...initial.streaming },
-        };
-      }
-
       // Clear pending influence/director and streaming when tick arrives
       // Deduplicate - don't add if tick number already exists
       const tickExists = state.ticks.some(t => t.tick === action.data.tick);
@@ -266,8 +216,7 @@ function reducer(state: State, action: Action): State {
           characters: (h.characters || {}) as Record<string, CharacterTick>,
           attached_to: null,
           created_at: h.created_at,
-        }))
-        .filter(t => !isErrorTick(t)); // Filter out error ticks from history
+        }));
       const merged = [...historyAsTicks, ...state.ticks];
       merged.sort((a, b) => a.tick - b.tick);
       // Final dedupe pass - keep last occurrence of each tick number

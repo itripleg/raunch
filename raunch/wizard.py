@@ -14,30 +14,64 @@ logger = logging.getLogger(__name__)
 import re
 
 
+def _repair_json(text: str) -> str:
+    """Escape unescaped control characters inside JSON string values.
+
+    Small models often emit literal newlines/tabs inside strings, which is
+    invalid JSON. Walk char-by-char and fix them.
+    """
+    result = []
+    in_string = False
+    escape_next = False
+    for ch in text:
+        if escape_next:
+            result.append(ch)
+            escape_next = False
+        elif ch == "\\" and in_string:
+            result.append(ch)
+            escape_next = True
+        elif ch == '"':
+            in_string = not in_string
+            result.append(ch)
+        elif in_string and ch == "\n":
+            result.append("\\n")
+        elif in_string and ch == "\r":
+            result.append("\\r")
+        elif in_string and ch == "\t":
+            result.append("\\t")
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
 def _parse_json_response(raw: str) -> Dict[str, Any]:
     """Extract JSON from an LLM response, handling various wrapping formats."""
     text = raw.strip()
 
-    # Try direct parse first
+    # Pre-strip markdown code fences so all subsequent attempts work on clean text
+    # Handles both ```json\n...\n``` and ```\n...\n``` (with or without closing fence)
+    text = re.sub(r"^```(?:json)?\s*\n?", "", text)
+    text = re.sub(r"\n?```\s*$", "", text)
+    text = text.strip()
+
+    # Try direct parse
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # Strip markdown code fences (```json ... ``` or ``` ... ```)
-    fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
-    if fence_match:
-        try:
-            return json.loads(fence_match.group(1).strip())
-        except json.JSONDecodeError:
-            pass
+    # Try after repairing unescaped control characters (common with small models)
+    try:
+        return json.loads(_repair_json(text))
+    except json.JSONDecodeError:
+        pass
 
-    # Find the first { and last } — extract the JSON object
+    # Find the first { and last } — handles extra prose before/after the JSON
     first_brace = text.find("{")
     last_brace = text.rfind("}")
     if first_brace != -1 and last_brace > first_brace:
         try:
-            return json.loads(text[first_brace:last_brace + 1])
+            return json.loads(_repair_json(text[first_brace:last_brace + 1]))
         except json.JSONDecodeError:
             pass
 

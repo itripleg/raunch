@@ -42,7 +42,8 @@ def cli(ctx):
 @click.option("--load", "save_name", default=None, help="Load a saved game")
 @click.option("--name", "world_name", default=None, help="Name this world")
 @click.option("--scenario", "scenario_name", default=None, help="Load a scenario (from wizard/roll)")
-def start(save_name, world_name, scenario_name):
+@click.option("--headless", is_flag=True, default=False, help="Run without interactive console (for background/daemon mode)")
+def start(save_name, world_name, scenario_name, headless):
     """Start the world simulation server."""
     orch = Orchestrator()
 
@@ -88,6 +89,9 @@ def start(save_name, world_name, scenario_name):
 
     # Start the WebSocket server for web frontend
     import asyncio
+    import uvicorn
+    from .api import app as fastapi_app, set_orchestrator
+
     ws_server = WebSocketServer(orch)
 
     def _run_ws():
@@ -98,6 +102,16 @@ def start(save_name, world_name, scenario_name):
 
     ws_thread = threading.Thread(target=_run_ws, daemon=True)
     ws_thread.start()
+
+    # Start the FastAPI REST API server (port 8000) in its own thread
+    set_orchestrator(orch)
+
+    def _run_api():
+        uvicorn.run(fastapi_app, host="127.0.0.1", port=8000, log_level="warning", ws="wsproto")
+
+    api_thread = threading.Thread(target=_run_api, daemon=True)
+    api_thread.start()
+    console.print("[dim]REST API running on http://127.0.0.1:8000[/dim]")
 
     # Wire up streaming callback for real-time text
     def on_stream(tick_num: int, source: str, event_type: str, data: str):
@@ -153,6 +167,12 @@ def start(save_name, world_name, scenario_name):
 
     # Server input loop
     try:
+        if headless:
+            # Headless mode: just wait forever, no input processing
+            console.print("[dim]Running in headless mode (Ctrl+C to stop)[/dim]")
+            import time
+            while True:
+                time.sleep(60)
         while True:
             try:
                 cmd = input().strip()

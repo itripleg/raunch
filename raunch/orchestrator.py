@@ -347,31 +347,17 @@ class Orchestrator:
                 logger.error(f"Character {name} tick failed: {e}")
                 results["characters"][name] = {"inner_thoughts": f"[Error: {e}]", "action": None}
 
-        # 3. Persist tick to database (skip if error tick)
-        narration = results.get("narration", "")
-        is_error_tick = (
-            narration.startswith("[Narrator error") or
-            narration.startswith("[Error") or
-            "401" in narration or
-            "403" in narration or
-            "unauthorized" in narration.lower() or
-            "authentication" in narration.lower()
-        )
-
-        if is_error_tick:
-            logger.warning(f"Skipping DB save for error tick {tick_num}: {narration[:100]}")
-            results["_is_error"] = True
-        else:
-            try:
-                db.save_tick(
-                    self.world.world_id, tick_num, narration,
-                    results.get("events", []), self.world.world_time, self.world.mood,
-                )
-                for cname, cdata in results.get("characters", {}).items():
-                    if isinstance(cdata, dict) and not cdata.get("waiting_for_player"):
-                        db.save_character_tick(self.world.world_id, tick_num, cname, cdata)
-            except Exception as e:
-                logger.error(f"DB save failed: {e}")
+        # 3. Persist tick to database
+        try:
+            db.save_tick(
+                self.world.world_id, tick_num, results.get("narration", ""),
+                results.get("events", []), self.world.world_time, self.world.mood,
+            )
+            for cname, cdata in results.get("characters", {}).items():
+                if isinstance(cdata, dict) and not cdata.get("waiting_for_player"):
+                    db.save_character_tick(self.world.world_id, tick_num, cname, cdata)
+        except Exception as e:
+            logger.error(f"DB save failed: {e}")
 
         # 4. Autosave world state every tick (JSON is small, prevents data loss)
         save_name = self.save_name or self._derive_save_name()
@@ -475,16 +461,11 @@ class Orchestrator:
                 self.reset_ready_states()
 
             # Check if tick had errors (narrator failed = all failed)
-            if results.get("_is_error"):
+            narration = results.get("narration", "")
+            if narration.startswith("[Narrator error"):
                 consecutive_errors += 1
                 backoff = min(30 * consecutive_errors, 120)
                 logger.warning(f"Tick errors ({consecutive_errors}), backing off {backoff}s")
-                # Send error to callbacks so frontend can show it
-                for cb in self._tick_callbacks:
-                    try:
-                        cb({"error": results.get("narration", "Unknown error"), "tick": results.get("tick")})
-                    except Exception as e:
-                        logger.error(f"Error callback failed: {e}")
                 self._interruptible_sleep(backoff)
                 continue
             else:
