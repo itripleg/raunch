@@ -13,6 +13,8 @@ saves/*.db
 # Character templates and scenarios are user data
 characters/*.json
 scenarios/*.json
+# But allow test scenarios for integration testing
+!scenarios/test_*.json
 
 # IDE
 .vscode/

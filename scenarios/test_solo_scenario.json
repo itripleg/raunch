@@ -1,0 +1,18 @@
+{
+  "scenario_name": "Test Solo Scenario",
+  "setting": "A simple test scenario for integration testing. No multiplayer field present.",
+  "premise": "This scenario is used to verify that scenarios without a multiplayer field default to solo mode.",
+  "themes": ["testing", "solo"],
+  "opening_situation": "The test begins.",
+  "characters": [
+    {
+      "name": "Test Character",
+      "species": "Human",
+      "personality": "A helpful test character.",
+      "appearance": "Average appearance.",
+      "desires": "To pass the test.",
+      "backstory": "Created for testing purposes.",
+      "kinks": "None"
+    }
+  ]
+}

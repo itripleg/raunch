@@ -1,0 +1,19 @@
+{
+  "scenario_name": "Test Multiplayer Scenario",
+  "multiplayer": true,
+  "setting": "A simple test scenario for integration testing with multiplayer mode enabled.",
+  "premise": "This scenario is used to verify that scenarios with multiplayer: true show NicknamePrompt, PlayerPresence, and TurnStateUI.",
+  "themes": ["testing", "multiplayer"],
+  "opening_situation": "The multiplayer test begins.",
+  "characters": [
+    {
+      "name": "Multiplayer Test Character",
+      "species": "Human",
+      "personality": "A helpful test character for multiplayer testing.",
+      "appearance": "Average appearance.",
+      "desires": "To verify multiplayer mode works correctly.",
+      "backstory": "Created for testing multiplayer functionality.",
+      "kinks": "None"
+    }
+  ]
+}
