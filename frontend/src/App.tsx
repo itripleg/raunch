@@ -121,6 +121,17 @@ function App() {
     }
   }, [apiUrl]);
 
+  // Auto-confirm nickname in solo mode (skip NicknamePrompt)
+  useEffect(() => {
+    if (wsState === "connected" && !game.multiplayer && !nicknameConfirmed) {
+      // Solo mode: auto-confirm nickname (use stored or empty)
+      const storedNickname = getStoredNickname() ?? "";
+      setNickname(storedNickname);
+      setStoredNickname(storedNickname);
+      setNicknameConfirmed(true);
+    }
+  }, [wsState, game.multiplayer, nicknameConfirmed]);
+
   // Send join command and check world status when WebSocket connects
   useEffect(() => {
     if (wsState === "connected" && nicknameConfirmed) {
@@ -158,20 +169,8 @@ function App() {
   // game.world is set from welcome message regardless of scenario state
   const hasWorld = worldRunning === true;
 
-  // Show nickname prompt first if not confirmed
-  if (!nicknameConfirmed) {
-    return (
-      <AnimatePresence mode="wait">
-        <motion.div
-          key="nickname"
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.5, ease: "easeInOut" }}
-        >
-          <NicknamePrompt onSubmit={handleNicknameSubmit} />
-        </motion.div>
-      </AnimatePresence>
-    );
-  }
+  // Check if we need to show nickname prompt (only in multiplayer mode)
+  const needsNicknamePrompt = isConnected && game.multiplayer && !nicknameConfirmed;
 
   return (
     <AnimatePresence mode="wait">
@@ -187,6 +186,16 @@ function App() {
             wsUrl={wsUrl}
             onUrlChange={setWsUrl}
           />
+        </motion.div>
+      ) : needsNicknamePrompt ? (
+        <motion.div
+          key="nickname"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5, ease: "easeInOut" }}
+        >
+          <NicknamePrompt onSubmit={handleNicknameSubmit} />
         </motion.div>
       ) : !hasWorld ? (
         <motion.div
