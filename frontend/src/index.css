@@ -143,3 +143,35 @@
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
+
+/* Enhanced streaming cursor - breathes with anticipation */
+@keyframes streaming-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scaleY(1);
+    box-shadow: 0 0 12px oklch(0.65 0.22 340 / 0.6), 0 0 24px oklch(0.65 0.22 340 / 0.3);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scaleY(0.8);
+    box-shadow: 0 0 6px oklch(0.65 0.22 340 / 0.3), 0 0 12px oklch(0.65 0.22 340 / 0.15);
+  }
+}
+
+/* Intensity word shimmer effect */
+@keyframes intensity-shimmer {
+  0% { background-position: -100% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Gentle text fade-in for typewriter effect */
+@keyframes text-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Scene break fade */
+@keyframes scene-break-fade {
+  from { opacity: 0; transform: scaleX(0.8); }
+  to { opacity: 1; transform: scaleX(1); }
+}

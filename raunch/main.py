@@ -6,12 +6,12 @@ import socket
 import logging
 import threading
 import time
-from typing import Dict
+from typing import Dict, Any
 import click
 from rich.console import Console
 from rich.panel import Panel
 
-from .orchestrator import Orchestrator
+from .orchestrator import Orchestrator, _extract_narration_from_raw, _clean_narration
 from .agents.character import Character
 from .server import GameServer
 from .ws_server import WebSocketServer, WS_PORT
@@ -25,6 +25,45 @@ from .config import CHARACTERS_DIR, CLIENT_HOST, SERVER_PORT, SAVES_DIR
 from .wizard import generate_scenario, random_scenario, save_scenario, load_scenario, list_scenarios
 from .wizard import SETTINGS, KINK_POOLS, VIBES
 from .client import get_client
+
+
+def _extract_character_data_safe(raw: str) -> Dict[str, Any]:
+    """Extract character data from raw LLM response, with fallbacks."""
+    import json
+    import re
+
+    if not raw:
+        return {}
+
+    try:
+        # Try direct JSON parse
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        # Strip markdown fences
+        text = raw
+        if "```json" in text:
+            text = text.split("```json", 1)[1]
+        if "```" in text:
+            text = text.split("```", 1)[0]
+
+        # Find JSON object
+        first = text.find("{")
+        last = text.rfind("}")
+        if first != -1 and last > first:
+            return json.loads(text[first:last + 1])
+    except (json.JSONDecodeError, IndexError):
+        pass
+
+    # Regex fallback
+    result = {}
+    for field in ["inner_thoughts", "action", "dialogue", "emotional_state", "desires_update"]:
+        match = re.search(rf'"{field}"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
+        if match:
+            result[field] = match.group(1).replace("\\n", "\n").replace('\\"', '"')
+    return result
 
 console = Console()
 logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
@@ -229,11 +268,18 @@ def start(save_name, world_name, scenario_name, headless, force):
             update_tick_loading()
             time.sleep(0.08)
 
+    # Track progressive rendering state
+    progressive_results: Dict[str, Any] = {}
+    progressive_rendered = {"narrator": False, "characters": set()}
+
     # Wire up streaming callback for real-time text + loading animation
     def on_stream(tick_num: int, source: str, event_type: str, data: str):
-        nonlocal tick_loading_active, tick_animation_thread
+        nonlocal tick_loading_active, tick_animation_thread, progressive_results, progressive_rendered
 
         if event_type == "start" and source == "narrator":
+            # Reset progressive state for new tick
+            progressive_results = {"tick": tick_num, "characters": {}}
+            progressive_rendered = {"narrator": False, "characters": set()}
             # Start loading animation when narrator begins
             tick_loading_active = True
             tick_animation_thread = threading.Thread(
@@ -250,22 +296,79 @@ def start(save_name, world_name, scenario_name, headless, force):
         elif event_type == "done":
             ws_server.broadcast_stream_done(tick_num, source)
 
+            # Progressive CLI rendering - show content as it completes
+            if source == "narrator" and not progressive_rendered["narrator"]:
+                # Stop loading animation, render narrator immediately
+                if tick_loading_active:
+                    tick_loading_active = False
+                    time.sleep(0.05)
+                    stop_tick_loading()
+
+                # Get narrator result from orchestrator and render
+                narrator_result = orch.narrator.history[-1]["content"] if orch.narrator.history else ""
+                narration = _extract_narration_from_raw(narrator_result) if narrator_result else ""
+                narration = _clean_narration(narration)
+                progressive_results["narration"] = narration
+                progressive_results["mood"] = orch.world.mood
+
+                # Render narrator panel
+                from .display import render_narrator_panel
+                try:
+                    render_narrator_panel(tick_num, narration, orch.world.mood)
+                except Exception as e:
+                    console.print(f"[dim]Narrator: {narration[:100]}...[/dim]")
+                progressive_rendered["narrator"] = True
+
+            elif source != "narrator" and source not in progressive_rendered["characters"]:
+                # Render character as they complete
+                char = orch.characters.get(source)
+                if char and char.history:
+                    raw_response = char.history[-1]["content"] if char.history else ""
+                    char_data = _extract_character_data_safe(raw_response)
+                    progressive_results["characters"][source] = char_data
+
+                    from .display import render_character_panel_inline
+                    try:
+                        render_character_panel_inline(
+                            source, char_data,
+                            is_attached=(source == orch.attached_to)
+                        )
+                    except Exception:
+                        # Fallback: just show dialogue
+                        dialogue = char_data.get("dialogue")
+                        if dialogue and dialogue.lower() != "null":
+                            console.print(f"  [bold]{source}[/] — [italic]\"{dialogue}\"[/]")
+                    progressive_rendered["characters"].add(source)
+
     orch.set_stream_callback(on_stream)
 
     # Wire up: orchestrator ticks → server broadcasts + local display
     def on_tick(results):
-        nonlocal tick_loading_active
+        nonlocal tick_loading_active, progressive_rendered
 
-        # Stop loading animation
+        # Stop loading animation if still running
         if tick_loading_active:
             tick_loading_active = False
-            time.sleep(0.1)  # Let animation thread finish
+            time.sleep(0.1)
             stop_tick_loading()
 
-        try:
-            render_tick(results, attached_to=orch.attached_to)
-        except Exception as e:
-            console.print(f"[red]Display error: {e}[/red]")
+        # Only render if we haven't already rendered progressively
+        already_rendered = progressive_rendered.get("narrator", False)
+        if not already_rendered:
+            try:
+                render_tick(results, attached_to=orch.attached_to)
+            except Exception as e:
+                console.print(f"[red]Display error: {e}[/red]")
+        else:
+            # Just render events at the end (characters already shown)
+            events = results.get("events", [])
+            if events:
+                from .display import render_events_panel
+                try:
+                    render_events_panel(events)
+                except Exception:
+                    pass
+
         try:
             server.broadcast_tick(results)
         except Exception as e:

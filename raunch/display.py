@@ -473,6 +473,148 @@ def render_tick(
         )
 
 
+def render_narrator_panel(tick_num: int, narration: str, mood: str = "default") -> None:
+    """Render just the narrator panel (for progressive display)."""
+    if not narration:
+        return
+
+    mood_styles = _get_mood_styles()
+    border_style, mood_symbol = mood_styles.get(mood, mood_styles["default"])
+
+    console.print()
+
+    # Build rich text with intensity highlighting
+    rich_narration = Text()
+    segments = _parse_intensity(narration)
+
+    for content, level in segments:
+        if level == "primal":
+            rich_narration.append(content, style="bold bright_red")
+        elif level == "hot":
+            rich_narration.append(content, style="bright_yellow")
+        elif level == "warm":
+            rich_narration.append(content, style="bright_magenta")
+        else:
+            rich_narration.append(content)
+
+    if _supports_unicode():
+        title = f"[bold]{mood_symbol} TICK {tick_num} {mood_symbol}[/]"
+    else:
+        title = f"[bold]* TICK {tick_num} *[/]"
+
+    console.print(
+        Panel(
+            rich_narration,
+            title=title,
+            subtitle=f"[dim italic]{mood}[/]",
+            border_style=border_style,
+            box=ROUNDED,
+            padding=(1, 3),
+        )
+    )
+
+
+def render_character_panel_inline(
+    name: str,
+    data: Dict[str, Any],
+    is_attached: bool = False
+) -> None:
+    """Render a single character's output (for progressive display)."""
+    if not data:
+        return
+
+    char_color = _get_char_color(name)
+
+    if is_attached:
+        # Full inner experience for attached character
+        inner = data.get("inner_thoughts", "")
+        emotion = data.get("emotional_state", "")
+        action = data.get("action", "")
+        dialogue = data.get("dialogue", "")
+
+        console.print()
+
+        # Build inner thoughts with intensity
+        rich_inner = Text()
+        if inner:
+            segments = _parse_intensity(inner)
+            for content, level in segments:
+                if level == "primal":
+                    rich_inner.append(content, style="italic bright_red")
+                elif level == "hot":
+                    rich_inner.append(content, style="italic bright_yellow")
+                elif level == "warm":
+                    rich_inner.append(content, style="italic bright_magenta")
+                else:
+                    rich_inner.append(content, style="italic")
+
+        panel_content = Text()
+
+        if emotion:
+            panel_content.append(f"~ {emotion} ~", style="dim italic")
+            panel_content.append("\n\n")
+
+        if inner:
+            panel_content.append_text(rich_inner)
+            panel_content.append("\n\n")
+
+        if action:
+            panel_content.append("Action: ", style="bold")
+            panel_content.append(f"{action}\n")
+
+        if dialogue and dialogue.lower() != "null":
+            panel_content.append("Says: ", style="bold")
+            panel_content.append(f'"{dialogue}"', style="bright_green italic")
+
+        heart = "<3" if not _supports_unicode() else "♥"
+        title = f"[bold bright_magenta]{heart} {name} {heart}[/]"
+
+        console.print(
+            Panel(
+                panel_content,
+                title=title,
+                subtitle="[dim]attached[/]",
+                border_style="bright_magenta",
+                box=DOUBLE,
+                padding=(1, 3),
+            )
+        )
+    else:
+        # Just dialogue for non-attached characters
+        dialogue = data.get("dialogue")
+        if dialogue and dialogue.lower() != "null":
+            dash = "-" if not _supports_unicode() else "—"
+            console.print()
+            console.print(
+                f"  [{char_color} bold]{name}[/] [dim]{dash}[/] "
+                f"[{char_color} italic]\"{dialogue}\"[/]"
+            )
+
+
+def render_events_panel(events: List[str]) -> None:
+    """Render just the events panel (for progressive display)."""
+    if not events:
+        return
+
+    event_lines = []
+    for e in events:
+        if _supports_unicode():
+            event_lines.append(f"  [dim]✧[/] [italic]{e}[/]")
+        else:
+            event_lines.append(f"  [dim]*[/] [italic]{e}[/]")
+
+    console.print()
+    console.print(
+        Panel(
+            "\n".join(event_lines),
+            title="[dim]events[/]",
+            border_style="dim",
+            box=ROUNDED,
+            padding=(0, 2),
+        )
+    )
+
+
 def render_tick_streaming(
     source: str,
     text: str,
