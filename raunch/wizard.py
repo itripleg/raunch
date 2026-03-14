@@ -147,8 +147,14 @@ def generate_scenario(
     kinks: Optional[List[str]] = None,
     setting_hint: Optional[str] = None,
     vibe: Optional[str] = None,
+    debug: bool = False,
 ) -> Dict[str, Any]:
-    """Use Claude to generate a complete scenario."""
+    """Use Claude to generate a complete scenario.
+
+    Args:
+        debug: If True, print the outgoing prompt before sending.
+               Also prints on failure for troubleshooting content blocks.
+    """
     client = get_client()
 
     parts = [f"Generate a scenario with {num_characters} characters."]
@@ -164,27 +170,78 @@ def generate_scenario(
 
     user_msg = "\n".join(parts)
 
-    raw = client.chat(
-        system=WIZARD_PROMPT,
-        messages=[{"role": "user", "content": user_msg}],
-        max_tokens=4096,
-        temperature=1.0,
-    )
+    # Debug output - show what we're sending
+    if debug:
+        print("\n" + "=" * 60)
+        print("DEBUG: OUTGOING PROMPT")
+        print("=" * 60)
+        print("\n[SYSTEM PROMPT]")
+        print("-" * 40)
+        print(WIZARD_PROMPT)
+        print("-" * 40)
+        print("\n[USER MESSAGE]")
+        print("-" * 40)
+        print(user_msg)
+        print("-" * 40)
+        print("=" * 60 + "\n")
+
+    try:
+        raw = client.chat(
+            system=WIZARD_PROMPT,
+            messages=[{"role": "user", "content": user_msg}],
+            max_tokens=4096,
+            temperature=1.0,
+        )
+    except Exception as e:
+        # On failure (content block, etc), always show the prompt for debugging
+        print("\n" + "!" * 60)
+        print("GENERATION FAILED - DUMPING PROMPT FOR DEBUG")
+        print("!" * 60)
+        print(f"\nError: {e}")
+        print("\n[SYSTEM PROMPT]")
+        print("-" * 40)
+        print(WIZARD_PROMPT)
+        print("-" * 40)
+        print("\n[USER MESSAGE]")
+        print("-" * 40)
+        print(user_msg)
+        print("-" * 40)
+        print("!" * 60 + "\n")
+        raise
+
+    # Debug output - show response
+    if debug:
+        print("\n" + "=" * 60)
+        print("DEBUG: RAW RESPONSE")
+        print("=" * 60)
+        print(raw[:500] + "..." if len(raw) > 500 else raw)
+        print("=" * 60 + "\n")
 
     return _parse_json_response(raw)
 
 
-def random_scenario(num_characters: int = 3) -> Dict[str, Any]:
-    """Generate a fully random scenario."""
+def random_scenario(num_characters: int = 3, debug: bool = False) -> Dict[str, Any]:
+    """Generate a fully random scenario.
+
+    Args:
+        debug: If True, print the outgoing prompt for troubleshooting.
+    """
     setting = random.choice(SETTINGS)
     kinks = random.sample(KINK_POOLS, k=random.randint(2, 4))
     vibe = random.choice(VIBES)
+
+    if debug:
+        print(f"\n[RANDOM SELECTION]")
+        print(f"  Setting: {setting}")
+        print(f"  Kinks: {kinks}")
+        print(f"  Vibe: {vibe}\n")
 
     return generate_scenario(
         num_characters=num_characters,
         setting_hint=setting,
         kinks=kinks,
         vibe=vibe,
+        debug=debug,
     )
 
 

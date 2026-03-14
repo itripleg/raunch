@@ -80,8 +80,9 @@ def start(save_name, world_name, scenario_name, headless):
             console.print(f"[red]Scenario '{scenario_name}' not found.[/red]")
             return
 
+    # No default characters - players create their own on join
     if not orch.characters:
-        _create_starter_characters(orch)
+        console.print("[cyan]No characters yet - players will create on join[/cyan]")
 
     # Start the TCP server
     server = GameServer(orch)
@@ -617,22 +618,39 @@ def list_characters():
 
 @cli.command()
 @click.option("--characters", "num_chars", default=3, help="Number of characters")
-def wizard(num_chars):
+@click.option("--quick", "-q", is_flag=True, help="Skip animations for faster experience")
+@click.option("--debug", "-d", is_flag=True, help="Show outgoing prompts for debugging content blocks")
+def wizard(num_chars, quick, debug):
     """Interactive smut wizard — craft a custom scenario."""
-    console.print(
-        Panel(
-            "[bold]THE SMUT WIZARD[/bold]\n\n"
-            "Answer a few questions and I'll conjure a filthy scenario for you.",
-            border_style="bright_magenta",
-        )
+    import random as rand
+    from .wizard_display import (
+        wizard_entrance, sexy_prompt, option_display, selection_confirm,
+        conjuring_sequence, scenario_reveal, wizard_farewell
     )
 
+    if not quick:
+        wizard_entrance()
+    else:
+        console.print(Panel(
+            "[bold bright_magenta]THE SMUT WIZARD[/bold bright_magenta]\n\n"
+            "[italic]Answer my questions... and I shall conjure your deepest fantasies.[/]",
+            border_style="bright_magenta",
+        ))
+
     # Setting
-    console.print("\n[bold]Setting vibes[/bold] (pick a number, type your own, or press Enter for random):")
-    for i, s in enumerate(SETTINGS, 1):
-        console.print(f"  [dim]{i:2}.[/dim] {s}")
+    if not quick:
+        sexy_prompt("What realm shall we explore?", "SETTING")
+    else:
+        console.print("\n[bold bright_magenta]Setting vibes[/]:")
+
+    option_display(SETTINGS) if not quick else [console.print(f"  [dim]{i:2}.[/] {s}") for i, s in enumerate(SETTINGS, 1)]
+
+    # Hint for custom input
+    console.print()
+    console.print("  [dim italic]Pick a number, type your own idea, or Enter for random[/]")
+
     try:
-        choice = input("\n> ").strip()
+        choice = input("\n  > ").strip()
     except (EOFError, KeyboardInterrupt):
         return
     if choice.isdigit() and 1 <= int(choice) <= len(SETTINGS):
@@ -640,16 +658,24 @@ def wizard(num_chars):
     elif choice:
         setting = choice
     else:
-        import random
-        setting = random.choice(SETTINGS)
-    console.print(f"  [green]Setting: {setting}[/green]")
+        setting = rand.choice(SETTINGS)
+
+    selection_confirm(setting, "Setting") if not quick else console.print(f"  [green]Setting: {setting}[/]")
 
     # Kinks
-    console.print("\n[bold]Kinks/themes[/bold] (pick numbers separated by commas, type your own, or Enter for random):")
-    for i, k in enumerate(KINK_POOLS, 1):
-        console.print(f"  [dim]{i:2}.[/dim] {k}")
+    if not quick:
+        sexy_prompt("What dark desires shall we weave in?", "KINKS & THEMES")
+    else:
+        console.print("\n[bold bright_magenta]Kinks/themes[/]:")
+
+    option_display(KINK_POOLS) if not quick else [console.print(f"  [dim]{i:2}.[/] {k}") for i, k in enumerate(KINK_POOLS, 1)]
+
+    # Hint for custom input
+    console.print()
+    console.print("  [dim italic]Pick numbers (e.g. 1,3,5), type your own kinks, or Enter for random[/]")
+
     try:
-        choice = input("\n> ").strip()
+        choice = input("\n  > ").strip()
     except (EOFError, KeyboardInterrupt):
         return
     if choice:
@@ -661,16 +687,25 @@ def wizard(num_chars):
             elif part:
                 kinks.append(part)
     else:
-        import random
-        kinks = random.sample(KINK_POOLS, k=3)
-    console.print(f"  [green]Kinks: {', '.join(kinks)}[/green]")
+        kinks = rand.sample(KINK_POOLS, k=3)
+
+    kink_str = ", ".join(kinks)
+    selection_confirm(kink_str, "Themes") if not quick else console.print(f"  [green]Kinks: {kink_str}[/]")
 
     # Vibe
-    console.print("\n[bold]Tone/vibe[/bold] (pick a number, type your own, or Enter for random):")
-    for i, v in enumerate(VIBES, 1):
-        console.print(f"  [dim]{i:2}.[/dim] {v}")
+    if not quick:
+        sexy_prompt("What energy shall permeate this encounter?", "VIBE")
+    else:
+        console.print("\n[bold bright_magenta]Tone/vibe[/]:")
+
+    option_display(VIBES) if not quick else [console.print(f"  [dim]{i:2}.[/] {v}") for i, v in enumerate(VIBES, 1)]
+
+    # Hint for custom input
+    console.print()
+    console.print("  [dim italic]Pick a number, describe your own vibe, or Enter for random[/]")
+
     try:
-        choice = input("\n> ").strip()
+        choice = input("\n  > ").strip()
     except (EOFError, KeyboardInterrupt):
         return
     if choice.isdigit() and 1 <= int(choice) <= len(VIBES):
@@ -678,57 +713,106 @@ def wizard(num_chars):
     elif choice:
         vibe = choice
     else:
-        import random
-        vibe = random.choice(VIBES)
-    console.print(f"  [green]Vibe: {vibe}[/green]")
+        vibe = rand.choice(VIBES)
+
+    selection_confirm(vibe, "Vibe") if not quick else console.print(f"  [green]Vibe: {vibe}[/]")
 
     # Extra preferences
-    console.print("\n[bold]Anything else?[/bold] (specific requests, or Enter to skip):")
+    if not quick:
+        sexy_prompt("Any special requests, mortal?", "EXTRAS")
+    else:
+        console.print("\n[bold bright_magenta]Anything else?[/]")
+
+    console.print("  [dim italic]Describe specific scenarios, character traits, plot twists... or Enter to skip[/]")
+
     try:
-        extras = input("> ").strip() or None
+        extras = input("  > ").strip() or None
     except (EOFError, KeyboardInterrupt):
         return
 
-    # Generate
-    console.print("\n[bright_magenta]The Smut Wizard is conjuring your scenario...[/bright_magenta]")
-    try:
-        scenario = generate_scenario(
+    if extras and not quick:
+        selection_confirm(extras, "Special")
+
+    # Generate with animation
+    def do_generate():
+        return generate_scenario(
             preferences=extras,
             num_characters=num_chars,
             kinks=kinks,
             setting_hint=setting,
             vibe=vibe,
+            debug=debug,
         )
+
+    try:
+        if not quick:
+            scenario = conjuring_sequence(do_generate)
+        else:
+            console.print("\n[bright_magenta]The Smut Wizard is conjuring your scenario...[/]")
+            scenario = do_generate()
     except Exception as e:
-        console.print(f"[red]Generation failed: {e}[/red]")
+        console.print(f"[red]The ritual failed: {e}[/red]")
         return
 
-    _display_scenario(scenario)
+    # Reveal
+    if not quick:
+        scenario_reveal(scenario)
+    else:
+        _display_scenario(scenario)
 
-    # Save
+    # Save and farewell
     path = save_scenario(scenario)
-    slug = os.path.basename(path).replace(".json", "")
-    console.print(f"\n[green]Saved to scenarios/{os.path.basename(path)}[/green]")
-    console.print(f"\nStart this world:\n  [bold]raunch start --scenario {slug}[/bold]")
+    scenario_name = scenario.get("scenario_name", "untitled")
+
+    if not quick:
+        wizard_farewell(path, scenario_name)
+    else:
+        slug = os.path.basename(path).replace(".json", "")
+        console.print(f"\n[green]Saved to scenarios/{os.path.basename(path)}[/]")
+        console.print(f"\nStart this world:\n  [bold]raunch start --scenario {slug}[/]")
 
 
 @cli.command()
 @click.option("--characters", "num_chars", default=3, help="Number of characters")
-def roll(num_chars):
+@click.option("--quick", "-q", is_flag=True, help="Skip animations for faster experience")
+@click.option("--debug", "-d", is_flag=True, help="Show outgoing prompts for debugging content blocks")
+def roll(num_chars, quick, debug):
     """Roll the dice — generate a fully random scenario."""
-    console.print("[bright_magenta]Rolling the dice...[/bright_magenta]")
+    from .wizard_display import (
+        roll_dice_animation, conjuring_sequence, scenario_reveal, wizard_farewell
+    )
+
+    if not quick:
+        roll_dice_animation()
+    else:
+        console.print("[bright_magenta]Rolling the dice...[/bright_magenta]")
+
+    def do_generate():
+        return random_scenario(num_characters=num_chars, debug=debug)
+
     try:
-        scenario = random_scenario(num_characters=num_chars)
+        if not quick:
+            scenario = conjuring_sequence(do_generate)
+        else:
+            scenario = do_generate()
     except Exception as e:
-        console.print(f"[red]Generation failed: {e}[/red]")
+        console.print(f"[red]The fates rejected your roll: {e}[/red]")
         return
 
-    _display_scenario(scenario)
+    if not quick:
+        scenario_reveal(scenario)
+    else:
+        _display_scenario(scenario)
 
     path = save_scenario(scenario)
-    slug = os.path.basename(path).replace(".json", "")
-    console.print(f"\n[green]Saved to scenarios/{os.path.basename(path)}[/green]")
-    console.print(f"\nStart this world:\n  [bold]raunch start --scenario {slug}[/bold]")
+    scenario_name = scenario.get("scenario_name", "untitled")
+
+    if not quick:
+        wizard_farewell(path, scenario_name)
+    else:
+        slug = os.path.basename(path).replace(".json", "")
+        console.print(f"\n[green]Saved to scenarios/{os.path.basename(path)}[/green]")
+        console.print(f"\nStart this world:\n  [bold]raunch start --scenario {slug}[/bold]")
 
 
 @cli.command()

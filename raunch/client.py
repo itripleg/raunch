@@ -87,17 +87,17 @@ class LLMClient:
             # Allow SDK to spawn Claude Code even if we're inside one
             os.environ.pop("CLAUDECODE", None)
             self.auth_method = "oauth_sdk"
-            print(f"[AUTH] Using OAuth via claude-agent-sdk: {token[:25]}...")
+            logger.debug(f"[AUTH] Using OAuth via claude-agent-sdk: {token[:25]}...")
         elif token:
             # OAuth token but no SDK - use direct (legacy, may conflict)
             self._current_token = token
             self._client = anthropic.Anthropic(api_key=token)
             self.auth_method = "oauth_direct"
-            print(f"[AUTH] WARNING: Using OAuth direct (no SDK, may conflict): {token[:25]}...")
+            logger.warning(f"[AUTH] Using OAuth direct (no SDK, may conflict): {token[:25]}...")
         elif self.api_key:
             self._client = anthropic.Anthropic(api_key=self.api_key)
             self.auth_method = "api_key"
-            print(f"[AUTH] Using API key: {self.api_key[:15]}...")
+            logger.debug(f"[AUTH] Using API key: {self.api_key[:15]}...")
         else:
             raise RuntimeError(
                 "No authentication found.\n"
