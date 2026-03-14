@@ -117,13 +117,16 @@ class WebSocketServer:
             client.player_id = str(uuid.uuid4())
             # Generate nickname if not provided
             if not nickname:
-                # Count existing players to generate "Player N" name
                 player_count = sum(1 for c in self.clients if c.player_id is not None)
                 nickname = f"Player {player_count}"
             client.nickname = nickname
             client.ready = False
             # Register player with orchestrator for turn-based tracking
             self.orch.set_player_ready(client.player_id, False)
+
+            # Don't auto-create character - let player use the wizard
+            # Don't auto-attach - player will attach after creating/selecting character
+
             # Send confirmation to joining client
             await client.send({
                 "type": "joined",
@@ -355,6 +358,20 @@ class WebSocketServer:
             if c.player_id is not None  # Only include joined players
         ]
         msg = {"type": "players", "players": players}
+        for client in list(self.clients):
+            await client.send(msg)
+
+    async def _broadcast_characters(self):
+        """Notify all clients of current character list."""
+        char_names = list(self.orch.characters.keys())
+        char_details = {}
+        for name, char in self.orch.characters.items():
+            char_details[name] = {
+                "species": char.character_data.get("species", "?"),
+                "emotional_state": char.emotional_state,
+                "location": char.location,
+            }
+        msg = {"type": "characters", "characters": char_details}
         for client in list(self.clients):
             await client.send(msg)
 

@@ -15,6 +15,8 @@ type Props = {
   onCharacterAdded: (char: CharacterData) => void;
   onClose: () => void;
   existingCharacters: string[];
+  playerNickname?: string;
+  isInitialSetup?: boolean;
 };
 
 const SPECIES_SUGGESTIONS = [
@@ -52,13 +54,13 @@ const PERSONALITY_SUGGESTIONS = [
   "Submissive and eager",
 ];
 
-export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCharacters }: Props) {
+export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCharacters, playerNickname, isInitialSetup }: Props) {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [char, setChar] = useState<CharacterData>({
-    name: "",
+    name: playerNickname || "",
     species: "",
     personality: "",
     appearance: "",
@@ -158,32 +160,48 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
 
   const currentStep = steps[step];
 
+  // For initial setup, render full-screen; otherwise modal overlay
+  const containerClass = isInitialSetup
+    ? "min-h-screen bg-background flex items-center justify-center p-4"
+    : "fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4";
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={onClose}
+      className={containerClass}
+      onClick={isInitialSetup ? undefined : onClose}
     >
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
-        className="bg-card border border-border rounded-xl p-6 max-w-md w-full shadow-2xl"
+        className="bg-card border border-border rounded-xl p-4 sm:p-6 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold text-primary">Create Character</h2>
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+          <div>
+            <h2 className="text-lg font-bold text-primary">
+              {isInitialSetup ? "Create Your Character" : "Create Character"}
+            </h2>
+            {isInitialSetup && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Who will you be in this world?
+              </p>
+            )}
+          </div>
+          {!isInitialSetup && (
+            <button
+              onClick={onClose}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Progress */}
@@ -245,7 +263,7 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
                   <button
                     key={suggestion}
                     onClick={() => updateField(currentStep.field, suggestion)}
-                    className={`px-2 py-1 text-xs rounded-full border transition-colors ${
+                    className={`px-2.5 sm:px-2 py-1.5 sm:py-1 text-sm sm:text-xs rounded-full border transition-colors ${
                       char[currentStep.field] === suggestion
                         ? "bg-primary/20 border-primary/50 text-primary"
                         : "bg-secondary/30 border-border/50 text-muted-foreground hover:border-primary/30"
@@ -272,18 +290,29 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
 
         {/* Actions */}
         <div className="flex justify-between mt-6">
-          <button
-            onClick={() => step > 0 ? setStep(step - 1) : onClose()}
-            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {step > 0 ? "Back" : "Cancel"}
-          </button>
+          {step > 0 ? (
+            <button
+              onClick={() => setStep(step - 1)}
+              className="px-4 py-2.5 sm:py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Back
+            </button>
+          ) : !isInitialSetup ? (
+            <button
+              onClick={onClose}
+              className="px-4 py-2.5 sm:py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+          ) : (
+            <div /> // Empty div for spacing in initial setup
+          )}
 
           {step < 5 ? (
             <button
               onClick={handleNext}
               disabled={!canProceed()}
-              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-30 hover:bg-primary/90 transition-colors"
+              className="px-6 py-2.5 sm:py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-30 hover:bg-primary/90 transition-colors"
             >
               Next
             </button>
@@ -291,7 +320,7 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
             <button
               onClick={handleSubmit}
               disabled={!canProceed() || loading}
-              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-30 hover:bg-primary/90 transition-colors"
+              className="px-6 py-2.5 sm:py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-30 hover:bg-primary/90 transition-colors"
             >
               {loading ? "Creating..." : "Create Character"}
             </button>

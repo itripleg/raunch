@@ -28,9 +28,10 @@ type Props = {
   onClose: () => void;
   onCharacterAttached?: () => void;
   onAddCharacter?: () => void;
+  onReset?: () => void;
 };
 
-export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddCharacter }: Props) {
+export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddCharacter, onReset }: Props) {
   const world = game.world as Record<string, unknown> | null;
 
   return (
@@ -43,9 +44,9 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
           </h2>
           <button
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition-colors lg:hidden"
+            className="p-2 -m-2 text-muted-foreground hover:text-foreground transition-colors lg:hidden"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
@@ -184,6 +185,21 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
         </div>
       </ScrollArea>
 
+      {/* Reset button at bottom */}
+      {onReset && (
+        <div className="p-4 border-t border-border/30">
+          <button
+            onClick={onReset}
+            className="w-full px-3 py-2 text-xs text-destructive/70 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors flex items-center justify-center gap-2"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+            </svg>
+            Reset World
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

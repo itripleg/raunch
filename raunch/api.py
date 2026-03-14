@@ -70,6 +70,7 @@ class WorldResponse(BaseModel):
     tick: Optional[int] = None
     characters: Optional[List[str]] = None
     turn_timeout: int = 60
+    multiplayer: bool = False
 
 
 class CharacterDetail(BaseModel):
@@ -110,10 +111,10 @@ app = FastAPI(
 )
 
 # CORS MUST be added as FIRST middleware
-# Include both localhost and 127.0.0.1 variants for development
+# Allow all origins for cloudflare tunnels
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -157,6 +158,7 @@ async def get_world():
         tick=world.tick_count,
         characters=character_names,
         turn_timeout=orch.tick_interval if orch.tick_interval > 0 else 60,
+        multiplayer=world.multiplayer,
     )
 
 
@@ -256,6 +258,37 @@ async def stop_world():
     return StopResponse(
         stopped=True,
         message=f"World '{world_name}' has been stopped and saved"
+    )
+
+
+class ResetResponse(BaseModel):
+    """Response after resetting the world."""
+    success: bool
+    message: str
+
+
+@app.post("/api/v1/world/reset", response_model=ResetResponse)
+async def reset_world():
+    """Reset the world - clear all characters and tick count."""
+    orch = get_orchestrator()
+    if orch is None:
+        raise HTTPException(status_code=404, detail="No world is running")
+
+    # Clear all characters
+    orch.characters.clear()
+    # Reset world state
+    orch.world.tick_count = 0
+    orch.world.active_events.clear()
+    orch.world.event_log.clear()
+    # Clear location characters
+    for loc in orch.world.locations.values():
+        loc["characters"] = []
+
+    logger.info("World reset - all characters cleared")
+
+    return ResetResponse(
+        success=True,
+        message="World reset - all characters cleared, ready for new players"
     )
 
 

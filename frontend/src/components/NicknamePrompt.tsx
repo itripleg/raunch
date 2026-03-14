@@ -102,7 +102,7 @@ export function NicknamePrompt({ onSubmit }: Props) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 1.0, duration: 0.6 }}
-              className="w-64 px-4 py-2.5 bg-card/50 border border-border/50 rounded-md text-sm text-foreground/90 focus:outline-none focus:border-primary/40 text-center placeholder:text-muted-foreground/30 transition-colors duration-300"
+              className="w-full max-w-64 px-4 py-3 sm:py-2.5 bg-card/50 border border-border/50 rounded-md text-base sm:text-sm text-foreground/90 focus:outline-none focus:border-primary/40 text-center placeholder:text-muted-foreground/30 transition-colors duration-300"
               maxLength={24}
               autoComplete="off"
             />
@@ -112,7 +112,7 @@ export function NicknamePrompt({ onSubmit }: Props) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 1.2, duration: 0.6 }}
-              className="px-8 py-2.5 text-sm text-primary/70 hover:text-primary border border-primary/20 hover:border-primary/40 rounded-full transition-all duration-500 hover:shadow-[0_0_30px_oklch(0.65_0.22_340_/_0.12)]"
+              className="px-8 py-3 sm:py-2.5 text-sm text-primary/70 hover:text-primary border border-primary/20 hover:border-primary/40 rounded-full transition-all duration-500 hover:shadow-[0_0_30px_oklch(0.65_0.22_340_/_0.12)]"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
@@ -124,7 +124,7 @@ export function NicknamePrompt({ onSubmit }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.5, duration: 0.6 }}
-            className="text-[10px] text-muted-foreground/30 mt-2"
+            className="text-xs sm:text-[10px] text-muted-foreground/30 mt-2"
           >
             leave blank to join anonymously
           </motion.p>

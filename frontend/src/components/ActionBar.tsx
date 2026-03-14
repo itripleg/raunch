@@ -8,6 +8,9 @@ type Props = {
   directorMode: boolean;
   pendingDirectorGuidance?: string | null;
   wideMode?: boolean;
+  // Multiplayer: disable after submitting action
+  multiplayer?: boolean;
+  isMyReady?: boolean;
 };
 
 export function ActionBar({
@@ -17,6 +20,8 @@ export function ActionBar({
   directorMode,
   pendingDirectorGuidance,
   wideMode,
+  multiplayer,
+  isMyReady,
 }: Props) {
   const [value, setValue] = useState("");
   const [flash, setFlash] = useState(false);
@@ -51,6 +56,9 @@ export function ActionBar({
   // Show bar in either mode (director OR attached to character)
   if (!directorMode && !attachedTo) return null;
 
+  // In multiplayer, lock the bar after player has submitted (is ready)
+  const isLocked = multiplayer && isMyReady;
+
   return (
     <AnimatePresence>
       <motion.div
@@ -58,7 +66,7 @@ export function ActionBar({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 20 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
-        className={`border-t border-border/50 bg-card/30 p-3 shrink-0 transition-colors ${
+        className={`border-t border-border/50 bg-card/30 p-3 sm:p-3 py-4 sm:py-3 shrink-0 transition-colors ${
           flash ? (directorMode ? "bg-amber-500/10" : "bg-primary/10") : ""
         }`}
       >
@@ -87,16 +95,21 @@ export function ActionBar({
 
           <input
             type="text"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            value={isLocked ? "" : value}
+            onChange={(e) => !isLocked && setValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !isLocked && handleSubmit()}
             placeholder={
-              directorMode
-                ? "Direct the scene... (e.g., 'make it rain', 'introduce tension')"
+              isLocked
+                ? "Action submitted - waiting for other players..."
+                : directorMode
+                ? "Direct the scene..."
                 : `Whisper to ${attachedTo}...`
             }
-            className={`flex-1 px-4 py-2.5 bg-secondary/50 border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 transition-all ${
-              directorMode
+            disabled={isLocked}
+            className={`flex-1 px-3 sm:px-4 py-3 sm:py-2.5 bg-secondary/50 border rounded-lg text-base sm:text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 transition-all ${
+              isLocked
+                ? "border-emerald-500/30 bg-emerald-500/5 cursor-not-allowed opacity-60"
+                : directorMode
                 ? "border-amber-500/30 focus:ring-amber-500/50 focus:border-amber-500/40"
                 : "border-border/50 focus:ring-primary/50 focus:border-primary/30"
             }`}
@@ -104,14 +117,16 @@ export function ActionBar({
 
           <button
             onClick={handleSubmit}
-            disabled={!value.trim()}
-            className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-30 ${
-              directorMode
+            disabled={!value.trim() || isLocked}
+            className={`px-4 sm:px-4 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-30 ${
+              isLocked
+                ? "bg-emerald-500/50 text-emerald-200 cursor-not-allowed"
+                : directorMode
                 ? "bg-amber-500/80 hover:bg-amber-500 text-black hover:shadow-[0_0_20px_oklch(0.7_0.15_80_/_0.3)]"
                 : "bg-primary/80 hover:bg-primary text-primary-foreground hover:shadow-[0_0_20px_oklch(0.65_0.22_340_/_0.2)]"
             }`}
           >
-            {directorMode ? "Direct" : "Whisper"}
+            {isLocked ? "Submitted" : directorMode ? "Direct" : "Whisper"}
           </button>
         </div>
 

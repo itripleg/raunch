@@ -59,9 +59,10 @@ type Props = {
   game: GameState;
   actions: Actions;
   onAddCharacter?: () => void;
+  onReset?: () => void;
 };
 
-export function GameLayout({ game, actions, onAddCharacter }: Props) {
+export function GameLayout({ game, actions, onAddCharacter, onReset }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [autoScroll, _setAutoScroll] = useState(true);
@@ -94,6 +95,11 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
   const hasSidebarOpen = sidebarOpen;
   const hasRightPanelOpen = !!(game.attachedTo || previewCharacter || game.directorMode);
   const wideMode = !(hasSidebarOpen && hasRightPanelOpen);
+
+  // Multiplayer: check if current player is ready (not in waiting_for list)
+  const isMyReady = game.multiplayer && game.nickname
+    ? !game.turnState?.waiting_for.includes(game.nickname)
+    : false;
 
   // Get the focused tick data
   const focusedTick = useMemo(() => {
@@ -173,10 +179,10 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
           {/* Sidebar toggle - always visible */}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 -ml-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="p-2.5 -m-2 sm:p-1.5 sm:-ml-1.5 sm:m-0 text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Toggle sidebar"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="sm:w-[18px] sm:h-[18px]">
               <path d="M3 12h18M3 6h18M3 18h18" />
             </svg>
           </button>
@@ -195,8 +201,8 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
             />
           )}
 
-          {/* Tick interval selector */}
-          {actions.setTickInterval && (
+          {/* Tick interval selector - solo mode only */}
+          {!game.multiplayer && actions.setTickInterval && (
             <select
               value={game.tickInterval ?? 0}
               onChange={(e) => actions.setTickInterval?.(parseInt(e.target.value))}
@@ -215,18 +221,33 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
             </select>
           )}
 
-          {/* Manual: Next button / Auto: Pause/Resume button - same position */}
-          {game.manualMode ? (
+          {/* Manual: Next button / Auto: Pause/Resume button */}
+          {(game.manualMode ? (
             actions.triggerTick && (
               <button
                 onClick={actions.triggerTick}
                 disabled={game.streaming?.isStreaming}
-                className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  game.streaming?.isStreaming
+                    ? "bg-primary/20 text-primary/70"
+                    : "bg-primary/10 text-primary hover:bg-primary/20 active:scale-95"
+                }`}
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-                Next
+                {game.streaming?.isStreaming ? (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" className="animate-spin">
+                      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray="32" strokeLinecap="round" />
+                    </svg>
+                    Running...
+                  </>
+                ) : (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Next
+                  </>
+                )}
               </button>
             )
           ) : (
@@ -279,7 +300,7 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
           {(game.attachedTo || game.directorMode) && (
             <button
               onClick={() => setCharacterPanelOpen(!characterPanelOpen)}
-              className={`lg:hidden p-1.5 -mr-1.5 transition-colors ${
+              className={`lg:hidden p-2.5 -m-2 transition-colors ${
                 game.directorMode
                   ? "text-amber-400 hover:text-amber-300"
                   : "text-muted-foreground hover:text-foreground"
@@ -287,12 +308,12 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
               aria-label={game.directorMode ? "Toggle director panel" : "Toggle character panel"}
             >
               {game.directorMode ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M3 11l18-5v12L3 13v-2z" />
                   <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
                 </svg>
               ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                   <circle cx="12" cy="7" r="4" />
                 </svg>
@@ -331,6 +352,7 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
                 onClose={() => setSidebarOpen(false)}
                 onCharacterAttached={handleCharacterAttached}
                 onAddCharacter={onAddCharacter}
+                onReset={onReset}
               />
             </motion.div>
           )}
@@ -362,6 +384,8 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
                   actions={actions}
                   onClose={() => setSidebarOpen(false)}
                   onCharacterAttached={handleCharacterAttached}
+                  onAddCharacter={onAddCharacter}
+                  onReset={onReset}
                 />
               </motion.div>
             </div>
@@ -397,6 +421,8 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
             directorMode={game.directorMode ?? false}
             pendingDirectorGuidance={game.pendingDirectorGuidance}
             wideMode={wideMode}
+            multiplayer={game.multiplayer}
+            isMyReady={isMyReady}
           />
 
           {/* Turn state indicator - only in multiplayer */}
@@ -410,7 +436,7 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
                 turnStartedAt: Date.now() - (60 - game.turnState.countdown) * 1000,
               } : null}
               myNickname={game.nickname ?? null}
-              isMyReady={game.nickname ? !game.turnState?.waiting_for.includes(game.nickname) : true}
+              isMyReady={isMyReady}
               onReady={actions.ready}
             />
           )}

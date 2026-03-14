@@ -396,7 +396,7 @@ function TickEntry({ tick, attachedTo: _attachedTo, isFocused, isNew, wasStreame
         transition={{ delay: 0.1, duration: 0.3 }}
       >
         <span
-          className={`text-[10px] font-mono transition-colors duration-200 cursor-default ${
+          className={`text-xs sm:text-[10px] font-mono transition-colors duration-200 cursor-default ${
             isFocused ? "text-primary/80" : "text-muted-foreground/60"
           }`}
           onMouseEnter={handleMouseEnter}
@@ -404,19 +404,19 @@ function TickEntry({ tick, attachedTo: _attachedTo, isFocused, isNew, wasStreame
         >
           {formatTimestamp(tick.created_at)}
         </span>
+        {/* Events - hidden on mobile, visible on desktop */}
         {tick.events.length > 0 && (
-          <div className="flex gap-1.5 flex-wrap">
+          <div className="hidden sm:flex gap-1.5 flex-wrap">
             {tick.events.map((evt, i) => (
               <motion.div
                 key={i}
                 initial={false}
                 animate={{
-                  opacity: isHovering ? 1 : 0,
+                  opacity: isHovering ? 1 : 0.7,
                   scale: isHovering ? 1 : 0.95,
                 }}
                 transition={{
                   duration: 0.12,
-                  // Stagger only on first reveal, instant after
                   delay: isRevealing ? i * 0.2 : 0,
                   ease: [0.25, 0.46, 0.45, 0.94],
                 }}
@@ -454,7 +454,7 @@ function TickEntry({ tick, attachedTo: _attachedTo, isFocused, isNew, wasStreame
                 className="text-sm"
               >
                 <span
-                  className="text-xs font-medium text-muted-foreground hover:text-primary cursor-pointer transition-colors"
+                  className="text-sm sm:text-xs font-medium text-muted-foreground hover:text-primary cursor-pointer transition-colors px-1 -mx-1 py-0.5"
                   onMouseEnter={() => onHoverCharacter?.(name)}
                   onMouseLeave={() => onHoverCharacter?.(null)}
                   onClick={() => onTapCharacter?.(name)}

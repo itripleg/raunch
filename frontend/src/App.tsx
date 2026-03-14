@@ -140,6 +140,21 @@ function App() {
     actions.listCharacters();
   }, [actions]);
 
+  // Handle world reset
+  const handleReset = useCallback(async () => {
+    if (!confirm("Reset the world? All characters will be removed.")) return;
+    try {
+      const res = await fetch(`${apiUrl}/api/v1/world/reset`, { method: "POST" });
+      if (res.ok) {
+        // Disconnect and reconnect to get fresh state
+        actions.disconnect();
+        setTimeout(() => window.location.reload(), 500);
+      }
+    } catch (e) {
+      console.error("Reset failed:", e);
+    }
+  }, [apiUrl, actions]);
+
   // Check world status and scenarios from REST API
   const checkWorldStatus = useCallback(async () => {
     try {
@@ -244,6 +259,34 @@ function App() {
             onScenarioLoaded={handleScenarioLoaded}
           />
         </motion.div>
+      ) : game.characterNames.length === 0 || !game.attachedTo ? (
+        // Show character wizard when no characters exist or player hasn't attached
+        <motion.div
+          key="character-wizard"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.8, ease: "easeInOut" }}
+          className="min-h-screen bg-background"
+        >
+          <CharacterWizard
+            apiUrl={apiUrl}
+            onCharacterAdded={(char) => {
+              // Refresh characters and attach to the new one
+              actions.listCharacters();
+              // Attach to the newly created character
+              actions.attach(char.name);
+            }}
+            onClose={() => {
+              // In initial setup, we don't allow closing without creating
+              // But if they somehow do, refresh to check for characters
+              actions.listCharacters();
+            }}
+            existingCharacters={game.characterNames}
+            playerNickname={nickname}
+            isInitialSetup={true}
+          />
+        </motion.div>
       ) : (
         <motion.div
           key="game"
@@ -257,6 +300,7 @@ function App() {
               game={game}
               actions={actions}
               onAddCharacter={() => setShowCharacterWizard(true)}
+              onReset={handleReset}
             />
           </ErrorBoundary>
 

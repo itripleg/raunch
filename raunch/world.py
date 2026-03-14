@@ -18,16 +18,16 @@ class WorldState:
         self.world_name: str = name or f"world-{self.world_id}"
         self.created_at: str = datetime.now().strftime("%Y-%m-%d %H:%M")
         self.tick_count: int = 0
-        self.world_time: str = "Dawn of the First Day"
-        self.mood: str = "anticipation"
+        self.world_time: str = "Late Friday Night"
+        self.mood: str = "loud and electric"
         self.locations: Dict[str, Dict[str, Any]] = {
-            "The Nexus Station": {
-                "description": "A sprawling orbital hub where magic-infused starships dock alongside ancient spell-gates. Markets, taverns, and pleasure houses line its curved corridors.",
+            "The Rusty Nail": {
+                "description": "A grungy dive bar plastered with band stickers and concert posters. The jukebox blasts punk and metal while neon signs flicker over a sticky bar. Leather jackets, tattoos, and cheap beer. The kind of place where mosh pits break out and nobody calls the cops.",
                 "characters": [],
             }
         }
         self.scenario: Optional[Dict[str, Any]] = None  # Generated scenario context
-        self.multiplayer: bool = False  # Solo mode by default
+        self.multiplayer: bool = True  # Multiplayer for demo
         self.active_events: List[str] = []
         self.event_log: List[Dict[str, Any]] = []
 

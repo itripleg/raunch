@@ -95,7 +95,7 @@ export function PlayerPresence({ players, myPlayerId }: Props) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.95 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute top-full right-0 mt-1.5 z-50 min-w-[200px] max-w-[280px] bg-card/95 backdrop-blur-md border border-border/50 rounded-lg shadow-lg shadow-black/20 overflow-hidden"
+            className="absolute top-full right-0 mt-1.5 z-50 min-w-[180px] sm:min-w-[200px] max-w-[85vw] sm:max-w-[280px] bg-card/95 backdrop-blur-md border border-border/50 rounded-lg shadow-lg shadow-black/20 overflow-hidden"
           >
             {/* Header */}
             <div className="px-3 py-2 border-b border-border/30 bg-secondary/30">
