@@ -2,11 +2,55 @@
 
 import json
 import os
+import re
 import sqlite3
 import threading
 from typing import Dict, Any, List, Optional
 
 from .config import SAVES_DIR
+
+
+def _extract_character_fields(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract character fields from raw JSON if needed."""
+    # If already parsed, return as-is
+    if data.get("inner_thoughts") or data.get("action") or data.get("dialogue"):
+        return data
+
+    # Check for raw field
+    raw = data.get("raw")
+    if not raw or not isinstance(raw, str):
+        return data
+
+    extracted = dict(data)
+
+    try:
+        # Strip markdown code fences
+        text = raw
+        if "```json" in text:
+            text = text.split("```json", 1)[1]
+        if "```" in text:
+            text = text.split("```", 1)[0]
+
+        # Find and parse JSON
+        first = text.find("{")
+        last = text.rfind("}")
+        if first != -1 and last != -1:
+            parsed = json.loads(text[first:last + 1])
+            extracted.update(parsed)
+    except (json.JSONDecodeError, IndexError, ValueError):
+        # Regex fallback
+        def extract_field(field: str) -> Optional[str]:
+            match = re.search(rf'"{field}"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
+            if match:
+                return match.group(1).replace("\\n", "\n").replace('\\"', '"')
+            return None
+
+        for field in ["inner_thoughts", "action", "dialogue", "emotional_state", "desires_update"]:
+            val = extract_field(field)
+            if val:
+                extracted[field] = val
+
+    return extracted
 
 DB_PATH = os.path.join(SAVES_DIR, "history.db")
 
@@ -72,6 +116,9 @@ def save_tick(world_id: str, tick: int, narration: str, events: List[str],
 def save_character_tick(world_id: str, tick: int, character_name: str,
                         data: Dict[str, Any]) -> None:
     """Record a character's tick output."""
+    # Extract fields from raw JSON if needed
+    extracted = _extract_character_fields(data)
+
     conn = _get_conn()
     conn.execute(
         """INSERT INTO character_ticks
@@ -80,12 +127,12 @@ def save_character_tick(world_id: str, tick: int, character_name: str,
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             world_id, tick, character_name,
-            data.get("inner_thoughts"),
-            data.get("action"),
-            data.get("dialogue"),
-            data.get("emotional_state"),
-            data.get("desires_update"),
-            json.dumps(data),
+            extracted.get("inner_thoughts"),
+            extracted.get("action"),
+            extracted.get("dialogue"),
+            extracted.get("emotional_state"),
+            extracted.get("desires_update"),
+            json.dumps(data),  # Still save original for debugging
         ),
     )
     conn.commit()
@@ -154,6 +201,110 @@ def get_character_history(world_id: str, character_name: str,
         }
         for r in reversed(rows)
     ]
+
+
+def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
+                   include_raw: bool = True) -> Dict[str, Any]:
+    """Get raw database data for debugging.
+
+    Returns tick and character_tick data with full raw_json,
+    identifies refusals, parsing failures, etc.
+    """
+    conn = _get_conn()
+
+    # Get tick data
+    tick_rows = conn.execute(
+        "SELECT id, tick, narration, events, world_time, mood, created_at "
+        "FROM ticks WHERE world_id = ? ORDER BY tick DESC LIMIT ? OFFSET ?",
+        (world_id, limit, offset),
+    ).fetchall()
+
+    ticks = []
+    for r in tick_rows:
+        ticks.append({
+            "id": r["id"],
+            "tick": r["tick"],
+            "narration": r["narration"],
+            "events": json.loads(r["events"]) if r["events"] else [],
+            "world_time": r["world_time"],
+            "mood": r["mood"],
+            "created_at": r["created_at"],
+        })
+
+    # Get character tick data with raw_json
+    char_rows = conn.execute(
+        "SELECT id, tick, character_name, inner_thoughts, action, dialogue, "
+        "emotional_state, desires_update, raw_json, created_at "
+        "FROM character_ticks WHERE world_id = ? ORDER BY tick DESC, id DESC LIMIT ? OFFSET ?",
+        (world_id, limit * 3, offset),  # More char ticks since multiple per tick
+    ).fetchall()
+
+    character_ticks = []
+    for r in char_rows:
+        raw_json = r["raw_json"]
+        raw_parsed = None
+        is_refusal = False
+        parse_error = None
+
+        if raw_json:
+            try:
+                raw_parsed = json.loads(raw_json)
+                # Check if it's a refusal (raw field contains refusal text)
+                raw_content = raw_parsed.get("raw", "")
+                if isinstance(raw_content, str):
+                    refusal_phrases = [
+                        "I can't roleplay",
+                        "I'm not able to engage",
+                        "I appreciate your interest",
+                        "I cannot continue",
+                        "explicit sexual",
+                    ]
+                    is_refusal = any(phrase.lower() in raw_content.lower() for phrase in refusal_phrases)
+            except json.JSONDecodeError as e:
+                parse_error = str(e)
+
+        entry = {
+            "id": r["id"],
+            "tick": r["tick"],
+            "character_name": r["character_name"],
+            "inner_thoughts": r["inner_thoughts"],
+            "action": r["action"],
+            "dialogue": r["dialogue"],
+            "emotional_state": r["emotional_state"],
+            "desires_update": r["desires_update"],
+            "created_at": r["created_at"],
+            "is_refusal": is_refusal,
+            "parse_error": parse_error,
+            "has_extracted_data": bool(r["inner_thoughts"] or r["action"] or r["dialogue"]),
+        }
+        if include_raw:
+            entry["raw_json"] = raw_parsed
+        character_ticks.append(entry)
+
+    # Get summary stats
+    stats = {
+        "total_ticks": conn.execute(
+            "SELECT COUNT(*) FROM ticks WHERE world_id = ?", (world_id,)
+        ).fetchone()[0],
+        "total_character_ticks": conn.execute(
+            "SELECT COUNT(*) FROM character_ticks WHERE world_id = ?", (world_id,)
+        ).fetchone()[0],
+        "refusals": conn.execute(
+            "SELECT COUNT(*) FROM character_ticks WHERE world_id = ? AND inner_thoughts IS NULL AND raw_json IS NOT NULL",
+            (world_id,)
+        ).fetchone()[0],
+        "successfully_parsed": conn.execute(
+            "SELECT COUNT(*) FROM character_ticks WHERE world_id = ? AND inner_thoughts IS NOT NULL",
+            (world_id,)
+        ).fetchone()[0],
+    }
+
+    return {
+        "world_id": world_id,
+        "ticks": ticks,
+        "character_ticks": character_ticks,
+        "stats": stats,
+    }
 
 
 def get_full_tick(world_id: str, tick: int) -> Optional[Dict[str, Any]]:

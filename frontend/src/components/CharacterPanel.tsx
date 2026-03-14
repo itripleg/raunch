@@ -31,7 +31,72 @@ function extractThoughtsFromStream(raw: string): string {
   return "";
 }
 
-export function CharacterPanel({ name, data, pendingInfluence, streamingText, onClose, isPreview }: Props) {
+/** Extract all character fields from raw unparsed JSON */
+function extractCharacterData(rawData: CharacterTick | undefined): CharacterTick | undefined {
+  if (!rawData) return undefined;
+
+  // If data is already parsed (has inner_thoughts), return as-is
+  if (rawData.inner_thoughts || rawData.action || rawData.dialogue) {
+    return rawData;
+  }
+
+  // Check for raw field that needs parsing
+  const raw = (rawData as Record<string, unknown>).raw as string | undefined;
+  if (!raw || typeof raw !== "string") return rawData;
+
+  const extracted: CharacterTick = { ...rawData };
+
+  try {
+    // Try to find and parse JSON from the raw string
+    let text = raw;
+
+    // Strip markdown code fences
+    if (text.includes("```json")) {
+      text = text.split("```json")[1] || text;
+    }
+    if (text.includes("```")) {
+      text = text.split("```")[0] || text;
+    }
+
+    // Find JSON object
+    const first = text.indexOf("{");
+    const last = text.lastIndexOf("}");
+    if (first !== -1 && last !== -1) {
+      const parsed = JSON.parse(text.slice(first, last + 1));
+      if (parsed.inner_thoughts) extracted.inner_thoughts = parsed.inner_thoughts;
+      if (parsed.action) extracted.action = parsed.action;
+      if (parsed.dialogue) extracted.dialogue = parsed.dialogue;
+      if (parsed.emotional_state) extracted.emotional_state = parsed.emotional_state;
+      if (parsed.desires_update) extracted.desires_update = parsed.desires_update;
+    }
+  } catch {
+    // JSON parse failed, try regex extraction
+    const extractField = (field: string): string | undefined => {
+      const match = raw.match(new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`, "s"));
+      if (match?.[1]) {
+        return match[1]
+          .replace(/\\n/g, "\n")
+          .replace(/\\t/g, "\t")
+          .replace(/\\"/g, '"')
+          .replace(/\\\\/g, "\\");
+      }
+      return undefined;
+    };
+
+    extracted.inner_thoughts = extractField("inner_thoughts");
+    extracted.action = extractField("action");
+    extracted.dialogue = extractField("dialogue");
+    extracted.emotional_state = extractField("emotional_state");
+    extracted.desires_update = extractField("desires_update");
+  }
+
+  return extracted;
+}
+
+export function CharacterPanel({ name, data: rawData, pendingInfluence, streamingText, onClose, isPreview }: Props) {
+  // Extract character data from raw JSON if needed
+  const data = useMemo(() => extractCharacterData(rawData), [rawData]);
+
   const streamingThoughts = useMemo(
     () => extractThoughtsFromStream(streamingText || ""),
     [streamingText]

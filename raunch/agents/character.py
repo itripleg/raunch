@@ -40,15 +40,15 @@ class Character(Agent):
         self.relationships: Dict[str, str] = {}
         self.pregnancy: Optional[Dict[str, Any]] = None
 
-    def tick(self, world_context: str) -> Dict[str, Any]:
+    def tick(self, world_context: str, _retry: bool = False) -> Dict[str, Any]:
         """Run a character tick — returns inner thoughts + action."""
-        result = super().tick(world_context)
+        result = super().tick(world_context, _retry=_retry)
         self._update_from_result(result)
         return result
 
-    def tick_stream(self, world_context: str, on_delta=None) -> Dict[str, Any]:
+    def tick_stream(self, world_context: str, on_delta=None, _retry: bool = False) -> Dict[str, Any]:
         """Run a character tick with streaming — returns inner thoughts + action."""
-        result = super().tick_stream(world_context, on_delta=on_delta)
+        result = super().tick_stream(world_context, on_delta=on_delta, _retry=_retry)
         self._update_from_result(result)
         return result
 

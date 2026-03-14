@@ -8,6 +8,7 @@ import { Sidebar } from "./Sidebar";
 import { ActionBar } from "./ActionBar";
 import { TurnStateUI } from "./TurnStateUI";
 import { PlayerPresence } from "./PlayerPresence";
+import { DebugPanel } from "./DebugPanel";
 
 type GameState = {
   world: Record<string, unknown> | null;
@@ -53,6 +54,7 @@ type Actions = {
   toggleDirectorMode?: () => void;
   submitDirectorGuidance?: (text: string) => void;
   ready?: () => void;
+  sendCommand?: (cmd: string, data?: Record<string, unknown>) => void;
 };
 
 type Props = {
@@ -68,6 +70,7 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [focusedTickNum, setFocusedTickNum] = useState<number | null>(null);
   const [previewCharacter, setPreviewCharacter] = useState<string | null>(null);
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
 
   // Initialize focused tick to latest when ticks first load
@@ -258,6 +261,17 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
             )
           )}
 
+          {/* Debug button */}
+          <button
+            onClick={() => setDebugPanelOpen(true)}
+            className="p-1.5 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            title="Debug Panel"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 20h.01M8.5 3H7a2 2 0 0 0-2 2v1.5M15.5 3H17a2 2 0 0 1 2 2v1.5M8.5 21H7a2 2 0 0 1-2-2v-1.5M15.5 21H17a2 2 0 0 0 2-2v-1.5M3 8.5V7a2 2 0 0 1 2-2h1.5M21 8.5V7a2 2 0 0 0-2-2h-1.5M3 15.5V17a2 2 0 0 0 2 2h1.5M21 15.5V17a2 2 0 0 1-2 2h-1.5M12 12h.01" />
+            </svg>
+          </button>
+
           {/* Status LED with hover tooltip - desktop only */}
           <div className="relative group hidden sm:block">
             <span
@@ -386,6 +400,7 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
               onHoverCharacter={handlePreviewCharacter}
               onTapCharacter={handleTapCharacter}
               wideMode={wideMode}
+              mood={(game.world as Record<string, unknown>)?.mood as string}
             />
           </div>
 
@@ -519,6 +534,13 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
           {game.error}
         </div>
       )}
+
+      {/* Debug panel */}
+      <DebugPanel
+        isOpen={debugPanelOpen}
+        onClose={() => setDebugPanelOpen(false)}
+        sendCommand={actions.sendCommand ?? (() => {})}
+      />
     </div>
   );
 }

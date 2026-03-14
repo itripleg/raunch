@@ -207,28 +207,59 @@ function reducer(state: State, action: Action): State {
         paused: (action.data as { paused?: boolean }).paused ?? state.paused,
       };
     case "HISTORY": {
-      // Convert history ticks to TickData and merge with existing live ticks
-      const existingTickNums = new Set(state.ticks.map(t => t.tick));
-      const historyAsTicks: TickData[] = action.ticks
-        .filter(h => !existingTickNums.has(h.tick))
-        .map(h => ({
+      // Convert history ticks to TickData, merging with existing live ticks
+      // History has full character data from DB; live ticks may have partial data
+      // (only attached character's inner_thoughts). We need to merge, not replace.
+      const existingTickMap = new Map(state.ticks.map(t => [t.tick, t]));
+
+      const historyAsTicks: TickData[] = action.ticks.map(h => {
+        const existing = existingTickMap.get(h.tick);
+        const historyCharacters = (h.characters || {}) as Record<string, CharacterTick>;
+
+        if (existing) {
+          // Merge: history has full data, existing may have partial
+          // For each character, prefer history data (has inner_thoughts from DB)
+          // but keep any live data that might be more recent
+          const mergedCharacters: Record<string, CharacterTick> = { ...historyCharacters };
+          for (const [name, liveData] of Object.entries(existing.characters)) {
+            if (!mergedCharacters[name]) {
+              mergedCharacters[name] = liveData;
+            } else {
+              // History has full data, but merge in case live has something newer
+              mergedCharacters[name] = {
+                ...mergedCharacters[name],
+                ...liveData,
+                // Prefer history's inner_thoughts if live doesn't have it
+                inner_thoughts: liveData.inner_thoughts || mergedCharacters[name].inner_thoughts,
+              };
+            }
+          }
+          return {
+            ...existing,
+            narration: h.narration || existing.narration,
+            events: h.events || existing.events,
+            characters: mergedCharacters,
+            created_at: h.created_at || existing.created_at,
+          };
+        }
+
+        return {
           tick: h.tick,
           narration: h.narration || "",
           events: h.events || [],
-          characters: (h.characters || {}) as Record<string, CharacterTick>,
+          characters: historyCharacters,
           attached_to: null,
           created_at: h.created_at,
-        }));
-      const merged = [...historyAsTicks, ...state.ticks];
-      merged.sort((a, b) => a.tick - b.tick);
-      // Final dedupe pass - keep last occurrence of each tick number
-      const seen = new Set<number>();
-      const deduped = merged.filter(t => {
-        if (seen.has(t.tick)) return false;
-        seen.add(t.tick);
-        return true;
+        };
       });
-      return { ...state, ticks: deduped, history: action.ticks };
+
+      // Merge with any ticks that weren't in history (shouldn't happen normally)
+      const historyTickNums = new Set(action.ticks.map(h => h.tick));
+      const nonHistoryTicks = state.ticks.filter(t => !historyTickNums.has(t.tick));
+      const merged = [...historyAsTicks, ...nonHistoryTicks];
+      merged.sort((a, b) => a.tick - b.tick);
+
+      return { ...state, ticks: merged, history: action.ticks };
     }
     case "CHARACTER_HISTORY":
       return { ...state, characterHistory: { name: action.character, ticks: action.ticks } };
@@ -514,6 +545,11 @@ export function useGame(wsUrl: string) {
           all_ready: msg.all_ready as boolean,
         });
         break;
+      case "debug":
+        // Dispatch custom event for DebugPanel to receive
+        console.log("[useGame] Received debug data, dispatching event", msg.stats);
+        window.dispatchEvent(new CustomEvent("raunch-debug-data", { detail: msg }));
+        break;
       // tick_start, stream_delta, stream_done handled synchronously above
     }
   }, [lastMessage]);
@@ -558,6 +594,10 @@ export function useGame(wsUrl: string) {
           send({ cmd: "ready" });
         }
       },
+      // Debug
+      fetchDebug: (limit = 50) => send({ cmd: "debug", limit, include_raw: true }),
+      // Raw send for custom commands
+      sendCommand: (cmd: string, data?: Record<string, unknown>) => send({ cmd, ...data }),
     }),
     [connect, disconnect, send]
   );

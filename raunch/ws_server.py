@@ -288,10 +288,25 @@ class WebSocketServer:
                 await client.send({"type": "error", "message": "Not in manual mode"})
             elif self.orch._paused:
                 await client.send({"type": "error", "message": "Simulation is paused"})
-            elif self.orch.trigger_tick():
+            elif self.orch.trigger_tick(host_override=False):
                 await client.send({"type": "tick_triggered"})
             else:
                 await client.send({"type": "error", "message": "Could not trigger tick"})
+
+        elif cmd == "debug":
+            # Return raw database data for debugging
+            logger.info("[WS] Debug command received")
+            limit = msg.get("limit", 20)
+            offset = msg.get("offset", 0)
+            include_raw = msg.get("include_raw", True)
+            debug_data = db.get_debug_data(
+                self.orch.world.world_id,
+                limit=limit,
+                offset=offset,
+                include_raw=include_raw
+            )
+            logger.info(f"[WS] Sending debug data: {debug_data['stats']}")
+            await client.send({"type": "debug", **debug_data})
 
         else:
             await client.send({"type": "error", "message": f"Unknown command: {cmd}"})

@@ -81,6 +81,7 @@ class Orchestrator:
         self._pause_event = threading.Event()  # Signaled when pause state changes
         self._pause_event.set()  # Start unpaused (set = not paused)
         self._manual_tick_event = threading.Event()  # For manual tick mode
+        self._host_triggered = False  # True when tick triggered by CLI/host (bypasses multiplayer wait)
 
         # Influence system - whisper suggestions to characters
         self._influences: Dict[str, str] = {}  # character_name -> influence text
@@ -437,8 +438,13 @@ class Orchestrator:
                         break
 
             # Turn-based multiplayer: wait for all players ready OR timeout
+            # Skip this wait if tick was host-triggered (CLI override)
             tick_trigger_reason = 'auto'  # Default for non-multiplayer mode
-            if self._player_ready_states:
+            if self._host_triggered:
+                tick_trigger_reason = 'host'
+                self._host_triggered = False  # Reset for next tick
+                logger.info("Tick triggered by host, skipping multiplayer wait")
+            elif self._player_ready_states:
                 # Initialize turn start time if not set
                 if self._turn_start_time is None:
                     self._turn_start_time = time.time()
@@ -542,14 +548,19 @@ class Orchestrator:
             self.tick_interval = max(10, min(86400, seconds))
             logger.info(f"Tick interval set to {self.tick_interval}s")
 
-    def trigger_tick(self) -> bool:
-        """Manually trigger the next tick (only works in manual mode)."""
+    def trigger_tick(self, host_override: bool = True) -> bool:
+        """Manually trigger the next tick (only works in manual mode).
+
+        Args:
+            host_override: If True, bypasses multiplayer ready-check (CLI/host triggered).
+        """
         if self.tick_interval != 0:
             logger.warning("trigger_tick() called but not in manual mode")
             return False
         if self._paused:
             logger.warning("trigger_tick() called but simulation is paused")
             return False
+        self._host_triggered = host_override
         self._manual_tick_event.set()
         return True
 

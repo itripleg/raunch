@@ -5,6 +5,7 @@ import os
 import socket
 import logging
 import threading
+import time
 from typing import Dict
 import click
 from rich.console import Console
@@ -14,7 +15,12 @@ from .orchestrator import Orchestrator
 from .agents.character import Character
 from .server import GameServer
 from .ws_server import WebSocketServer, WS_PORT
-from .display import render_tick, render_character_list, render_world_state
+from .display import (
+    render_tick, render_character_list, render_world_state, render_character_history,
+    render_server_startup, render_port_error, render_port_conflict,
+    render_server_already_running, check_port_available, check_raunch_server_running,
+    start_tick_loading, stop_tick_loading, update_tick_loading,
+)
 from .config import CHARACTERS_DIR, CLIENT_HOST, SERVER_PORT, SAVES_DIR
 from .wizard import generate_scenario, random_scenario, save_scenario, load_scenario, list_scenarios
 from .wizard import SETTINGS, KINK_POOLS, VIBES
@@ -25,6 +31,46 @@ logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
 logging.getLogger("websockets").setLevel(logging.ERROR)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logging.getLogger("httpcore").setLevel(logging.ERROR)
+
+
+def _kill_raunch_servers() -> int:
+    """Kill any running raunch server processes. Returns count killed."""
+    import subprocess
+    import sys
+
+    killed = 0
+
+    if sys.platform == "win32":
+        # Windows: find python processes with 'raunch' in command line
+        try:
+            # Get all python processes
+            result = subprocess.run(
+                ["wmic", "process", "where", "name='python.exe'", "get", "processid,commandline"],
+                capture_output=True, text=True, timeout=5
+            )
+            for line in result.stdout.split("\n"):
+                if "raunch" in line.lower() and "start" in line.lower():
+                    # Extract PID (last number on the line)
+                    parts = line.strip().split()
+                    if parts:
+                        try:
+                            pid = int(parts[-1])
+                            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=5)
+                            killed += 1
+                        except (ValueError, subprocess.TimeoutExpired):
+                            pass
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+    else:
+        # Unix: use pkill
+        try:
+            result = subprocess.run(["pkill", "-f", "raunch.*start"], capture_output=True, timeout=5)
+            if result.returncode == 0:
+                killed = 1  # pkill doesn't tell us how many
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    return killed
 
 
 @click.group()
@@ -43,7 +89,8 @@ def cli(ctx):
 @click.option("--name", "world_name", default=None, help="Name this world")
 @click.option("--scenario", "scenario_name", default=None, help="Load a scenario (from wizard/roll)")
 @click.option("--headless", is_flag=True, default=False, help="Run without interactive console (for background/daemon mode)")
-def start(save_name, world_name, scenario_name, headless):
+@click.option("--force", "-f", is_flag=True, default=False, help="Kill any existing server and start fresh")
+def start(save_name, world_name, scenario_name, headless, force):
     """Start the world simulation server."""
     orch = Orchestrator()
 
@@ -84,7 +131,42 @@ def start(save_name, world_name, scenario_name, headless):
     if not orch.characters:
         console.print("[cyan]No characters yet - players will create on join[/cyan]")
 
-    # Start the TCP server
+    # ─── PRE-FLIGHT: Check if server already running ────────────────────────
+    existing_server = check_raunch_server_running(SERVER_PORT)
+    if existing_server:
+        if force:
+            # Kill the existing server
+            console.print("[yellow]Killing existing server...[/yellow]")
+            _kill_raunch_servers()
+            time.sleep(1)
+            console.print("[green]Done.[/green]\n")
+        else:
+            # Pass the requested scenario name if any
+            requested = scenario_name or world_name
+            render_server_already_running(existing_server, requested_scenario=requested)
+            console.print("[dim]Tip: Use --force or -f to kill existing server and start fresh[/dim]\n")
+            return
+
+    # ─── PRE-FLIGHT PORT CHECKS ────────────────────────────────────────────
+    ports_ok = True
+
+    if not check_port_available(SERVER_PORT):
+        render_port_conflict(SERVER_PORT, "TCP Game Server")
+        ports_ok = False
+
+    if not check_port_available(WS_PORT):
+        render_port_conflict(WS_PORT, "WebSocket Server")
+        ports_ok = False
+
+    if not check_port_available(8000):
+        render_port_conflict(8000, "REST API Server")
+        ports_ok = False
+
+    if not ports_ok:
+        console.print("[yellow]Fix the port conflicts above and try again.[/yellow]")
+        return
+
+    # ─── START SERVERS ─────────────────────────────────────────────────────
     server = GameServer(orch)
     server.start()
 
@@ -94,32 +176,77 @@ def start(save_name, world_name, scenario_name, headless):
     from .api import app as fastapi_app, set_orchestrator
 
     ws_server = WebSocketServer(orch)
+    ws_error = None
 
     def _run_ws():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(ws_server.start())
-        loop.run_forever()
+        nonlocal ws_error
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(ws_server.start())
+            loop.run_forever()
+        except OSError as e:
+            ws_error = e
 
     ws_thread = threading.Thread(target=_run_ws, daemon=True)
     ws_thread.start()
+    time.sleep(0.3)  # Give it a moment to start or fail
+
+    if ws_error:
+        render_port_error(WS_PORT, "WebSocket Server")
+        server.stop()
+        return
 
     # Start the FastAPI REST API server (port 8000) in its own thread
     set_orchestrator(orch)
+    api_error = None
 
     def _run_api():
-        uvicorn.run(fastapi_app, host="127.0.0.1", port=8000, log_level="warning", ws="wsproto")
+        nonlocal api_error
+        try:
+            uvicorn.run(fastapi_app, host="127.0.0.1", port=8000, log_level="error", ws="wsproto")
+        except OSError as e:
+            api_error = e
 
     api_thread = threading.Thread(target=_run_api, daemon=True)
     api_thread.start()
-    console.print("[dim]REST API running on http://127.0.0.1:8000[/dim]")
+    time.sleep(0.3)
 
-    # Wire up streaming callback for real-time text
+    if api_error:
+        render_port_error(8000, "REST API Server")
+        server.stop()
+        return
+
+    # Track tick loading state
+    tick_loading_active = False
+    tick_animation_thread = None
+
+    def _run_loading_animation(tick_num: int):
+        """Background thread to update loading animation."""
+        nonlocal tick_loading_active
+        start_tick_loading(tick_num)
+        while tick_loading_active:
+            update_tick_loading()
+            time.sleep(0.08)
+
+    # Wire up streaming callback for real-time text + loading animation
     def on_stream(tick_num: int, source: str, event_type: str, data: str):
-        if event_type == "start":
+        nonlocal tick_loading_active, tick_animation_thread
+
+        if event_type == "start" and source == "narrator":
+            # Start loading animation when narrator begins
+            tick_loading_active = True
+            tick_animation_thread = threading.Thread(
+                target=_run_loading_animation,
+                args=(tick_num,),
+                daemon=True
+            )
+            tick_animation_thread.start()
             ws_server.broadcast_tick_start(tick_num, orch._last_tick_trigger_reason)
+
         elif event_type == "delta":
             ws_server.broadcast_stream_delta(tick_num, source, data)
+
         elif event_type == "done":
             ws_server.broadcast_stream_done(tick_num, source)
 
@@ -127,6 +254,14 @@ def start(save_name, world_name, scenario_name, headless):
 
     # Wire up: orchestrator ticks → server broadcasts + local display
     def on_tick(results):
+        nonlocal tick_loading_active
+
+        # Stop loading animation
+        if tick_loading_active:
+            tick_loading_active = False
+            time.sleep(0.1)  # Let animation thread finish
+            stop_tick_loading()
+
         try:
             render_tick(results, attached_to=orch.attached_to)
         except Exception as e:
@@ -142,26 +277,16 @@ def start(save_name, world_name, scenario_name, headless):
 
     orch.add_tick_callback(on_tick)
 
+    # ─── ANIMATED STARTUP BANNER ──────────────────────────────────────────
     world = orch.world
-    console.print(
-        Panel(
-            f"[bold]RAUNCH SERVER[/bold] — {world.world_name} [{world.world_id}]\n\n"
-            f"Created: {world.created_at} | Tick: {world.tick_count}\n"
-            f"TCP: port {SERVER_PORT} | WebSocket: port {WS_PORT}\n\n"
-            "Attach from another terminal:\n"
-            f"  [bold]raunch attach <character_name>[/bold]\n"
-            f"  [bold]raunch status[/bold]\n\n"
-            "Server commands:\n"
-            "  [bold]n[/bold] or [bold]Enter[/bold] — Next tick (manual mode)\n"
-            "  [bold]c[/bold]  — List characters\n"
-            "  [bold]w[/bold]  — Show world state\n"
-            "  [bold]p[/bold]  — Pause/resume\n"
-            "  [bold]t[/bold]  — Show tick interval\n"
-            "  [bold]t N[/bold] — Set tick interval (0=manual, 10+=auto)\n"
-            "  [bold]r[/bold]  — Refresh OAuth token\n"
-            "  [bold]q[/bold]  — Quit & save",
-            border_style="bright_magenta",
-        )
+    render_server_startup(
+        world_name=world.world_name,
+        world_id=world.world_id,
+        created_at=world.created_at,
+        tick_count=world.tick_count,
+        tcp_port=SERVER_PORT,
+        ws_port=WS_PORT,
+        animated=not headless,
     )
 
     orch.start()
@@ -171,7 +296,6 @@ def start(save_name, world_name, scenario_name, headless):
         if headless:
             # Headless mode: just wait forever, no input processing
             console.print("[dim]Running in headless mode (Ctrl+C to stop)[/dim]")
-            import time
             while True:
                 time.sleep(60)
         while True:
@@ -183,10 +307,9 @@ def start(save_name, world_name, scenario_name, headless):
             if not cmd or cmd == "n":
                 # Empty input or 'n' = trigger next tick in manual mode
                 if orch.is_manual_mode:
-                    if orch.trigger_tick():
-                        console.print("[dim]Advancing...[/dim]")
-                    else:
-                        console.print("[yellow]Cannot tick (paused?)[/yellow]")
+                    if not orch.trigger_tick():
+                        console.print("[yellow]Cannot tick (paused or already running)[/yellow]")
+                    # Animation handles the "Advancing..." message
                 elif cmd == "n":
                     console.print("[dim]Not in manual mode (use 't 0' to enable)[/dim]")
                 continue
@@ -472,21 +595,7 @@ def _handle_server_message(msg):
     elif msg_type == "character_history":
         char = msg.get("character", "?")
         ticks = msg.get("ticks", [])
-        if not ticks:
-            console.print(f"[dim]No history for {char}.[/dim]")
-        else:
-            lines = []
-            for t in ticks:
-                thought_preview = (t.get("inner_thoughts") or "")[:150].replace("\n", " ")
-                if len(t.get("inner_thoughts") or "") > 150:
-                    thought_preview += "..."
-                action_preview = (t.get("action") or "")[:80].replace("\n", " ")
-                lines.append(
-                    f"  [bold]Tick {t['tick']}[/bold] [dim]({t.get('emotional_state', '?')})[/dim]\n"
-                    f"    [italic]{thought_preview}[/italic]\n"
-                    f"    [dim]Action: {action_preview}[/dim]"
-                )
-            console.print(Panel("\n".join(lines), title=f"{char} — Thought History", border_style="bright_magenta"))
+        render_character_history(char, ticks)
 
     elif msg_type == "replay":
         # Full tick replay with all character details
@@ -574,6 +683,34 @@ def status(host, port):
 
 
 # ---------------------------------------------------------------------------
+# KILL — stop any running servers
+# ---------------------------------------------------------------------------
+
+@cli.command()
+def kill():
+    """Kill any running raunch server processes."""
+    from .display import check_raunch_server_running
+
+    # First check if anything is running
+    server = check_raunch_server_running(SERVER_PORT)
+    if not server:
+        console.print("[dim]No raunch server detected on port {SERVER_PORT}[/dim]")
+        return
+
+    world = server.get("world", {})
+    console.print(f"[yellow]Killing server:[/yellow] {world.get('world_name', 'Unknown')}")
+
+    killed = _kill_raunch_servers()
+
+    if killed > 0:
+        console.print(f"[green]Killed {killed} process(es)[/green]")
+    else:
+        console.print("[yellow]Could not find processes to kill. Try manually:[/yellow]")
+        console.print("  [bold]tasklist | findstr python[/bold]")
+        console.print("  [bold]taskkill /F /PID <pid>[/bold]")
+
+
+# ---------------------------------------------------------------------------
 # CHARACTER MANAGEMENT
 # ---------------------------------------------------------------------------
 
@@ -617,7 +754,7 @@ def list_characters():
 # ---------------------------------------------------------------------------
 
 @cli.command()
-@click.option("--characters", "num_chars", default=3, help="Number of characters")
+@click.option("--characters", "num_chars", default=None, type=int, help="Number of characters (1-6)")
 @click.option("--quick", "-q", is_flag=True, help="Skip animations for faster experience")
 @click.option("--debug", "-d", is_flag=True, help="Show outgoing prompts for debugging content blocks")
 def wizard(num_chars, quick, debug):
@@ -636,6 +773,34 @@ def wizard(num_chars, quick, debug):
             "[italic]Answer my questions... and I shall conjure your deepest fantasies.[/]",
             border_style="bright_magenta",
         ))
+
+    # ─── CHARACTER COUNT ───────────────────────────────────────────────────
+    if num_chars is None:
+        if not quick:
+            sexy_prompt("How many souls shall dance in this tale?", "CHARACTERS")
+        else:
+            console.print("\n[bold bright_magenta]How many characters?[/]:")
+
+        char_options = ["1 — Solo exploration", "2 — Intimate encounter", "3 — Love triangle", "4+ — Group dynamics"]
+        option_display(char_options) if not quick else [console.print(f"  [dim]{i}.[/] {c}") for i, c in enumerate(char_options, 1)]
+
+        console.print()
+        console.print("  [dim italic]Pick 1-4, type a number (1-6), or Enter for random[/]")
+
+        try:
+            choice = input("\n  > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return
+
+        if not choice:
+            num_chars = rand.choice([1, 2, 2, 3, 3, 3, 4])  # Weighted toward 2-3
+        elif choice.isdigit():
+            num_chars = max(1, min(6, int(choice)))
+        else:
+            num_chars = 3  # Default fallback
+
+        char_desc = {1: "Solo journey", 2: "Duo", 3: "Trio", 4: "Quartet", 5: "Quintet", 6: "Ensemble"}.get(num_chars, f"{num_chars} characters")
+        selection_confirm(char_desc, "Cast") if not quick else console.print(f"  [green]Characters: {num_chars}[/]")
 
     # Setting
     if not quick:
@@ -773,19 +938,27 @@ def wizard(num_chars, quick, debug):
 
 
 @cli.command()
-@click.option("--characters", "num_chars", default=3, help="Number of characters")
+@click.option("--characters", "num_chars", default=None, type=int, help="Number of characters (1-6, random if not set)")
 @click.option("--quick", "-q", is_flag=True, help="Skip animations for faster experience")
 @click.option("--debug", "-d", is_flag=True, help="Show outgoing prompts for debugging content blocks")
 def roll(num_chars, quick, debug):
     """Roll the dice — generate a fully random scenario."""
+    import random as rand
     from .wizard_display import (
         roll_dice_animation, conjuring_sequence, scenario_reveal, wizard_farewell
     )
 
+    # Random character count if not specified (weighted toward 2-3)
+    if num_chars is None:
+        num_chars = rand.choice([1, 2, 2, 3, 3, 3, 4, 4])
+
     if not quick:
         roll_dice_animation()
+        # Show what we rolled
+        char_desc = {1: "solo", 2: "duo", 3: "trio", 4: "quartet"}.get(num_chars, f"{num_chars}-way")
+        console.print(f"\n  [dim]The dice decree:[/] [bold bright_magenta]{char_desc} encounter[/]\n")
     else:
-        console.print("[bright_magenta]Rolling the dice...[/bright_magenta]")
+        console.print(f"[bright_magenta]Rolling the dice... ({num_chars} characters)[/bright_magenta]")
 
     def do_generate():
         return random_scenario(num_characters=num_chars, debug=debug)
