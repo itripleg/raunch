@@ -189,6 +189,7 @@ async def load_world(request: LoadWorldRequest):
     # Apply the scenario to the orchestrator
     orch.world.scenario = scenario
     orch.world.world_name = scenario.get("scenario_name", orch.world.world_name)
+    orch.world.multiplayer = scenario.get("multiplayer", False)
 
     # Update starting location from scenario setting
     setting = scenario.get("setting", "")

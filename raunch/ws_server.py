@@ -88,12 +88,14 @@ class WebSocketServer:
             logger.info("WS client disconnected")
             # Broadcast player_left and updated player list to all remaining clients
             if client.player_id is not None:
-                # Remove from orchestrator's turn-based tracking
-                self.orch.clear_player_ready(client.player_id)
+                # Remove from orchestrator's turn-based tracking (multiplayer only)
+                if self.orch.world.multiplayer:
+                    self.orch.clear_player_ready(client.player_id)
                 await self._broadcast_player_left(client)
                 await self._broadcast_players()
                 # Broadcast turn state - their departure may trigger page if they were last non-ready
-                await self._broadcast_turn_state()
+                if self.orch.world.multiplayer:
+                    await self._broadcast_turn_state()
 
     async def _process_command(self, client: WSClient, msg: Dict[str, Any]):
         cmd = msg.get("cmd", "")
@@ -122,20 +124,23 @@ class WebSocketServer:
                 nickname = f"Player {player_count}"
             client.nickname = nickname
             client.ready = False
-            # Register player with orchestrator for turn-based tracking
-            self.orch.set_player_ready(client.player_id, False)
+            # Only register with orchestrator for turn-based tracking in multiplayer mode
+            if self.orch.world.multiplayer:
+                self.orch.set_player_ready(client.player_id, False)
             # Send confirmation to joining client
             await client.send({
                 "type": "joined",
                 "player_id": client.player_id,
                 "nickname": client.nickname,
+                "multiplayer": self.orch.world.multiplayer,
             })
             # Broadcast player_joined to all clients
             await self._broadcast_player_joined(client)
             # Broadcast updated player list to all clients
             await self._broadcast_players()
-            # Broadcast turn state so new player sees waiting-for list
-            await self._broadcast_turn_state()
+            # Broadcast turn state so new player sees waiting-for list (multiplayer only)
+            if self.orch.world.multiplayer:
+                await self._broadcast_turn_state()
 
         elif cmd == "list":
             chars = {}
@@ -203,8 +208,8 @@ class WebSocketServer:
                         "character": client.attached_to,
                         "text": text,
                     })
-                    # Auto-ready player on action submission (spec: demo behavior)
-                    if auto_ready and client.player_id:
+                    # Auto-ready player on action submission (multiplayer only)
+                    if auto_ready and client.player_id and self.orch.world.multiplayer:
                         client.ready = True
                         self.orch.set_player_ready(client.player_id, True)
                         await self._broadcast_turn_state()
@@ -215,8 +220,8 @@ class WebSocketServer:
                 # Legacy player control mode
                 self.orch.submit_player_action(text)
                 await client.send({"type": "ok", "message": "Action submitted"})
-                # Auto-ready in legacy mode too
-                if auto_ready and client.player_id:
+                # Auto-ready in legacy mode too (multiplayer only)
+                if auto_ready and client.player_id and self.orch.world.multiplayer:
                     client.ready = True
                     self.orch.set_player_ready(client.player_id, True)
                     await self._broadcast_turn_state()
@@ -249,16 +254,18 @@ class WebSocketServer:
                     "type": "director_queued",
                     "text": text,
                 })
-                # Auto-ready player on director guidance submission
-                if auto_ready and client.player_id:
+                # Auto-ready player on director guidance submission (multiplayer only)
+                if auto_ready and client.player_id and self.orch.world.multiplayer:
                     client.ready = True
                     self.orch.set_player_ready(client.player_id, True)
                     await self._broadcast_turn_state()
 
         elif cmd == "ready":
-            # Mark player as ready for the current turn
+            # Mark player as ready for the current turn (multiplayer only)
             if client.player_id is None:
                 await client.send({"type": "error", "message": "Must join before readying"})
+            elif not self.orch.world.multiplayer:
+                await client.send({"type": "error", "message": "Ready command only valid in multiplayer mode"})
             else:
                 client.ready = True
                 # Sync with orchestrator for turn-based page triggering
@@ -481,16 +488,17 @@ class WebSocketServer:
 
         from datetime import datetime
 
-        # Reset all client ready states after page completes (turn-based multiplayer)
-        for client in list(self.clients):
-            if client.player_id is not None:
-                client.ready = False
+        # Reset all client ready states after page completes (multiplayer only)
+        if self.orch.world.multiplayer:
+            for client in list(self.clients):
+                if client.player_id is not None:
+                    client.ready = False
 
-        # Schedule turn state broadcast (async from sync context)
-        try:
-            asyncio.run_coroutine_threadsafe(self._broadcast_turn_state(), self._loop)
-        except Exception:
-            pass
+            # Schedule turn state broadcast (async from sync context)
+            try:
+                asyncio.run_coroutine_threadsafe(self._broadcast_turn_state(), self._loop)
+            except Exception:
+                pass
 
         for client in list(self.clients):
             view = {

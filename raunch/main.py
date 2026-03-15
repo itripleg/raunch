@@ -20,6 +20,7 @@ from .display import (
     render_server_startup, render_port_error, render_port_conflict,
     render_server_already_running, check_port_available, check_raunch_server_running,
     start_page_loading, stop_page_loading, update_page_loading,
+    render_attach_animation, render_detach_animation,
 )
 from .config import CHARACTERS_DIR, CLIENT_HOST, SERVER_PORT, SAVES_DIR
 from .wizard import generate_scenario, random_scenario, save_scenario, load_scenario, list_scenarios
@@ -70,6 +71,37 @@ logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
 logging.getLogger("websockets").setLevel(logging.ERROR)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logging.getLogger("httpcore").setLevel(logging.ERROR)
+
+
+def _show_attach_commands():
+    """Display available commands when attached to a character."""
+    console.print()
+    console.print("[dim]You see their inner thoughts in real-time. Type [bold]?[/bold] for help.[/]")
+    console.print()
+    console.print(
+        Panel(
+            "[bold bright_cyan]NAVIGATION[/]\n"
+            "  [bold]a[/], [bold]attach[/] [dim]<name>[/]    Switch to another character\n"
+            "  [bold]d[/], [bold]detach[/]            Stop viewing inner thoughts\n"
+            "  [bold]q[/], [bold]quit[/]              Disconnect from server\n"
+            "\n"
+            "[bold bright_cyan]INFORMATION[/]\n"
+            "  [bold]c[/], [bold]characters[/]        List all characters\n"
+            "  [bold]w[/], [bold]world[/]             Show current world state\n"
+            "  [bold]s[/], [bold]status[/]            Server status & info\n"
+            "\n"
+            "[bold bright_cyan]HISTORY[/]\n"
+            "  [bold]h[/], [bold]history[/]           Recent narration history\n"
+            "  [bold]t[/], [bold]thoughts[/] [dim]<name>[/]  Character's thought history\n"
+            "  [bold]r[/], [bold]replay[/] [dim]<page>[/]    Replay a specific page\n"
+            "\n"
+            "[bold bright_cyan]ACTIONS[/]\n"
+            "  [dim]<anything else>[/]       Send as your character's action",
+            title="[bold]Commands[/]",
+            border_style="dim",
+            padding=(0, 2),
+        )
+    )
 
 
 def _kill_raunch_servers() -> int:
@@ -547,23 +579,12 @@ def attach(character, host, port):
     response = read_message()
     if response and response.get("type") == "attached":
         attached_name = response["character"]
-        console.print(
-            Panel(
-                f"Attached to [bold]{attached_name}[/bold]\n\n"
-                "You see their inner thoughts in real-time.\n"
-                "Commands:\n"
-                "  [bold]a <name>[/bold]  — Switch to another character\n"
-                "  [bold]c[/bold]         — List characters\n"
-                "  [bold]w[/bold]         — Show world state\n"
-                "  [bold]h[/bold]         — Narration history\n"
-                "  [bold]t[/bold]         — Attached character's thought history\n"
-                "  [bold]t <name>[/bold]  — Specific character's thought history\n"
-                "  [bold]r <page>[/bold]  — Replay a specific page (full detail)\n"
-                "  [bold]s[/bold]         — Server status\n"
-                "  [bold]q[/bold]         — Disconnect",
-                border_style="bright_magenta",
-            )
-        )
+
+        # Dramatic attach animation!
+        render_attach_animation(attached_name)
+
+        # Show commands after animation
+        _show_attach_commands()
     elif response and response.get("type") == "error":
         console.print(f"[red]{response['message']}[/red]")
         sock.close()
@@ -601,30 +622,46 @@ def attach(character, host, port):
 
             if not cmd or not running:
                 continue
-            elif cmd == "q":
+
+            # Parse command and arguments
+            parts = cmd.split(None, 1)
+            cmd_name = parts[0].lower() if parts else ""
+            cmd_arg = parts[1].strip() if len(parts) > 1 else ""
+
+            # Command matching (short and long forms)
+            if cmd_name in ("q", "quit", "exit"):
                 break
-            elif cmd == "c":
+            elif cmd_name in ("c", "chars", "characters"):
                 send_command({"cmd": "list"})
-            elif cmd == "w":
+            elif cmd_name in ("w", "world"):
                 send_command({"cmd": "world"})
-            elif cmd == "h":
+            elif cmd_name in ("h", "history"):
                 send_command({"cmd": "history", "count": 20})
-            elif cmd == "t":
-                send_command({"cmd": "character_history"})
-            elif cmd.startswith("t "):
-                send_command({"cmd": "character_history", "character": cmd[2:].strip()})
-            elif cmd.startswith("r "):
-                try:
-                    page_num = int(cmd[2:].strip())
-                    send_command({"cmd": "replay", "page": page_num})
-                except ValueError:
-                    console.print("[red]Usage: r <page_number>[/red]")
-            elif cmd == "s":
+            elif cmd_name in ("t", "thoughts"):
+                if cmd_arg:
+                    send_command({"cmd": "character_history", "character": cmd_arg})
+                else:
+                    send_command({"cmd": "character_history"})
+            elif cmd_name in ("r", "replay"):
+                if not cmd_arg:
+                    console.print("[red]Usage: r, replay <page_number>[/red]")
+                else:
+                    try:
+                        page_num = int(cmd_arg)
+                        send_command({"cmd": "replay", "page": page_num})
+                    except ValueError:
+                        console.print("[red]Usage: r, replay <page_number>[/red]")
+            elif cmd_name in ("s", "status"):
                 send_command({"cmd": "status"})
-            elif cmd == "d":
+            elif cmd_name in ("d", "detach"):
                 send_command({"cmd": "detach"})
-            elif cmd.startswith("a "):
-                send_command({"cmd": "attach", "character": cmd[2:].strip()})
+            elif cmd_name in ("a", "attach", "switch"):
+                if not cmd_arg:
+                    console.print("[red]Usage: a, attach <character_name>[/red]")
+                else:
+                    send_command({"cmd": "attach", "character": cmd_arg})
+            elif cmd_name in ("?", "help", "commands"):
+                _show_attach_commands()
             else:
                 # Treat as player action
                 send_command({"cmd": "action", "text": cmd})
@@ -645,10 +682,11 @@ def _handle_server_message(msg):
         render_page(msg, attached_to=attached)
 
     elif msg_type == "attached":
-        console.print(f"[bright_magenta]Attached to {msg['character']}[/bright_magenta]")
+        # Dramatic attach animation when switching characters
+        render_attach_animation(msg['character'])
 
     elif msg_type == "detached":
-        console.print("[dim]Detached[/dim]")
+        render_detach_animation(msg.get('character', 'character'))
 
     elif msg_type == "characters":
         chars = msg.get("characters", {})
@@ -1221,6 +1259,7 @@ def _apply_scenario(orch: Orchestrator, scenario: Dict) -> None:
     # Set world metadata
     orch.world.scenario = scenario
     orch.world.world_name = scenario.get("scenario_name", orch.world.world_name)
+    orch.world.multiplayer = scenario.get("multiplayer", False)
 
     # Update starting location from scenario setting
     setting = scenario.get("setting", "")

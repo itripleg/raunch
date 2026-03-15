@@ -439,12 +439,13 @@ class Orchestrator:
 
             # Turn-based multiplayer: wait for all players ready OR timeout
             # Skip this wait if page was host-triggered (CLI override)
+            # Only enter multiplayer wait if world.multiplayer is True
             page_trigger_reason = 'auto'  # Default for non-multiplayer mode
             if self._host_triggered:
                 page_trigger_reason = 'host'
                 self._host_triggered = False  # Reset for next page
                 logger.info("Page triggered by host, skipping multiplayer wait")
-            elif self._player_ready_states:
+            elif self.world.multiplayer and self._player_ready_states:
                 # Initialize turn start time if not set
                 if self._turn_start_time is None:
                     self._turn_start_time = time.time()
@@ -477,7 +478,7 @@ class Orchestrator:
             results['triggered_by'] = page_trigger_reason
 
             # Reset ready states after page completes (for multiplayer)
-            if self._player_ready_states:
+            if self.world.multiplayer and self._player_ready_states:
                 self.reset_ready_states()
 
             # Check if page had errors

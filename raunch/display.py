@@ -876,6 +876,194 @@ def render_server_startup(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# ATTACH CHARACTER ANIMATION - Dramatic neural link establishment
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Gradient for character name reveal (magenta → pink → white)
+ATTACH_GRADIENT = [129, 135, 141, 177, 183, 189, 225, 231, 255]
+
+# Thematic connection messages
+NEURAL_LINK_MESSAGES = [
+    "Establishing neural link",
+    "Synchronizing consciousness",
+    "Binding to thought stream",
+    "Merging perspectives",
+    "Attuning to desires",
+    "Opening mind's eye",
+    "Connecting hearts",
+    "Linking souls",
+]
+
+
+def render_attach_animation(character_name: str, animated: bool = True) -> None:
+    """Render a dramatic animation when attaching to a character.
+
+    This creates a cinematic "neural link establishing" effect with
+    the character's name revealed letter by letter.
+    """
+    if not animated:
+        # Static fallback
+        heart = "<3" if not _supports_unicode() else "♥"
+        console.print()
+        console.print(f"  [bold bright_magenta]{heart} Attached to {character_name} {heart}[/]")
+        console.print()
+        return
+
+    console.print()
+
+    # Hide cursor during animation
+    sys.stdout.write("\033[?25l")
+    sys.stdout.flush()
+
+    try:
+        # Phase 1: "Establishing neural link" with pulsing dots
+        link_msg = random.choice(NEURAL_LINK_MESSAGES)
+        spinner = SPINNER_CHARS if _supports_unicode() else ["|", "/", "-", "\\"]
+
+        for frame in range(24):
+            dots = "." * ((frame % 4) + 1)
+            spaces = " " * (3 - (frame % 4))
+            spin = spinner[frame % len(spinner)]
+
+            # Color pulse
+            color_idx = frame % len(ATTACH_GRADIENT)
+            color = ATTACH_GRADIENT[color_idx]
+
+            line = f"\r  {_c256(color)}{spin}{RESET} {link_msg}{dots}{spaces}"
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            time.sleep(0.08)
+
+        sys.stdout.write("\r\033[K")  # Clear line
+
+        # Phase 2: Build dramatic frame
+        name_len = len(character_name)
+        box_width = max(name_len + 8, 30)
+
+        if _supports_unicode():
+            top_left, top_right = "╔", "╗"
+            bot_left, bot_right = "╚", "╝"
+            horiz, vert = "═", "║"
+            heart = "♥"
+            star = "✧"
+        else:
+            top_left, top_right = "+", "+"
+            bot_left, bot_right = "+", "+"
+            horiz, vert = "=", "|"
+            heart = "<3"
+            star = "*"
+
+        # Animate the box appearing
+        center_pad = (box_width - 4) // 2
+
+        # Top border slides in
+        for i in range(box_width + 1):
+            border = horiz * min(i, box_width - 2)
+            padding = " " * (box_width - 2 - len(border))
+            line = f"\r  {_c256(213)}{top_left}{border}{padding}{top_right if i >= box_width - 1 else ''}{RESET}"
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            time.sleep(0.015)
+
+        sys.stdout.write("\n")
+
+        # Middle section with hearts
+        heart_line = f"{vert}  {heart}  "
+        heart_line += " " * (box_width - 10)
+        heart_line += f"  {heart}  {vert}"
+        sys.stdout.write(f"  {_c256(205)}{heart_line}{RESET}\n")
+
+        # Character name reveal - letter by letter with gradient
+        name_padding = (box_width - 4 - name_len) // 2
+        sys.stdout.write(f"  {_c256(205)}{vert}{RESET}")
+        sys.stdout.write(" " * (name_padding + 1))
+
+        for i, char in enumerate(character_name):
+            # Cycle through gradient colors
+            color_idx = i % len(ATTACH_GRADIENT)
+            color = ATTACH_GRADIENT[color_idx]
+            sys.stdout.write(f"{_c256(color)}{BOLD}{char}{RESET}")
+            sys.stdout.flush()
+            time.sleep(0.06)  # Dramatic reveal timing
+
+        remaining_pad = box_width - 4 - name_len - name_padding
+        sys.stdout.write(" " * remaining_pad)
+        sys.stdout.write(f"  {_c256(205)}{vert}{RESET}\n")
+
+        # Another heart line
+        sys.stdout.write(f"  {_c256(205)}{heart_line}{RESET}\n")
+
+        # Bottom border slides in
+        sys.stdout.write(f"  {_c256(213)}{bot_left}")
+        for i in range(box_width - 2):
+            sys.stdout.write(horiz)
+            sys.stdout.flush()
+            time.sleep(0.01)
+        sys.stdout.write(f"{bot_right}{RESET}\n")
+
+        # Phase 3: Final flourish - stars burst out
+        time.sleep(0.1)
+
+        flourish_line = f"  {star}  NEURAL LINK ESTABLISHED  {star}"
+
+        # Type out the flourish with color wave
+        sys.stdout.write("\r  ")
+        for i, char in enumerate(flourish_line.strip()):
+            if char == star:
+                sys.stdout.write(f"{_c256(226)}{char}{RESET}")
+            elif char.isupper():
+                color = ATTACH_GRADIENT[(i * 2) % len(ATTACH_GRADIENT)]
+                sys.stdout.write(f"{_c256(color)}{char}{RESET}")
+            else:
+                sys.stdout.write(f"{DIM}{char}{RESET}")
+            sys.stdout.flush()
+            time.sleep(0.02)
+
+        sys.stdout.write("\n\n")
+
+    finally:
+        # Show cursor again
+        sys.stdout.write("\033[?25h")
+        sys.stdout.flush()
+
+
+def render_detach_animation(character_name: str, animated: bool = True) -> None:
+    """Render animation when detaching from a character."""
+    if not animated:
+        console.print(f"  [dim]Detached from {character_name}[/]")
+        return
+
+    console.print()
+    sys.stdout.write("\033[?25l")  # Hide cursor
+
+    try:
+        # Quick fade out effect
+        if _supports_unicode():
+            star = "✧"
+            ellipsis = "..."
+        else:
+            star = "*"
+            ellipsis = "..."
+
+        # Name fades character by character
+        for i in range(len(character_name), -1, -1):
+            visible = character_name[:i]
+            faded = "·" * (len(character_name) - i) if _supports_unicode() else "." * (len(character_name) - i)
+            line = f"\r  {_c256(241)}{star} {visible}{faded} {star}{RESET}   "
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            time.sleep(0.04)
+
+        sys.stdout.write(f"\r  {DIM}Neural link severed{RESET}           \n")
+
+    finally:
+        sys.stdout.write("\033[?25h")  # Show cursor
+        sys.stdout.flush()
+
+    console.print()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # PAGE LOADING ANIMATION - The star of the show!
 # ═══════════════════════════════════════════════════════════════════════════════
 
