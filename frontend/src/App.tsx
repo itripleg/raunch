@@ -250,26 +250,11 @@ function App() {
     }
   }, [apiUrl]);
 
-  // Stop the current world and return to dashboard
-  const handleStopWorld = useCallback(async () => {
-    try {
-      const response = await fetch(`${apiUrl}/api/v1/world/stop`, {
-        method: "POST",
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || "Failed to stop world");
-      }
-      // Reset game state
-      actions.reset();
-      actions.disconnect();
-      // Return to dashboard
-      setWorldRunning(false);
-      setView("dashboard");
-    } catch (err) {
-      console.error("Failed to stop world:", err);
-    }
-  }, [apiUrl, actions]);
+  // Return to dashboard (world keeps running in background)
+  const handleStopWorld = useCallback(() => {
+    actions.disconnect();
+    setView("dashboard");
+  }, [actions]);
 
   // Derived state - define these early so they can be used in effects
   const isConnected = wsState === "connected";
