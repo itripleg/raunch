@@ -125,6 +125,8 @@ type Action =
   | { type: "PAGE_START"; page: number }
   | { type: "STREAM_SYNC"; page: number; narrator: string; characters: Record<string, string> }
   | { type: "STREAM_DONE"; page: number; source: string }
+  // Non-streaming progressive updates
+  | { type: "NARRATOR_READY"; page: number; narration: string; mood: string; created_at: string }
   // Multiplayer
   | { type: "JOINED"; player_id: string; nickname: string }
   | { type: "PLAYERS"; players: Player[] }
@@ -170,11 +172,19 @@ function reducer(state: State, action: Action): State {
       return { ...initial, world: action.world, characterNames: action.characters, multiplayer: action.multiplayer };
     case "PAGE": {
       // Clear pending influence/director and streaming when page arrives
-      // Deduplicate - don't add if page number already exists
-      const pageExists = state.pages.some(p => p.page === action.data.page);
-      if (pageExists) {
+      const existingIndex = state.pages.findIndex(p => p.page === action.data.page);
+      if (existingIndex !== -1) {
+        // Update existing partial page with full data (characters, etc.)
+        const updatedPages = [...state.pages];
+        updatedPages[existingIndex] = {
+          ...updatedPages[existingIndex],
+          ...action.data,
+          // Merge characters - full page has all character data
+          characters: action.data.characters,
+        };
         return {
           ...state,
+          pages: updatedPages,
           pendingInfluence: null,
           pendingDirectorGuidance: null,
           streaming: { ...initial.streaming },
@@ -186,6 +196,24 @@ function reducer(state: State, action: Action): State {
         pendingInfluence: null,
         pendingDirectorGuidance: null,
         streaming: { ...initial.streaming },
+      };
+    }
+    case "NARRATOR_READY": {
+      // Add partial page with just narration (non-streaming mode)
+      // This allows typewriter to start before characters are done
+      const partialPage: PageData = {
+        page: action.page,
+        narration: action.narration,
+        events: [],
+        characters: {},
+        attached_to: state.attachedTo,
+        created_at: action.created_at,
+      };
+      return {
+        ...state,
+        pages: [...state.pages.slice(-100), partialPage],
+        pendingInfluence: null,
+        pendingDirectorGuidance: null,
       };
     }
     case "ATTACHED":
@@ -469,6 +497,16 @@ export function useGame(wsUrl: string) {
         break;
       case "page":
         dispatch({ type: "PAGE", data: msg as unknown as PageData });
+        break;
+      case "narrator_ready":
+        // Non-streaming mode: narrator finished, show narration before characters are done
+        dispatch({
+          type: "NARRATOR_READY",
+          page: msg.page as number,
+          narration: msg.narration as string,
+          mood: (msg.mood as string) || "",
+          created_at: (msg.created_at as string) || new Date().toISOString(),
+        });
         break;
       case "attached":
         dispatch({ type: "ATTACHED", character: msg.character as string });

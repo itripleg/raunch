@@ -483,6 +483,24 @@ class WebSocketServer:
             except Exception:
                 pass
 
+    def broadcast_narrator_ready(self, page_num: int, narration: str, mood: str = ""):
+        """Send narrator content to frontend before characters are done (non-streaming mode)."""
+        if not self._loop or not self.clients:
+            return
+        from datetime import datetime
+        msg = {
+            "type": "narrator_ready",
+            "page": page_num,
+            "narration": narration,
+            "mood": mood,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        for client in list(self.clients):
+            try:
+                asyncio.run_coroutine_threadsafe(client.send(msg), self._loop)
+            except Exception:
+                pass
+
     def broadcast_page(self, results: Dict[str, Any]):
         """Send page results to all WS clients. Called from sync context."""
         if not self._loop or not self.clients:

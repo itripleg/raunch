@@ -388,6 +388,11 @@ def start(save_name, world_name, scenario_name, headless, force):
                     console.print(f"[dim]Narrator: {narration[:100]}...[/dim]")
                 progressive_rendered["narrator"] = True
 
+                # In non-streaming mode, send narration to frontend immediately
+                # so it can show with typewriter before characters are done
+                if not orch.streaming_enabled:
+                    ws_server.broadcast_narrator_ready(page_num, narration, orch.world.mood)
+
             elif source != "narrator" and source not in progressive_rendered["characters"]:
                 # Render character as they complete
                 char = orch.characters.get(source)
