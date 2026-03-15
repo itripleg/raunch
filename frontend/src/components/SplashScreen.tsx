@@ -3,34 +3,85 @@ import { motion, AnimatePresence } from "motion/react";
 
 type Props = {
   onComplete: () => void;
+  showIntro?: boolean; // Show "Motherhaven presents" for first-time visitors
 };
 
-export function SplashScreen({ onComplete }: Props) {
-  const [phase, setPhase] = useState<"logo" | "stamp" | "exit">("logo");
+export function SplashScreen({ onComplete, showIntro = false }: Props) {
+  const [phase, setPhase] = useState<"intro" | "logo" | "stamp" | "exit">(
+    showIntro ? "intro" : "logo"
+  );
 
   useEffect(() => {
-    // Phase 1: Logo appears (0-1.5s)
-    // Phase 2: ALPHA stamps in (1.5s)
-    const stampTimer = setTimeout(() => setPhase("stamp"), 1500);
+    const timers: ReturnType<typeof setTimeout>[] = [];
 
-    // Phase 3: Exit (2.8s total)
-    const exitTimer = setTimeout(() => setPhase("exit"), 2800);
-
-    // Complete and transition (3.5s total)
-    const completeTimer = setTimeout(() => onComplete(), 3500);
+    if (showIntro) {
+      // Intro phase: "Motherhaven presents" (0-2.5s)
+      // Then transition to logo
+      timers.push(setTimeout(() => setPhase("logo"), 2500));
+      // Phase 2: ALPHA stamps in (2.5 + 1.5 = 4s)
+      timers.push(setTimeout(() => setPhase("stamp"), 4000));
+      // Phase 3: Exit (2.5 + 2.8 = 5.3s)
+      timers.push(setTimeout(() => setPhase("exit"), 5300));
+      // Complete (2.5 + 3.5 = 6s)
+      timers.push(setTimeout(() => onComplete(), 6000));
+    } else {
+      // No intro - original timing
+      timers.push(setTimeout(() => setPhase("stamp"), 1500));
+      timers.push(setTimeout(() => setPhase("exit"), 2800));
+      timers.push(setTimeout(() => onComplete(), 3500));
+    }
 
     return () => {
-      clearTimeout(stampTimer);
-      clearTimeout(exitTimer);
-      clearTimeout(completeTimer);
+      timers.forEach(clearTimeout);
     };
-  }, [onComplete]);
+  }, [onComplete, showIntro]);
 
   return (
-    <AnimatePresence>
-      {phase !== "exit" && (
+    <AnimatePresence mode="wait">
+      {/* Motherhaven presents intro */}
+      {phase === "intro" && (
         <motion.div
+          key="intro"
           className="fixed inset-0 flex items-center justify-center overflow-hidden bg-background z-50"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <motion.div
+            className="text-center"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          >
+            <motion.p
+              className="text-lg sm:text-xl text-muted-foreground/40 font-light tracking-widest"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 1, 1, 0] }}
+              transition={{ duration: 2.2, times: [0, 0.3, 0.7, 1] }}
+            >
+              MOTHERHAVEN
+            </motion.p>
+            <motion.p
+              className="text-xs text-muted-foreground/25 tracking-[0.3em] mt-2"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 1, 1, 0] }}
+              transition={{ duration: 2.2, times: [0, 0.35, 0.65, 1], delay: 0.2 }}
+            >
+              presents
+            </motion.p>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* Main splash */}
+      {phase !== "exit" && phase !== "intro" && (
+        <motion.div
+          key="main"
+          className="fixed inset-0 flex items-center justify-center overflow-hidden bg-background z-50"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.7, ease: "easeInOut" }}
         >
