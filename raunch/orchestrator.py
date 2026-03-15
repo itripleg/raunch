@@ -286,9 +286,13 @@ class Orchestrator:
                 narrator_result = self.narrator.page_stream(narrator_input, on_delta=on_chunk)
                 self._stream_callback(page_num, "narrator", "done", "")
             else:
-                # Non-streaming mode - no streaming events needed
-                # Frontend intermission shows until final page arrives with typewriter
+                # Non-streaming mode - send start/done events for CLI animation
+                # but no content deltas (frontend uses typewriter on final page)
+                if self._stream_callback:
+                    self._stream_callback(page_num, "narrator", "start", "")
                 narrator_result = self.narrator.page(narrator_input)
+                if self._stream_callback:
+                    self._stream_callback(page_num, "narrator", "done", "")
 
             self.world.apply_narrator_update(narrator_result)
             # Extract narration, cleaning up any raw JSON fallback
