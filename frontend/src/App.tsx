@@ -164,6 +164,12 @@ function App() {
     }
   }, [apiUrl]);
 
+  // Derived state - define these early so they can be used in effects
+  const isConnected = wsState === "connected";
+  const hasWorld = worldRunning === true;
+  const isMultiplayer = game.world?.multiplayer === true;
+  const needsNicknamePrompt = isMultiplayer && !nicknameConfirmed;
+
   // Check world status when WebSocket connects
   useEffect(() => {
     if (wsState === "connected") {
@@ -189,6 +195,14 @@ function App() {
     }
   }, [game.world, worldRunning]);
 
+  // In solo mode, auto-confirm nickname (skip the prompt)
+  useEffect(() => {
+    if (isConnected && hasWorld && !isMultiplayer && !nicknameConfirmed) {
+      // Solo mode: auto-confirm with stored or empty nickname
+      setNicknameConfirmed(true);
+    }
+  }, [isConnected, hasWorld, isMultiplayer, nicknameConfirmed]);
+
   // Handle nickname submission
   const handleNicknameSubmit = (submittedNickname: string) => {
     setNickname(submittedNickname);
@@ -200,23 +214,6 @@ function App() {
   const handleScenarioLoaded = useCallback(() => {
     checkWorldStatus();
   }, [checkWorldStatus]);
-
-  const isConnected = wsState === "connected";
-  // Use worldRunning from REST API as source of truth for whether a scenario is loaded
-  // game.world is set from welcome message regardless of scenario state
-  const hasWorld = worldRunning === true;
-
-  // Only show nickname prompt in multiplayer mode
-  const isMultiplayer = game.world?.multiplayer === true;
-  const needsNicknamePrompt = isMultiplayer && !nicknameConfirmed;
-
-  // In solo mode, auto-confirm nickname (skip the prompt)
-  useEffect(() => {
-    if (isConnected && hasWorld && !isMultiplayer && !nicknameConfirmed) {
-      // Solo mode: auto-confirm with stored or empty nickname
-      setNicknameConfirmed(true);
-    }
-  }, [isConnected, hasWorld, isMultiplayer, nicknameConfirmed]);
 
   // Show nickname prompt only in multiplayer mode
   if (isConnected && hasWorld && needsNicknamePrompt) {
