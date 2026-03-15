@@ -164,17 +164,22 @@ function App() {
     }
   }, [apiUrl]);
 
-  // Send join command and check world status when WebSocket connects
+  // Check world status when WebSocket connects
   useEffect(() => {
-    if (wsState === "connected" && nicknameConfirmed) {
-      // Send join command with the stored nickname
-      actions.join(nickname);
+    if (wsState === "connected") {
       checkWorldStatus();
     } else if (wsState === "disconnected") {
       // Reset world status when disconnected
       setWorldRunning(null);
     }
-  }, [wsState, nicknameConfirmed, nickname, actions, checkWorldStatus]);
+  }, [wsState, checkWorldStatus]);
+
+  // Send join command only in multiplayer mode after nickname confirmed
+  useEffect(() => {
+    if (wsState === "connected" && nicknameConfirmed && isMultiplayer) {
+      actions.join(nickname);
+    }
+  }, [wsState, nicknameConfirmed, isMultiplayer, nickname, actions]);
 
   // Sync worldRunning when game.world changes from WebSocket (e.g., world_loaded message)
   useEffect(() => {
@@ -201,8 +206,20 @@ function App() {
   // game.world is set from welcome message regardless of scenario state
   const hasWorld = worldRunning === true;
 
-  // Show nickname prompt first if not confirmed
-  if (!nicknameConfirmed) {
+  // Only show nickname prompt in multiplayer mode
+  const isMultiplayer = game.world?.multiplayer === true;
+  const needsNicknamePrompt = isMultiplayer && !nicknameConfirmed;
+
+  // In solo mode, auto-confirm nickname (skip the prompt)
+  useEffect(() => {
+    if (isConnected && hasWorld && !isMultiplayer && !nicknameConfirmed) {
+      // Solo mode: auto-confirm with stored or empty nickname
+      setNicknameConfirmed(true);
+    }
+  }, [isConnected, hasWorld, isMultiplayer, nicknameConfirmed]);
+
+  // Show nickname prompt only in multiplayer mode
+  if (isConnected && hasWorld && needsNicknamePrompt) {
     return (
       <AnimatePresence mode="wait">
         <motion.div
