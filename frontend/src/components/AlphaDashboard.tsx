@@ -92,12 +92,12 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: 
     },
     {
       id: "game",
-      title: "Play",
-      subtitle: "Enter Raunch",
+      title: "Play Raunch",
+      subtitle: "Dive into your story",
       icon: Gamepad2,
-      color: "from-violet-500/20 to-violet-500/5",
-      borderColor: "border-violet-500/30",
-      hoverGlow: "hover:shadow-[0_0_40px_oklch(0.6_0.2_290_/_0.15)]",
+      color: "from-violet-500/30 via-fuchsia-500/20 to-primary/20",
+      borderColor: "border-violet-400/50",
+      hoverGlow: "hover:shadow-[0_0_60px_oklch(0.6_0.25_300_/_0.3)]",
       onClick: () => onNavigate("game"),
       featured: true,
     },
@@ -284,12 +284,12 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: 
                 className={`
                   group relative overflow-hidden rounded-2xl border ${card.borderColor}
                   bg-gradient-to-br ${card.color}
-                  p-6 sm:p-8 text-left transition-all duration-500
+                  text-left transition-all duration-500
                   ${card.disabled
-                    ? "opacity-50 cursor-not-allowed"
-                    : `hover:scale-[1.02] hover:border-opacity-60 ${card.hoverGlow}`
+                    ? "opacity-50 cursor-not-allowed p-6 sm:p-8"
+                    : `hover:scale-[1.02] hover:border-opacity-60 ${card.hoverGlow} p-6 sm:p-8`
                   }
-                  ${card.featured ? "sm:col-span-2 lg:col-span-1" : ""}
+                  ${card.featured ? "sm:col-span-2 lg:col-span-1 p-8 sm:p-10" : ""}
                 `}
               >
                 {/* Background pattern */}
@@ -303,27 +303,43 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: 
                   />
                 </div>
 
+                {/* Featured card animated glow */}
+                {card.featured && (
+                  <motion.div
+                    className="absolute -inset-1 bg-gradient-to-r from-violet-500/20 via-fuchsia-500/20 to-primary/20 rounded-2xl blur-xl"
+                    animate={{
+                      opacity: [0.3, 0.6, 0.3],
+                      scale: [1, 1.02, 1],
+                    }}
+                    transition={{
+                      duration: 3,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    }}
+                  />
+                )}
+
                 {/* Icon */}
                 <div className="relative mb-6">
                   <card.icon
-                    className={`w-8 h-8 ${card.disabled ? "text-muted-foreground/40" : "text-foreground/70"}`}
+                    className={`${card.featured ? "w-10 h-10 text-violet-400" : "w-8 h-8"} ${card.disabled ? "text-muted-foreground/40" : card.featured ? "" : "text-foreground/70"}`}
                   />
                 </div>
 
                 {/* Content */}
                 <div className="relative">
-                  <h3 className={`text-xl font-semibold mb-1 ${card.disabled ? "text-muted-foreground/60" : "text-foreground"}`}>
+                  <h3 className={`font-semibold mb-1 ${card.featured ? "text-2xl bg-gradient-to-r from-violet-300 to-fuchsia-300 bg-clip-text text-transparent" : "text-xl"} ${card.disabled ? "text-muted-foreground/60" : card.featured ? "" : "text-foreground"}`}>
                     {card.title}
                   </h3>
-                  <p className="text-sm text-muted-foreground/60">
+                  <p className={`text-sm ${card.featured ? "text-violet-300/60" : "text-muted-foreground/60"}`}>
                     {card.subtitle}
                   </p>
                 </div>
 
                 {/* Arrow indicator */}
                 {!card.disabled && (
-                  <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">
-                    <ChevronRight className="w-5 h-5 text-foreground/40" />
+                  <div className={`absolute ${card.featured ? "bottom-8 right-8" : "bottom-6 right-6"} opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0`}>
+                    <ChevronRight className={`${card.featured ? "w-6 h-6 text-violet-400/60" : "w-5 h-5 text-foreground/40"}`} />
                   </div>
                 )}
 
