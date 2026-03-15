@@ -380,9 +380,10 @@ class Orchestrator:
                     )
                     self._stream_callback(page_num, name, "done", "")
                 else:
-                    # Non-streaming mode - just run the agent, no streaming events
-                    # Character dialog will animate in when final page arrives
+                    # Non-streaming mode - send done event for CLI progressive rendering
                     char_result = char.page(char_input)
+                    if self._stream_callback:
+                        self._stream_callback(page_num, name, "done", "")
                 results["characters"][name] = char_result
             except Exception as e:
                 logger.error(f"Character {name} page failed: {e}")

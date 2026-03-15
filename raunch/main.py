@@ -356,22 +356,16 @@ def start(save_name, world_name, scenario_name, headless, force):
                 ws_server.broadcast_page_start(page_num, orch._last_page_trigger_reason)
 
         elif event_type == "delta":
-            ws_server.broadcast_stream_delta(page_num, source, data)
+            # Only broadcast deltas if actually streaming
+            if orch.streaming_enabled:
+                ws_server.broadcast_stream_delta(page_num, source, data)
 
         elif event_type == "done":
             # Only broadcast stream_done if actually streaming
             if orch.streaming_enabled:
                 ws_server.broadcast_stream_done(page_num, source)
 
-            # In non-streaming mode, just stop loading animation - let on_page render everything
-            if not orch.streaming_enabled:
-                if source == "narrator" and page_loading_active:
-                    page_loading_active = False
-                    time.sleep(0.05)
-                    stop_page_loading()
-                return  # Skip progressive rendering in non-streaming mode
-
-            # Progressive CLI rendering - show content as it completes (streaming mode only)
+            # Progressive CLI rendering - show content as it completes
             if source == "narrator" and not progressive_rendered["narrator"]:
                 # Stop loading animation, render narrator immediately
                 if page_loading_active:
