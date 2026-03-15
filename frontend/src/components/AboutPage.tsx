@@ -147,6 +147,22 @@ export function AboutPage({ onBack, isAdmin, apiUrl }: Props) {
             </div>
           </section>
 
+          {/* Privacy Note */}
+          <section className="space-y-4">
+            <h3 className="text-xl font-semibold text-foreground">Privacy Note</h3>
+            <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm text-muted-foreground/80 space-y-2">
+              <p>
+                During the alpha, stories are stored in a shared database. The developer (and potentially other players
+                in multiplayer sessions) can see story content. It's currently anonymous—there's no way to trace stories
+                back to specific users.
+              </p>
+              <p className="text-foreground/70">
+                That said, maybe don't put your social security number, real address, or bank details in your smut.
+                Keep it fictional, keep it fun.
+              </p>
+            </div>
+          </section>
+
           {/* Contact */}
           <section className="text-center space-y-4 pb-8">
             <p className="text-sm text-muted-foreground/50">
