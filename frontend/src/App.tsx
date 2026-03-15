@@ -327,6 +327,7 @@ function App() {
             <SplashScreen
               onComplete={handleSplashComplete}
               showIntro={!hasPlayedBefore()}
+              apiUrl={apiUrl}
             />
           </motion.div>
         )}

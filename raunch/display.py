@@ -810,38 +810,46 @@ def _animate_logo_line(line: str, color_offset: int) -> str:
 
 
 def _animate_motherhaven_tagline(animated: bool = True) -> None:
-    """Animate the Motherhaven tagline under the logo."""
-    tagline = "a motherhaven joint"
+    """Animate the Motherhaven tagline under the logo.
+
+    'a' and 'joint' stay dim, 'motherhaven' gets the spotlight.
+    """
+    prefix = "a "
+    highlight = "motherhaven"
+    suffix = " joint"
+    full_tagline = prefix + highlight + suffix
 
     if not animated:
-        console.print(f"[dim italic]{tagline:^54}[/]")
+        console.print(f"[dim italic]{prefix}[/][bold bright_magenta]{highlight}[/][dim italic]{suffix}[/]")
         return
 
-    # Animate: letters appear one by one with a sparkle
+    # Animate: only 'motherhaven' gets revealed letter by letter
     sys.stdout.write("\033[?25l")  # Hide cursor
 
     try:
         # Center the tagline (logo is ~54 chars wide)
-        padding = (54 - len(tagline)) // 2
+        padding = (54 - len(full_tagline)) // 2
 
-        for i in range(len(tagline) + 1):
-            revealed = tagline[:i]
-            sparkle = "✧" if _supports_unicode() and i < len(tagline) else ""
-            line = f"{' ' * padding}{revealed}{sparkle}"
-            sys.stdout.write(f"\r{DIM}{ITALIC}{line}{RESET}")
+        # Phase 1: Show static prefix, animate 'motherhaven' reveal
+        for i in range(len(highlight) + 1):
+            revealed = highlight[:i]
+            sparkle = "✧" if _supports_unicode() and i < len(highlight) else ""
+            # prefix dim, motherhaven bright, suffix hidden until done
+            line = f"{' ' * padding}{DIM}{ITALIC}{prefix}{RESET}{_c256(213)}{BOLD}{revealed}{RESET}{sparkle}"
+            sys.stdout.write(f"\r{line}")
+            sys.stdout.flush()
+            time.sleep(0.05)
+
+        # Phase 2: Color pulse on 'motherhaven'
+        for color in [213, 219, 225, 255, 231, 225, 219, 213]:
+            line = f"{' ' * padding}{DIM}{ITALIC}{prefix}{RESET}{_c256(color)}{BOLD}{highlight}{RESET}"
+            sys.stdout.write(f"\r{line}")
             sys.stdout.flush()
             time.sleep(0.04)
 
-        # Final flourish - brief color pulse
-        for color in [213, 219, 225, 255, 225, 219, 213]:
-            line = f"{' ' * padding}{tagline}"
-            sys.stdout.write(f"\r{_c256(color)}{ITALIC}{line}{RESET}")
-            sys.stdout.flush()
-            time.sleep(0.03)
-
-        # Settle on dim
-        line = f"{' ' * padding}{tagline}"
-        sys.stdout.write(f"\r{DIM}{ITALIC}{line}{RESET}\n")
+        # Phase 3: Fade in suffix
+        line = f"{' ' * padding}{DIM}{ITALIC}{prefix}{RESET}{_c256(213)}{BOLD}{highlight}{RESET}{DIM}{ITALIC}{suffix}{RESET}"
+        sys.stdout.write(f"\r{line}\n")
         sys.stdout.flush()
 
     finally:

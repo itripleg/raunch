@@ -1,0 +1,17 @@
+# Render Blueprint for Raunch backend
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: raunch-backend
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn raunch.api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: ANTHROPIC_API_KEY
+        sync: false  # Set manually in dashboard
+    healthCheckPath: /health
+    autoDeploy: true

@@ -4,26 +4,36 @@ import { motion, AnimatePresence } from "motion/react";
 type Props = {
   onComplete: () => void;
   showIntro?: boolean; // Show "Motherhaven presents" for first-time visitors
+  apiUrl?: string; // Backend URL for warmup ping
 };
 
-export function SplashScreen({ onComplete, showIntro = false }: Props) {
+export function SplashScreen({ onComplete, showIntro = false, apiUrl }: Props) {
   const [phase, setPhase] = useState<"intro" | "logo" | "stamp" | "exit">(
     showIntro ? "intro" : "logo"
   );
+
+  // Wake up backend during splash (helps with cold starts on Render/Railway)
+  useEffect(() => {
+    if (apiUrl) {
+      fetch(`${apiUrl}/health`, { method: "GET", mode: "cors" }).catch(() => {
+        // Silent fail - just a warmup ping
+      });
+    }
+  }, [apiUrl]);
 
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     if (showIntro) {
-      // Intro phase: "Motherhaven presents" (0-2.5s)
+      // Intro phase: "Motherhaven presents" (0-2.7s)
       // Then transition to logo
-      timers.push(setTimeout(() => setPhase("logo"), 2500));
-      // Phase 2: ALPHA stamps in (2.5 + 1.5 = 4s)
-      timers.push(setTimeout(() => setPhase("stamp"), 4000));
-      // Phase 3: Exit (2.5 + 2.8 = 5.3s)
-      timers.push(setTimeout(() => setPhase("exit"), 5300));
-      // Complete (2.5 + 3.5 = 6s)
-      timers.push(setTimeout(() => onComplete(), 6000));
+      timers.push(setTimeout(() => setPhase("logo"), 2700));
+      // Phase 2: ALPHA stamps in (2.7 + 1.5 = 4.2s)
+      timers.push(setTimeout(() => setPhase("stamp"), 4200));
+      // Phase 3: Exit (2.7 + 2.8 = 5.5s)
+      timers.push(setTimeout(() => setPhase("exit"), 5500));
+      // Complete (2.7 + 3.5 = 6.2s)
+      timers.push(setTimeout(() => onComplete(), 6200));
     } else {
       // No intro - original timing
       timers.push(setTimeout(() => setPhase("stamp"), 1500));
@@ -38,7 +48,7 @@ export function SplashScreen({ onComplete, showIntro = false }: Props) {
 
   return (
     <AnimatePresence mode="wait">
-      {/* Motherhaven presents intro */}
+      {/* Motherhaven presents intro - bougie edition */}
       {phase === "intro" && (
         <motion.div
           key="intro"
@@ -48,26 +58,71 @@ export function SplashScreen({ onComplete, showIntro = false }: Props) {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.5 }}
         >
+          {/* Subtle ambient glow */}
           <motion.div
-            className="text-center"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="absolute w-[400px] h-[400px] rounded-full bg-primary/[0.04] blur-[100px]"
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: [0.8, 1.2, 1], opacity: [0, 0.6, 0.3] }}
+            transition={{ duration: 2.2, ease: "easeOut" }}
+          />
+
+          <motion.div
+            className="text-center relative z-10"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
           >
-            <motion.p
-              className="text-lg sm:text-xl text-muted-foreground/40 font-light tracking-widest"
+            {/* "A" - subtle prefix */}
+            <motion.span
+              className="text-sm sm:text-base text-muted-foreground/60 font-light tracking-[0.5em] uppercase"
               initial={{ opacity: 0 }}
-              animate={{ opacity: [0, 1, 1, 0] }}
-              transition={{ duration: 2.2, times: [0, 0.3, 0.7, 1] }}
+              animate={{ opacity: [0, 0.8, 0.8, 0] }}
+              transition={{ duration: 2.4, times: [0, 0.2, 0.75, 1] }}
             >
-              MOTHERHAVEN
-            </motion.p>
+              A
+            </motion.span>
+
+            {/* MOTHERHAVEN - the star */}
             <motion.p
-              className="text-xs text-muted-foreground/25 tracking-[0.3em] mt-2"
+              className="text-2xl sm:text-3xl md:text-4xl font-light tracking-[0.25em] mt-1"
+              initial={{ opacity: 0, letterSpacing: "0.5em" }}
+              animate={{
+                opacity: [0, 1, 1, 0],
+                letterSpacing: ["0.5em", "0.25em", "0.25em", "0.25em"],
+              }}
+              transition={{ duration: 2.4, times: [0, 0.25, 0.7, 1] }}
+            >
+              {/* Gradient text with glow */}
+              <span className="bg-gradient-to-r from-primary/80 via-[oklch(0.75_0.18_340)] to-primary/80 bg-clip-text text-transparent drop-shadow-[0_0_25px_oklch(0.6_0.2_340/0.4)]">
+                MOTHERHAVEN
+              </span>
+            </motion.p>
+
+            {/* "JOINT" - suffix that fades in after */}
+            <motion.span
+              className="text-sm sm:text-base text-muted-foreground/60 font-light tracking-[0.5em] uppercase block mt-1"
               initial={{ opacity: 0 }}
-              animate={{ opacity: [0, 1, 1, 0] }}
-              transition={{ duration: 2.2, times: [0, 0.35, 0.65, 1], delay: 0.2 }}
+              animate={{ opacity: [0, 0, 0.8, 0] }}
+              transition={{ duration: 2.4, times: [0, 0.3, 0.75, 1] }}
+            >
+              JOINT
+            </motion.span>
+
+            {/* Decorative line */}
+            <motion.div
+              className="mx-auto mt-4 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent"
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: ["0%", "60%", "60%", "0%"], opacity: [0, 0.6, 0.6, 0] }}
+              transition={{ duration: 2.4, times: [0, 0.3, 0.7, 1] }}
+            />
+
+            {/* "presents" - elegant reveal */}
+            <motion.p
+              className="text-[10px] sm:text-xs text-muted-foreground/20 tracking-[0.4em] mt-3 uppercase font-extralight"
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: [0, 0.5, 0.5, 0], y: [5, 0, 0, 0] }}
+              transition={{ duration: 2.2, times: [0, 0.35, 0.7, 1], delay: 0.3 }}
             >
               presents
             </motion.p>
