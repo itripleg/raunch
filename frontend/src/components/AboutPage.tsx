@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { ArrowLeft, Sparkles, Terminal, Users, MessageCircle } from "lucide-react";
+import { ArrowLeft, Sparkles, Terminal, Users, MessageCircle, Eye, Wand2, Theater } from "lucide-react";
 
 type Props = {
   onBack: () => void;
@@ -58,24 +58,34 @@ export function AboutPage({ onBack, isAdmin, apiUrl }: Props) {
           {/* Features */}
           <section className="grid gap-6 sm:grid-cols-2">
             <FeatureCard
-              icon={Sparkles}
-              title="AI-Powered Narratives"
-              description="Every story adapts to your choices. The AI narrator crafts unique scenes based on your characters and decisions."
+              icon={Eye}
+              title="Inner Thoughts"
+              description="Attach to any character to see their private inner thoughts, emotional state, and evolving desires—hidden from other players."
+            />
+            <FeatureCard
+              icon={Theater}
+              title="Director Mode"
+              description="Step back as the director to see the full scene: all character actions, emotions, and world events. Guide the narrative without being a character."
             />
             <FeatureCard
               icon={Users}
-              title="Rich Characters"
-              description="Create detailed characters with personalities, relationships, and desires. Watch them come alive in the story."
-            />
-            <FeatureCard
-              icon={Terminal}
-              title="CLI & Web"
-              description="Play in the terminal with 'raunch start' or use this web interface. Both offer the full experience."
+              title="Character Creation"
+              description="Create characters with species, personality, appearance, desires, and backstory. Promote memorable NPCs into full characters mid-story."
             />
             <FeatureCard
               icon={MessageCircle}
-              title="Alpha Feedback"
-              description="You're helping shape Raunch. Use the feedback board and voting to influence what we build next."
+              title="Influence System"
+              description="Whisper to your attached character to subtly guide their actions. They'll incorporate your influence naturally into the story."
+            />
+            <FeatureCard
+              icon={Wand2}
+              title="Smut Wizard"
+              description="Generate entire scenarios with custom settings, kinks, and vibes. Roll the dice for instant inspiration or craft your perfect setup."
+            />
+            <FeatureCard
+              icon={Sparkles}
+              title="AI Narration"
+              description="The narrator crafts scenes based on world state, character desires, and your guidance. Every page flows from what came before."
             />
           </section>
 
@@ -85,34 +95,42 @@ export function AboutPage({ onBack, isAdmin, apiUrl }: Props) {
 
             <div className="space-y-4 text-sm text-muted-foreground/80">
               <div className="p-4 bg-card/50 border border-border rounded-xl space-y-3">
-                <h4 className="font-medium text-foreground">1. Start a scenario</h4>
+                <h4 className="font-medium text-foreground">1. Generate or load a scenario</h4>
                 <p>
-                  Click "Play Raunch" from the dashboard. Choose from pre-made scenarios
-                  or generate a random one. Each scenario sets the stage for your story.
+                  Use the <strong className="text-primary">Smut Wizard</strong> to generate a scenario with your preferred
+                  settings, kinks, and vibe—or start from the CLI with <code className="text-primary/80">raunch start --scenario name</code>.
                 </p>
               </div>
 
               <div className="p-4 bg-card/50 border border-border rounded-xl space-y-3">
-                <h4 className="font-medium text-foreground">2. Meet your characters</h4>
+                <h4 className="font-medium text-foreground">2. Attach to a character</h4>
                 <p>
-                  The sidebar shows all characters in the scene. Click any character
-                  to see their details. Add new characters or promote NPCs as the story evolves.
+                  Click any character in the sidebar to attach. You'll see their <strong className="text-primary">inner thoughts</strong> and
+                  emotional state—private details hidden from other players. Use the input to whisper influence.
                 </p>
               </div>
 
               <div className="p-4 bg-card/50 border border-border rounded-xl space-y-3">
-                <h4 className="font-medium text-foreground">3. Shape the narrative</h4>
+                <h4 className="font-medium text-foreground">3. Or become the Director</h4>
                 <p>
-                  Watch the story unfold in the main feed. Use the controls to pause,
-                  adjust pacing, or steer the direction. The narrator responds to the world state.
+                  Click <strong className="text-amber-400">Director</strong> to see the full scene from above.
+                  View all character actions and events. Send narrative guidance to steer where the story goes.
                 </p>
               </div>
 
               <div className="p-4 bg-card/50 border border-border rounded-xl space-y-3">
-                <h4 className="font-medium text-foreground">4. Give feedback</h4>
+                <h4 className="font-medium text-foreground">4. Add characters on the fly</h4>
                 <p>
-                  Found a bug? Have an idea? Visit the Feedback Board to submit requests
-                  or upvote existing ones. Your input directly shapes development priorities.
+                  Click <strong className="text-primary">+ Add</strong> in the sidebar to create new characters mid-session.
+                  Define their species, personality, appearance, desires, and backstory. They'll join the story naturally.
+                </p>
+              </div>
+
+              <div className="p-4 bg-card/50 border border-border rounded-xl space-y-3">
+                <h4 className="font-medium text-foreground">5. Give us feedback</h4>
+                <p>
+                  Found a bug? Have an idea? Visit the <strong className="text-primary">Feedback Board</strong> to submit requests
+                  or upvote existing ones. Your input directly shapes what we build next.
                 </p>
               </div>
             </div>
@@ -123,9 +141,9 @@ export function AboutPage({ onBack, isAdmin, apiUrl }: Props) {
             <h3 className="text-xl font-semibold text-foreground">Known Limitations</h3>
             <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl text-sm text-muted-foreground/80 space-y-2">
               <p><strong className="text-amber-400">Alpha software.</strong> Expect rough edges, bugs, and incomplete features.</p>
-              <p><strong className="text-foreground/80">No persistence yet.</strong> Stories aren't saved between sessions (coming soon).</p>
-              <p><strong className="text-foreground/80">Single LLM.</strong> Currently uses one AI provider. More options planned.</p>
-              <p><strong className="text-foreground/80">Content filters.</strong> Some AI providers may limit explicit content generation.</p>
+              <p><strong className="text-foreground/80">Session-based.</strong> Stories persist in the database but there's no save/load UI yet.</p>
+              <p><strong className="text-foreground/80">OAuth streaming.</strong> Google OAuth mode doesn't support true streaming—pages appear after generation completes.</p>
+              <p><strong className="text-foreground/80">Content filters.</strong> Some AI providers may limit explicit content. API key mode typically has fewer restrictions.</p>
             </div>
           </section>
 
