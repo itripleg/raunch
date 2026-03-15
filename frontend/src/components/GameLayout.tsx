@@ -90,12 +90,20 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
     }
   }, [actions]);
 
-  // Clear waiting state when streaming starts
+  // Clear waiting state when streaming starts or new page arrives
+  const pageCount = game.pages.length;
+  const prevPageCountRef = useRef(pageCount);
   useEffect(() => {
+    // Clear when streaming starts
     if (game.streaming?.isStreaming) {
       setWaitingForPage(false);
     }
-  }, [game.streaming?.isStreaming]);
+    // Clear when a new page arrives (non-streaming mode)
+    if (pageCount > prevPageCountRef.current) {
+      setWaitingForPage(false);
+    }
+    prevPageCountRef.current = pageCount;
+  }, [game.streaming?.isStreaming, pageCount]);
 
   // Handle character deletion
   const handleDeleteCharacter = useCallback(async (name: string) => {

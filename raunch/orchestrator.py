@@ -286,16 +286,9 @@ class Orchestrator:
                 narrator_result = self.narrator.page_stream(narrator_input, on_delta=on_chunk)
                 self._stream_callback(page_num, "narrator", "done", "")
             else:
-                # Non-streaming mode - still send start/done events for progress tracking
-                if self._stream_callback:
-                    self._stream_callback(page_num, "narrator", "start", "")
+                # Non-streaming mode - no streaming events needed
+                # Frontend intermission shows until final page arrives with typewriter
                 narrator_result = self.narrator.page(narrator_input)
-                if self._stream_callback:
-                    # Send complete response as single delta so frontend can display it
-                    raw_response = self.narrator.history[-1]["content"] if self.narrator.history else ""
-                    if raw_response:
-                        self._stream_callback(page_num, "narrator", "delta", raw_response)
-                    self._stream_callback(page_num, "narrator", "done", "")
 
             self.world.apply_narrator_update(narrator_result)
             # Extract narration, cleaning up any raw JSON fallback
@@ -383,14 +376,9 @@ class Orchestrator:
                     )
                     self._stream_callback(page_num, name, "done", "")
                 else:
-                    # Non-streaming mode - still send done event for progress tracking
+                    # Non-streaming mode - just run the agent, no streaming events
+                    # Character dialog will animate in when final page arrives
                     char_result = char.page(char_input)
-                    if self._stream_callback:
-                        # Send complete response as single delta so frontend can display it
-                        raw_response = char.history[-1]["content"] if char.history else ""
-                        if raw_response:
-                            self._stream_callback(page_num, name, "delta", raw_response)
-                        self._stream_callback(page_num, name, "done", "")
                 results["characters"][name] = char_result
             except Exception as e:
                 logger.error(f"Character {name} page failed: {e}")
