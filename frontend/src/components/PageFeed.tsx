@@ -844,6 +844,8 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
       </AnimatePresence>
 
       {/* Intermission while waiting for generation to start */}
+      {/* DEBUG */}
+      {console.log("[DEBUG PageFeed] waitingForPage:", waitingForPage, "isStreaming:", streaming?.isStreaming, "pages:", pages.length)}
       <AnimatePresence>
         {waitingForPage && !streaming?.isStreaming && (
           <PageIntermission
@@ -899,6 +901,20 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
   // Only use typewriter for truly recent pages (created < 1 min ago)
   const isTrulyNew = isNew && !wasStreamed && !isFirst && isRecentTimestamp(pageItem.created_at, 60);
   const useTypewriter = isTrulyNew;
+
+  // DEBUG
+  if (isNew) {
+    console.log("[DEBUG PageEntry]", {
+      page: pageItem.page,
+      isNew,
+      wasStreamed,
+      isFirst,
+      created_at: pageItem.created_at,
+      isRecent: isRecentTimestamp(pageItem.created_at, 60),
+      isTrulyNew,
+      useTypewriter
+    });
+  }
 
   // Track narration completion for staggering character dialogue
   const [narrationComplete, setNarrationComplete] = useState(!useTypewriter);

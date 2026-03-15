@@ -82,6 +82,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
   // Handle next button click with animation
   const handleNextClick = useCallback(() => {
     if (actions.triggerPage) {
+      console.log("[DEBUG] Next clicked, setting waitingForPage=true");
       setNextClicked(true);
       setWaitingForPage(true);
       actions.triggerPage();
@@ -96,10 +97,12 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
   useEffect(() => {
     // Clear when streaming starts
     if (game.streaming?.isStreaming) {
+      console.log("[DEBUG] Clearing waitingForPage: streaming started");
       setWaitingForPage(false);
     }
     // Clear when a new page arrives (non-streaming mode)
     if (pageCount > prevPageCountRef.current) {
+      console.log("[DEBUG] Clearing waitingForPage: new page arrived", pageCount, ">", prevPageCountRef.current);
       setWaitingForPage(false);
     }
     prevPageCountRef.current = pageCount;

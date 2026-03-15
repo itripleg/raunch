@@ -280,6 +280,7 @@ function reducer(state: State, action: Action): State {
     case "DIRECTOR_QUEUED":
       return { ...state, pendingDirectorGuidance: action.text };
     case "PAGE_START":
+      console.log("[DEBUG useGame] PAGE_START received, page:", action.page);
       return {
         ...state,
         streaming: {
