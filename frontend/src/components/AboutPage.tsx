@@ -171,6 +171,9 @@ export function AboutPage({ onBack, isAdmin, apiUrl }: Props) {
             <p className="text-xs text-muted-foreground/30">
               Raunch Alpha &middot; Built with care for adults who appreciate good fiction
             </p>
+            <p className="text-[10px] text-muted-foreground/20 mt-4">
+              &copy; {new Date().getFullYear()} Motherhaven. All rights reserved.
+            </p>
           </section>
         </motion.div>
       </main>
