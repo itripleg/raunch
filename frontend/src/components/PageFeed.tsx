@@ -331,6 +331,13 @@ function TypewriterNarration({
 function NarrationText({ text, isNew = false, useTypewriter = false, onComplete }: { text: string; isNew?: boolean; useTypewriter?: boolean; onComplete?: () => void }) {
   const segments = useMemo(() => parseNarration(text), [text]);
 
+  // Static mode: signal complete on mount (must be before early return to follow hooks rules)
+  useEffect(() => {
+    if (!useTypewriter) {
+      onComplete?.();
+    }
+  }, [useTypewriter, onComplete]);
+
   // Typewriter mode: reveal with formatting preserved
   if (useTypewriter) {
     return (
@@ -340,11 +347,6 @@ function NarrationText({ text, isNew = false, useTypewriter = false, onComplete 
       />
     );
   }
-
-  // Static mode: signal complete on mount
-  useEffect(() => {
-    onComplete?.();
-  }, [onComplete]);
 
   return (
     <>
