@@ -163,16 +163,13 @@ export function AboutPage({ onBack, isAdmin, apiUrl }: Props) {
             </div>
           </section>
 
-          {/* Contact */}
+          {/* Footer */}
           <section className="text-center space-y-4 pb-8">
             <p className="text-sm text-muted-foreground/50">
               Questions? Feedback? Use the Feedback Board or reach out directly.
             </p>
-            <p className="text-xs text-muted-foreground/30">
-              Raunch Alpha &middot; Built with care for adults who appreciate good fiction
-            </p>
-            <p className="text-[10px] text-muted-foreground/20 mt-4">
-              &copy; {new Date().getFullYear()} Motherhaven. All rights reserved.
+            <p className="text-[10px] text-muted-foreground/25 mt-4">
+              © 2026 Built with 😈 by Motherhaven. For MoHa
             </p>
           </section>
         </motion.div>

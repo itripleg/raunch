@@ -340,15 +340,15 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: 
           </div>
         </motion.section>
 
-        {/* Footer hint */}
+        {/* Footer */}
         <motion.footer
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 1.2 }}
           className="mt-16 text-center"
         >
-          <p className="text-xs text-muted-foreground/25">
-            Alpha build &middot; Feedback welcome
+          <p className="text-[10px] text-muted-foreground/25">
+            © 2026 Built with 😈 by Motherhaven. For MoHa
           </p>
         </motion.footer>
       </main>
