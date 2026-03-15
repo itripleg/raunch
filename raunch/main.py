@@ -915,6 +915,32 @@ def wizard(num_chars, quick, debug):
             border_style="bright_magenta",
         ))
 
+    # ─── MULTIPLAYER MODE ─────────────────────────────────────────────────
+    if not quick:
+        sexy_prompt("Shall others join in this fantasy?", "MODE")
+    else:
+        console.print("\n[bold bright_magenta]Solo or multiplayer?[/]:")
+
+    mode_options = ["Solo — A private experience", "Multiplayer — Share with friends"]
+    option_display(mode_options) if not quick else [console.print(f"  [dim]{i}.[/] {m}") for i, m in enumerate(mode_options, 1)]
+
+    console.print()
+    console.print("  [dim italic]Pick 1 for solo, 2 for multiplayer, or Enter for solo[/]")
+
+    try:
+        choice = input("\n  > ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+
+    if choice == "2" or choice.lower() in ("m", "multi", "multiplayer"):
+        multiplayer = True
+        mode_desc = "Multiplayer"
+    else:
+        multiplayer = False
+        mode_desc = "Solo"
+
+    selection_confirm(mode_desc, "Mode") if not quick else console.print(f"  [green]Mode: {mode_desc}[/]")
+
     # ─── CHARACTER COUNT ───────────────────────────────────────────────────
     if num_chars is None:
         if not quick:
@@ -1059,6 +1085,9 @@ def wizard(num_chars, quick, debug):
     except Exception as e:
         console.print(f"[red]The ritual failed: {e}[/red]")
         return
+
+    # Add multiplayer flag to scenario
+    scenario["multiplayer"] = multiplayer
 
     # Reveal
     if not quick:
