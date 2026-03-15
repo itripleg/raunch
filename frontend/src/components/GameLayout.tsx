@@ -61,9 +61,10 @@ type Props = {
   game: GameState;
   actions: Actions;
   onAddCharacter?: () => void;
+  onDeleteCharacter?: (name: string) => Promise<void>;
 };
 
-export function GameLayout({ game, actions, onAddCharacter }: Props) {
+export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [autoScroll, _setAutoScroll] = useState(true);
@@ -72,6 +73,15 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
   const [previewCharacter, setPreviewCharacter] = useState<string | null>(null);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
+
+  // Handle character deletion
+  const handleDeleteCharacter = useCallback(async (name: string) => {
+    if (onDeleteCharacter) {
+      await onDeleteCharacter(name);
+      // Refresh character list
+      actions.listCharacters();
+    }
+  }, [onDeleteCharacter, actions]);
 
   // Initialize focused page to latest when pages first load
   useEffect(() => {
@@ -446,6 +456,8 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
                 <DirectorPanel
                   pageData={focusedPage}
                   pendingGuidance={game.pendingDirectorGuidance}
+                  onDeleteCharacter={handleDeleteCharacter}
+                  characterNames={game.characterNames}
                 />
               ) : (
                 <CharacterPanel
@@ -497,6 +509,8 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
                     pageData={focusedPage}
                     pendingGuidance={game.pendingDirectorGuidance}
                     onClose={() => setCharacterPanelOpen(false)}
+                    onDeleteCharacter={handleDeleteCharacter}
+                    characterNames={game.characterNames}
                   />
                 ) : (
                   <CharacterPanel

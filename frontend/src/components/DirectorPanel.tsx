@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -8,11 +9,25 @@ type Props = {
   pageData?: PageData | null;
   pendingGuidance?: string | null;
   onClose?: () => void;
+  onDeleteCharacter?: (name: string) => void;
+  characterNames?: string[];
 };
 
-export function DirectorPanel({ pageData, pendingGuidance, onClose }: Props) {
+export function DirectorPanel({ pageData, pendingGuidance, onClose, onDeleteCharacter, characterNames = [] }: Props) {
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const characters = pageData?.characters ? Object.entries(pageData.characters) : [];
   const events = pageData?.events ?? [];
+
+  const handleDelete = (name: string) => {
+    if (confirmDelete === name) {
+      onDeleteCharacter?.(name);
+      setConfirmDelete(null);
+    } else {
+      setConfirmDelete(name);
+      // Auto-cancel after 3 seconds
+      setTimeout(() => setConfirmDelete(null), 3000);
+    }
+  };
 
   return (
     <aside className="min-w-[280px] sm:min-w-[320px] h-full border-l border-border/50 bg-card/80 lg:bg-card/30 flex flex-col shrink-0 pt-12 overflow-hidden">
@@ -131,6 +146,34 @@ export function DirectorPanel({ pageData, pendingGuidance, onClose }: Props) {
               <p className="text-xs text-muted-foreground/60 italic">
                 Waiting for scene data...
               </p>
+            )}
+
+            {/* Manage Characters section */}
+            {characterNames.length > 0 && onDeleteCharacter && (
+              <>
+                <Separator className="bg-border/30" />
+                <div className="space-y-2">
+                  <label className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                    Manage Cast
+                  </label>
+                  {characterNames.map((name) => (
+                    <div key={name} className="flex items-center justify-between group">
+                      <span className="text-xs text-foreground/80">{name}</span>
+                      <button
+                        onClick={() => handleDelete(name)}
+                        className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                          confirmDelete === name
+                            ? "bg-destructive text-destructive-foreground"
+                            : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        }`}
+                        title={confirmDelete === name ? "Click again to confirm" : "Remove character"}
+                      >
+                        {confirmDelete === name ? "Confirm?" : "Remove"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </motion.div>
         </AnimatePresence>

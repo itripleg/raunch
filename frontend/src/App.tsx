@@ -140,6 +140,24 @@ function App() {
     actions.listCharacters();
   }, [actions]);
 
+  // Handle character deletion
+  const handleDeleteCharacter = useCallback(async (name: string) => {
+    try {
+      const response = await fetch(`${apiUrl}/api/v1/characters/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || "Failed to delete character");
+      }
+      // Refresh character list
+      actions.listCharacters();
+    } catch (err) {
+      console.error("Failed to delete character:", err);
+      throw err;
+    }
+  }, [apiUrl, actions]);
+
   // Check world status and scenarios from REST API
   const checkWorldStatus = useCallback(async () => {
     try {
@@ -271,6 +289,7 @@ function App() {
               game={game}
               actions={actions}
               onAddCharacter={() => setShowCharacterWizard(true)}
+              onDeleteCharacter={handleDeleteCharacter}
             />
           </ErrorBoundary>
 
