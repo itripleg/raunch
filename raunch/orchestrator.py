@@ -541,12 +541,16 @@ class Orchestrator:
 
     def set_page_interval(self, seconds: int) -> None:
         """Set the page interval in seconds. 0 = manual mode, otherwise min 10, max 86400."""
+        was_manual = self.page_interval == 0
         if seconds == 0:
             self.page_interval = 0
             logger.info("Page interval set to manual mode")
         else:
             self.page_interval = max(10, min(86400, seconds))
             logger.info(f"Page interval set to {self.page_interval}s")
+            # If transitioning from manual to auto mode, unblock the loop
+            if was_manual:
+                self._manual_page_event.set()
 
     def trigger_page(self, host_override: bool = True) -> bool:
         """Manually trigger the next page (only works in manual mode).
