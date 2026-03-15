@@ -444,9 +444,28 @@ export function useGame(wsUrl: string) {
     return () => clearInterval(interval);
   }, []);
 
-  // Process messages synchronously via callback (for streaming)
+  // Process messages synchronously via callback (for streaming AND welcome)
   useEffect(() => {
     setOnMessage((msg: ServerMessage) => {
+      // Handle welcome message synchronously to avoid race condition
+      if (msg.type === "welcome") {
+        dispatch({
+          type: "WELCOME",
+          world: msg.world as WorldInfo,
+          characters: msg.characters as string[],
+          multiplayer: ((msg.world as WorldInfo & { multiplayer?: boolean })?.multiplayer) ?? false,
+        });
+        if (msg.history && Array.isArray(msg.history)) {
+          dispatch({ type: "HISTORY", pages: msg.history as HistoryPage[] });
+        }
+        if (typeof msg.page_interval === "number") {
+          dispatch({ type: "PAGE_INTERVAL", seconds: msg.page_interval, manual: msg.manual === true });
+        }
+        if (typeof msg.paused === "boolean") {
+          dispatch({ type: "PAUSE_STATE", paused: msg.paused });
+        }
+        return;
+      }
       // Handle streaming messages - accumulate in ref, mark dirty for throttled sync
       if (msg.type === "page_start") {
         streamingRef.current = {
@@ -495,31 +514,12 @@ export function useGame(wsUrl: string) {
     if (!lastMessage) return;
     const msg = lastMessage as ServerMessage;
 
-    // Skip streaming messages (handled above)
-    if (msg.type === "page_start" || msg.type === "stream_delta" || msg.type === "stream_done") {
+    // Skip messages handled in sync callback
+    if (msg.type === "page_start" || msg.type === "stream_delta" || msg.type === "stream_done" || msg.type === "welcome") {
       return;
     }
 
     switch (msg.type) {
-      case "welcome":
-        dispatch({
-          type: "WELCOME",
-          world: msg.world as WorldInfo,
-          characters: msg.characters as string[],
-          multiplayer: ((msg.world as WorldInfo & { multiplayer?: boolean })?.multiplayer) ?? false,
-        });
-        // Process initial history if included
-        if (msg.history && Array.isArray(msg.history)) {
-          dispatch({ type: "HISTORY", pages: msg.history as HistoryPage[] });
-        }
-        // Process initial page interval and pause state
-        if (typeof msg.page_interval === "number") {
-          dispatch({ type: "PAGE_INTERVAL", seconds: msg.page_interval, manual: msg.manual === true });
-        }
-        if (typeof msg.paused === "boolean") {
-          dispatch({ type: "PAUSE_STATE", paused: msg.paused });
-        }
-        break;
       case "page":
         dispatch({ type: "PAGE", data: msg as unknown as PageData });
         break;
