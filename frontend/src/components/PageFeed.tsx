@@ -781,7 +781,7 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
   }
 
   return (
-    <div className={`mx-auto px-4 sm:px-6 py-4 space-y-6 transition-[max-width] duration-300 ease-out ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
+    <div className={`mx-auto px-4 sm:px-6 py-4 space-y-6 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
       <AnimatePresence mode="popLayout">
         {pages.map((pageItem, index) => {
           const isFirst = index === 0;
@@ -991,8 +991,8 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
               return (
                 <motion.div
                   key={name}
-                  initial={useTypewriter ? { opacity: 0, x: -8 } : (skipAnimation ? false : { opacity: 0, x: -8 })}
-                  animate={{ opacity: 1, x: 0 }}
+                  initial={skipAnimation ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
                   transition={{ delay: useTypewriter ? 0.15 + charIndex * 0.2 : (skipAnimation ? 0 : 0.3 + charIndex * 0.15), duration: 0.4 }}
                   className="text-sm relative cursor-pointer hover:brightness-110 transition-all"
                   onMouseEnter={() => onHoverCharacter?.(name)}
@@ -1172,8 +1172,8 @@ function StreamingPageEntry({ streaming, characterNames = [] }: { streaming: Str
             return (
               <motion.div
                 key={name}
-                initial={{ opacity: 0, x: -5 }}
-                animate={{ opacity: 1, x: 0 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
                 className="text-sm"
               >

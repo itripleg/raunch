@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(sort:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(tasklist:*)",
+      "Bash(powershell \"Get-Process -Id 4392 | Select-Object Name,Id,Path\")",
+      "Bash(powershell \"Get-CimInstance Win32_Process -Filter ''ProcessId = 4392'' | Select-Object CommandLine\")",
+      "Bash(echo:*)",
+      "Bash(raunch wizard:*)",
+      "Bash(poetry run raunch:*)",
+      "Bash(git push:*)",
+      "Bash(node -e:*)",
+      "Bash(curl:*)",
+      "Bash(taskkill:*)",
+      "Bash(bash \"C:\\\\Users\\\\ecoli\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\5.0.2\\\\scripts\\\\start-server.sh\" --project-dir \"C:\\\\dev\\\\raunch\")",
+      "Bash(bash:*)",
+      "Bash(node --version:*)",
+      "Bash(ls:*)",
+      "Bash(dir C:devraunch*.toml C:devraunchsetup.*)",
+      "Bash(raunch start:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git log:*)",
+      "WebFetch(domain:raunch.onrender.com)"
+    ]
+  }
+}

@@ -28,6 +28,7 @@ type GameState = {
   directorMode?: boolean;
   pendingDirectorGuidance?: string | null;
   streaming?: StreamingState;
+  pageGenerating?: boolean;
   // Multiplayer
   multiplayer?: boolean;
   turnState?: TurnState | null;
@@ -67,7 +68,7 @@ type Props = {
   onBackToDashboard?: () => void;
 };
 
-export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteCharacter, onStopWorld, onBackToDashboard }: Props) {
+export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteCharacter, onStopWorld, onBackToDashboard: _onBackToDashboard }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [autoScroll, _setAutoScroll] = useState(true);
@@ -125,7 +126,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
   }, [game.pages.length, focusedPageNum]);
 
   // Get the character data for the focused page
-  const focusedPageData = useMemo(() => {
+  const _focusedPageData = useMemo(() => {
     if (!focusedPageNum || !game.attachedTo) return null;
     const pageItem = game.pages.find(p => p.page === focusedPageNum);
     return pageItem?.characters[game.attachedTo] ?? null;
@@ -186,17 +187,25 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
   }, []);
 
   // Preview a character (hover on desktop, tap on mobile)
+  // Only allow hover preview if a panel is already open (to avoid layout shift)
   const handlePreviewCharacter = useCallback((name: string | null) => {
-    setPreviewCharacter(name);
-  }, []);
-
-  // Tap on character name (mobile) - preview and open panel
-  const handleTapCharacter = useCallback((name: string) => {
-    if (window.innerWidth < 1024) {
+    // Only allow hover if right panel is already open (attached or director mode)
+    if (game.attachedTo || game.directorMode || previewCharacter) {
       setPreviewCharacter(name);
-      setCharacterPanelOpen(true);
     }
-  }, []);
+  }, [game.attachedTo, game.directorMode, previewCharacter]);
+
+  // Click on character name - only works if panel already open (to avoid layout shift)
+  const handleTapCharacter = useCallback((name: string) => {
+    // Only allow if right panel is already open
+    if (game.attachedTo || game.directorMode || previewCharacter) {
+      setPreviewCharacter(name);
+      // On mobile, also open the overlay panel
+      if (window.innerWidth < 1024) {
+        setCharacterPanelOpen(true);
+      }
+    }
+  }, [game.attachedTo, game.directorMode, previewCharacter]);
 
   // Smart auto-scroll: only if user is near bottom AND autoScroll is on
   useEffect(() => {
@@ -512,7 +521,29 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
               className="hidden lg:block overflow-hidden shrink-0 h-full"
             >
               <AnimatePresence mode="wait" initial={false}>
-                {game.directorMode ? (
+                {/* Preview character takes precedence, then director mode, then attached */}
+                {previewCharacter ? (
+                  <motion.div
+                    key={`character-${previewCharacter}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="h-full"
+                  >
+                    <CharacterPanel
+                      name={previewCharacter}
+                      data={focusedPage?.characters[previewCharacter] ?? undefined}
+                      isPreview={true}
+                      pendingInfluence={null}
+                      streamingText={
+                        game.streaming?.isStreaming
+                          ? game.streaming.characters[previewCharacter]
+                          : undefined
+                      }
+                    />
+                  </motion.div>
+                ) : game.directorMode ? (
                   <motion.div
                     key="director"
                     initial={{ opacity: 0 }}
@@ -540,7 +571,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
                     <CharacterPanel
                       name={displayedCharacterName!}
                       data={displayedCharacterData}
-                      isPreview={!!previewCharacter}
+                      isPreview={false}
                       pendingInfluence={
                         game.pendingInfluence?.character === displayedCharacterName
                           ? game.pendingInfluence.text
@@ -583,7 +614,24 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
                 transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
                 className="absolute right-0 top-0 h-full w-[320px] max-w-[90vw]"
               >
-                {game.directorMode ? (
+                {/* Preview character takes precedence, then director mode */}
+                {previewCharacter ? (
+                  <CharacterPanel
+                    name={previewCharacter}
+                    data={focusedPage?.characters[previewCharacter] ?? undefined}
+                    isPreview={true}
+                    pendingInfluence={null}
+                    streamingText={
+                      game.streaming?.isStreaming
+                        ? game.streaming.characters[previewCharacter]
+                        : undefined
+                    }
+                    onClose={() => {
+                      setCharacterPanelOpen(false);
+                      setPreviewCharacter(null);
+                    }}
+                  />
+                ) : game.directorMode ? (
                   <DirectorPanel
                     pageData={focusedPage}
                     pendingGuidance={game.pendingDirectorGuidance}
@@ -595,7 +643,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
                   <CharacterPanel
                     name={displayedCharacterName!}
                     data={displayedCharacterData}
-                    isPreview={!!previewCharacter}
+                    isPreview={false}
                     pendingInfluence={
                       game.pendingInfluence?.character === displayedCharacterName
                         ? game.pendingInfluence.text

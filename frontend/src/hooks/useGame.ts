@@ -31,6 +31,7 @@ export type WorldInfo = {
   page_count?: number;
   world_time?: string;
   mood?: string;
+  multiplayer?: boolean;
 };
 
 type HistoryPage = {

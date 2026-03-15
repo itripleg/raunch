@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence, Reorder } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft,
   Plus,
@@ -93,7 +93,7 @@ export function FeedbackKanban({ onBack, isAdmin, apiUrl }: Props) {
         { id: 1, title: "More character customization", notes: "Hair, clothes, accessories", status: "planned", outcome: null, outcome_notes: null, upvotes: 0, created_at: new Date().toISOString() },
         { id: 2, title: "Save/load game state", notes: null, status: "considering", outcome: null, outcome_notes: null, upvotes: 0, created_at: new Date().toISOString() },
         { id: 3, title: "Dark mode toggle", notes: "Some people want light mode?", status: "requests", outcome: null, outcome_notes: null, upvotes: 5, created_at: new Date().toISOString() },
-        { id: 4, title: "Multiplayer support", notes: null, status: "results", outcome: "shipped", outcome_notes: "Added in v0.2!", created_at: new Date().toISOString() },
+        { id: 4, title: "Multiplayer support", notes: null, status: "results", outcome: "shipped", outcome_notes: "Added in v0.2!", upvotes: 0, created_at: new Date().toISOString() },
       ]);
     } finally {
       setLoading(false);
@@ -439,7 +439,7 @@ function FeedbackCard({
   item,
   isAdmin,
   onUpvote,
-  onMove,
+  onMove: _onMove,
   onDelete,
   onDragStart,
   onDragEnd,
@@ -454,7 +454,7 @@ function FeedbackCard({
   onDragEnd?: () => void;
   isDragging?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [_expanded, _setExpanded] = useState(false);
 
   return (
     <motion.div

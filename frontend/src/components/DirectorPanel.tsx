@@ -96,11 +96,11 @@ export function DirectorPanel({ pageData, pendingGuidance, onClose, onDeleteChar
                 <label className="text-[9px] uppercase tracking-wider text-muted-foreground">
                   Events
                 </label>
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="mt-2 space-y-1.5">
                   {events.map((evt, i) => (
-                    <Badge key={i} variant="secondary" className="text-[10px]">
+                    <div key={i} className="text-[10px] text-muted-foreground bg-muted/50 rounded px-2 py-1 break-words">
                       {evt}
-                    </Badge>
+                    </div>
                   ))}
                 </div>
               </div>

@@ -150,7 +150,7 @@ class ErrorBoundary extends Component<
 }
 
 function App() {
-  const [wsUrl, setWsUrl] = useState(DEFAULT_WS_URL);
+  const [wsUrl, _setWsUrl] = useState(DEFAULT_WS_URL);
   const [apiUrl] = useState(DEFAULT_API_URL);
   const { wsState, game, actions } = useGame(wsUrl);
 
@@ -165,7 +165,7 @@ function App() {
 
   // World running status from REST API
   const [worldRunning, setWorldRunning] = useState<boolean | null>(null);
-  const [worldCheckError, setWorldCheckError] = useState<string | null>(null);
+  const [_worldCheckError, setWorldCheckError] = useState<string | null>(null);
 
 
   // Character wizard state

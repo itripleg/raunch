@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { ArrowLeft, Sparkles, Terminal, Users, MessageCircle, Eye, Wand2, Theater } from "lucide-react";
+import { ArrowLeft, Sparkles, Users, MessageCircle, Eye, Wand2, Theater } from "lucide-react";
 
 type Props = {
   onBack: () => void;
@@ -8,8 +8,8 @@ type Props = {
   apiUrl: string;
 };
 
-export function AboutPage({ onBack, isAdmin, apiUrl }: Props) {
-  const [content, setContent] = useState<string | null>(null);
+export function AboutPage({ onBack, isAdmin: _isAdmin, apiUrl }: Props) {
+  const [_content, setContent] = useState<string | null>(null);
 
   useEffect(() => {
     // Try to fetch from API, fall back to default
