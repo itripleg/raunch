@@ -406,6 +406,7 @@ def start(save_name, world_name, scenario_name, headless, force):
 
     # Disable streaming for OAuth (doesn't support real streaming)
     client = get_client()
+    console.print(f"[dim]Auth method: {client.auth_method}, streaming: {client.supports_streaming}[/dim]")
     orch.streaming_enabled = client.supports_streaming
     if not client.supports_streaming:
         console.print("[dim]OAuth mode: streaming disabled, using typewriter animation[/dim]")
