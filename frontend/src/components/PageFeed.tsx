@@ -657,20 +657,7 @@ function PageIntermission({
         )}
       </AnimatePresence>
 
-      {/* Phase 3: Ready indicator */}
-      <AnimatePresence>
-        {phase >= 3 && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-center"
-          >
-            <span className="text-xs text-primary/50 uppercase tracking-wider">
-              Ready{".".repeat(dots)}
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Phase 3 "Ready" message removed - not needed */}
 
       {/* Scene break footer */}
       <motion.div
@@ -930,6 +917,15 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
   // Track narration completion for staggering character dialogue
   const [narrationComplete, setNarrationComplete] = useState(!useTypewriter);
 
+  // Allow skipping typewriter with double-click
+  const [typewriterSkipped, setTypewriterSkipped] = useState(false);
+  const handleDoubleClick = useCallback(() => {
+    if (useTypewriter && !narrationComplete) {
+      setTypewriterSkipped(true);
+      setNarrationComplete(true);
+    }
+  }, [useTypewriter, narrationComplete]);
+
   // Combine refs
   const handleRef = useCallback((el: HTMLElement | null) => {
     (localRef as React.MutableRefObject<HTMLElement | null>).current = el;
@@ -991,43 +987,22 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
         >
           {formatTimestamp(pageItem.created_at)}
         </span>
-        {pageItem.events.length > 0 && (
-          <div className="flex gap-1.5 flex-wrap">
-            {pageItem.events.map((evt, i) => (
-              <motion.div
-                key={i}
-                initial={false}
-                animate={{
-                  opacity: isHovering ? 1 : 0,
-                  scale: isHovering ? 1 : 0.95,
-                }}
-                transition={{
-                  duration: 0.12,
-                  // Stagger only on first reveal, instant after
-                  delay: isRevealing ? i * 0.2 : 0,
-                  ease: [0.25, 0.46, 0.45, 0.94],
-                }}
-              >
-                <Badge variant="secondary" className="text-[10px]">
-                  {evt}
-                </Badge>
-              </motion.div>
-            ))}
-          </div>
-        )}
       </motion.div>
 
       {/* Narration with highlighted dialogue and intensity words */}
+      {/* Double-click to skip typewriter animation */}
       <motion.div
-        className={`text-sm leading-relaxed text-foreground/90 pl-3 border-l-2 ${moodStyle.border} whitespace-pre-line`}
+        className={`text-sm leading-relaxed text-foreground/90 pl-3 border-l-2 ${moodStyle.border} whitespace-pre-line cursor-text`}
         initial={skipAnimation ? false : { opacity: 0, x: -5 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.2, duration: 0.4 }}
+        onDoubleClick={handleDoubleClick}
+        title={useTypewriter && !narrationComplete ? "Double-click to skip animation" : undefined}
       >
         <NarrationText
           text={pageItem.narration}
           isNew={isTrulyNew && !skipAnimation}
-          useTypewriter={useTypewriter}
+          useTypewriter={useTypewriter && !typewriterSkipped}
           onComplete={() => setNarrationComplete(true)}
         />
       </motion.div>
@@ -1082,6 +1057,48 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Events section at bottom - subtle hover trigger */}
+      {pageItem.events.length > 0 && (
+        <motion.div
+          className="mt-4 group"
+          initial={skipAnimation ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          {/* Subtle "events" label - always visible */}
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground/30 group-hover:text-muted-foreground/50 transition-colors cursor-default">
+            events
+          </span>
+          {/* Events badges - appear on hover */}
+          <AnimatePresence>
+            {isHovering && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex gap-1.5 flex-wrap mt-1"
+              >
+                {pageItem.events.map((evt, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: isRevealing ? i * 0.15 : 0, duration: 0.15 }}
+                  >
+                    <Badge variant="secondary" className="text-[10px]">
+                      {evt}
+                    </Badge>
+                  </motion.div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      )}
     </motion.article>
   );
 }
