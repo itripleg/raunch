@@ -14,7 +14,8 @@ from . import api as api_module
 
 logger = logging.getLogger(__name__)
 
-WS_PORT = 7667
+import os
+WS_PORT = int(os.environ.get("PORT", os.environ.get("WS_PORT", 7667)))
 
 
 class WSClient:
