@@ -73,9 +73,7 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
             <div className="text-[11px] text-muted-foreground space-y-0.5">
               <div>Time: {world.world_time as string ?? "?"}</div>
               <div>Mood: {world.mood as string ?? "?"}</div>
-              <div className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground/60">
-                Page: {world.page_count as number ?? "?"}
-              </div>
+              <div>Pages: {world.page_count as number ?? "?"}</div>
             </div>
           </div>
         ) : (
@@ -96,7 +94,7 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
             className={`mt-2 text-[10px] transition-all ${
               confirmStop
                 ? "text-destructive font-medium"
-                : "opacity-0 group-hover:opacity-100 text-muted-foreground/50 hover:text-muted-foreground"
+                : "opacity-0 group-hover:opacity-100 text-pink-400/70 hover:text-pink-400"
             }`}
           >
             {confirmStop ? "Click again to end" : "End session"}
