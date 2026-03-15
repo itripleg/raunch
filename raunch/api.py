@@ -7,7 +7,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .wizard import list_scenarios, random_scenario, load_scenario
+from .wizard import (
+    list_scenarios,
+    random_scenario,
+    load_scenario,
+    generate_scenario,
+    save_scenario,
+    SETTINGS,
+    KINK_POOLS,
+    VIBES,
+)
 from .db import (
     get_remembered_characters,
     get_potential_characters as db_get_potential_characters,
@@ -201,6 +210,67 @@ async def roll_scenario():
     """Generate a random scenario using the Smut Wizard."""
     scenario = random_scenario()
     return scenario
+
+
+class WizardOptionsResponse(BaseModel):
+    """Available options for the Smut Wizard."""
+    settings: List[str]
+    kinks: List[str]
+    vibes: List[str]
+
+
+class WizardGenerateRequest(BaseModel):
+    """Request to generate a scenario."""
+    setting: Optional[str] = None
+    kinks: Optional[List[str]] = None
+    vibe: Optional[str] = None
+    preferences: Optional[str] = None
+    num_characters: int = 3
+    save: bool = False
+
+
+class ScenarioSaveResponse(BaseModel):
+    """Response after saving a scenario."""
+    saved_to: str
+
+
+@app.get("/api/v1/wizard/options", response_model=WizardOptionsResponse)
+async def get_wizard_options():
+    """Get available options for the Smut Wizard."""
+    return WizardOptionsResponse(
+        settings=SETTINGS,
+        kinks=KINK_POOLS,
+        vibes=VIBES,
+    )
+
+
+@app.post("/api/v1/wizard/generate", response_model=GeneratedScenarioResponse)
+async def wizard_generate(request: WizardGenerateRequest):
+    """Generate a scenario with the Smut Wizard."""
+    try:
+        scenario = generate_scenario(
+            preferences=request.preferences,
+            num_characters=request.num_characters,
+            kinks=request.kinks,
+            setting_hint=request.setting,
+            vibe=request.vibe,
+        )
+        if request.save:
+            path = save_scenario(scenario)
+            scenario["saved_to"] = path
+        return scenario
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/scenarios/save", response_model=ScenarioSaveResponse)
+async def save_scenario_endpoint(scenario: GeneratedScenarioResponse):
+    """Save a generated scenario to disk."""
+    try:
+        path = save_scenario(scenario.model_dump())
+        return ScenarioSaveResponse(saved_to=path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/v1/world", response_model=WorldResponse)
