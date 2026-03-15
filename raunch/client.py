@@ -106,6 +106,12 @@ class LLMClient:
                 "  Option 3: Set CLAUDE_CODE_OAUTH_TOKEN environment variable"
             )
 
+    @property
+    def supports_streaming(self) -> bool:
+        """Return True if the current auth method supports real streaming."""
+        # Only API key supports true streaming - OAuth returns full responses
+        return self.auth_method == "api_key"
+
     def _run_async(self, coro):
         """Run an async coroutine synchronously."""
         try:

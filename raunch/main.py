@@ -404,6 +404,12 @@ def start(save_name, world_name, scenario_name, headless, force):
 
     orch.set_stream_callback(on_stream)
 
+    # Disable streaming for OAuth (doesn't support real streaming)
+    client = get_client()
+    orch.streaming_enabled = client.supports_streaming
+    if not client.supports_streaming:
+        console.print("[dim]OAuth mode: streaming disabled, using typewriter animation[/dim]")
+
     # Wire up: orchestrator pages → server broadcasts + local display
     def on_page(results):
         nonlocal page_loading_active, progressive_rendered
