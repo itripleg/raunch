@@ -20,6 +20,16 @@ type NPCInfo = {
   backstory?: string;
 };
 
+type RememberedCharacter = {
+  name: string;
+  appearances: number;
+  last_seen_page?: number;
+  emotional_state?: string;
+  personality?: string;
+  sample_dialogue?: string[];
+  sample_actions?: string[];
+};
+
 type Props = {
   apiUrl: string;
   onCharacterAdded: (char: CharacterData) => void;
@@ -86,29 +96,56 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showNPCMatch, setShowNPCMatch] = useState(false);
-  const [matchedNPC, setMatchedNPC] = useState<NPCInfo | null>(null);
   const [npcs, setNpcs] = useState<NPCInfo[]>(propNpcs);
+  const [remembered, setRemembered] = useState<RememberedCharacter[]>([]);
 
-  // Fetch NPCs from API on mount
+  // Fetch NPCs, potential characters, and remembered characters from API on mount
   useEffect(() => {
-    async function fetchNPCs() {
+    async function fetchData() {
       try {
-        const res = await fetch(`${apiUrl}/api/v1/world`);
-        if (res.ok) {
-          const data = await res.json();
+        // Fetch world data (scenario NPCs + remembered)
+        const worldRes = await fetch(`${apiUrl}/api/v1/world`);
+        if (worldRes.ok) {
+          const data = await worldRes.json();
+          const allNpcs: NPCInfo[] = [];
+
           if (data.npcs && Array.isArray(data.npcs)) {
-            setNpcs(data.npcs);
+            allNpcs.push(...data.npcs);
+          }
+
+          // Also fetch potential characters (narrator-detected NPCs)
+          try {
+            const potentialRes = await fetch(`${apiUrl}/api/v1/potential-characters`);
+            if (potentialRes.ok) {
+              const potentialData = await potentialRes.json();
+              if (Array.isArray(potentialData)) {
+                for (const pc of potentialData) {
+                  // Only add if not already in npcs list
+                  if (!allNpcs.some(n => n.name.toLowerCase() === pc.name.toLowerCase())) {
+                    allNpcs.push({
+                      name: pc.name,
+                      description: pc.description,
+                    });
+                  }
+                }
+              }
+            }
+          } catch {
+            // Potential characters endpoint failed, continue with scenario NPCs
+          }
+
+          setNpcs(allNpcs);
+
+          if (data.remembered && Array.isArray(data.remembered)) {
+            setRemembered(data.remembered);
           }
         }
       } catch {
-        // Silently fail - NPCs are optional
+        // Silently fail - character data is optional
       }
     }
-    if (propNpcs.length === 0) {
-      fetchNPCs();
-    }
-  }, [apiUrl, propNpcs]);
+    fetchData();
+  }, [apiUrl]);
 
   const [char, setChar] = useState<CharacterData>({
     name: "",
@@ -119,35 +156,94 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
     backstory: "",
   });
 
-  // Check for NPC match when name changes
-  const currentMatch = useMemo(() => {
-    return findMatchingNPC(char.name, npcs);
-  }, [char.name, npcs]);
+  // Check if name matches an existing true character (case-insensitive)
+  const existingCharacterMatch = useMemo((): string | null => {
+    const searchName = char.name.trim().toLowerCase();
+    if (searchName.length < 2) return null;
+
+    for (const existing of existingCharacters) {
+      const existingLower = existing.toLowerCase();
+      if (existingLower === searchName ||
+          existingLower.startsWith(searchName + " ") ||
+          searchName.startsWith(existingLower + " ")) {
+        return existing;
+      }
+    }
+    return null;
+  }, [char.name, existingCharacters]);
+
+  // Check for NPC or remembered character match when name changes
+  // Only if NOT already a true character
+  const currentMatch = useMemo((): { type: "npc" | "remembered"; data: NPCInfo | RememberedCharacter } | null => {
+    // Don't suggest promotion if already a true character
+    if (existingCharacterMatch) return null;
+
+    // First check NPCs (structured data)
+    const npcMatch = findMatchingNPC(char.name, npcs);
+    if (npcMatch) {
+      return { type: "npc", data: npcMatch };
+    }
+
+    // Then check remembered characters (from story history)
+    const searchName = char.name.trim().toLowerCase();
+    if (searchName.length < 2) return null;
+
+    for (const rem of remembered) {
+      const remName = rem.name.toLowerCase();
+      if (remName === searchName ||
+          remName.startsWith(searchName + " ") ||
+          searchName.startsWith(remName + " ")) {
+        return { type: "remembered", data: rem };
+      }
+    }
+    return null;
+  }, [char.name, npcs, remembered, existingCharacterMatch]);
+
+  // Track if we auto-filled from NPC
+  const [autoFilledFrom, setAutoFilledFrom] = useState<string | null>(null);
 
   const updateField = useCallback((field: keyof CharacterData, value: string) => {
     setChar(prev => ({ ...prev, [field]: value }));
     setError(null);
-    // Reset match prompt when name changes
+    // Reset auto-fill state when name changes
     if (field === "name") {
-      setShowNPCMatch(false);
-      setMatchedNPC(null);
+      setAutoFilledFrom(null);
     }
   }, []);
 
-  // Apply NPC data to character
-  const applyNPCData = useCallback((npc: NPCInfo) => {
-    setChar(prev => ({
-      ...prev,
-      name: npc.name,
-      species: npc.species || prev.species,
-      personality: npc.personality || npc.description || prev.personality,
-      appearance: npc.appearance || prev.appearance,
-      desires: npc.desires || prev.desires,
-      backstory: npc.backstory || prev.backstory,
-    }));
-    setShowNPCMatch(false);
-    setMatchedNPC(null);
-  }, []);
+  // Auto-fill from NPC or remembered character when match is detected
+  useEffect(() => {
+    if (currentMatch && step === 0 && !autoFilledFrom) {
+      if (currentMatch.type === "npc") {
+        const npc = currentMatch.data as NPCInfo;
+        setChar(prev => ({
+          ...prev,
+          species: npc.species || prev.species,
+          personality: npc.personality || npc.description || prev.personality,
+          appearance: npc.appearance || prev.appearance,
+          desires: npc.desires || prev.desires,
+          backstory: npc.backstory || prev.backstory,
+        }));
+        setAutoFilledFrom(npc.name);
+      } else {
+        // Remembered character - build personality from their history
+        const rem = currentMatch.data as RememberedCharacter;
+        const personalityParts: string[] = [];
+        if (rem.emotional_state) {
+          personalityParts.push(rem.emotional_state);
+        }
+        if (rem.personality) {
+          personalityParts.push(rem.personality);
+        }
+        setChar(prev => ({
+          ...prev,
+          personality: personalityParts.join(". ") || prev.personality,
+          // We don't have species/appearance/etc for remembered characters
+        }));
+        setAutoFilledFrom(rem.name);
+      }
+    }
+  }, [currentMatch, step, autoFilledFrom]);
 
   const canProceed = useCallback(() => {
     switch (step) {
@@ -162,20 +258,19 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
   }, [step, char]);
 
   const handleNext = useCallback(() => {
-    if (step === 0 && existingCharacters.includes(char.name.trim())) {
+    // Case-insensitive duplicate check
+    const nameLower = char.name.trim().toLowerCase();
+    const isDuplicate = existingCharacters.some(
+      existing => existing.toLowerCase() === nameLower
+    );
+    if (step === 0 && isDuplicate) {
       setError("A character with this name already exists");
-      return;
-    }
-    // Check for NPC match when leaving name step
-    if (step === 0 && currentMatch && !matchedNPC) {
-      setMatchedNPC(currentMatch);
-      setShowNPCMatch(true);
       return;
     }
     if (step < 5) {
       setStep(step + 1);
     }
-  }, [step, char.name, existingCharacters, currentMatch, matchedNPC]);
+  }, [step, char.name, existingCharacters]);
 
   const handleSubmit = useCallback(async () => {
     setLoading(true);
@@ -322,6 +417,63 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
               />
             )}
 
+            {/* Already exists warning */}
+            {step === 0 && existingCharacterMatch && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-3 p-3 rounded-lg border bg-destructive/10 border-destructive/20"
+              >
+                <div className="flex items-center gap-2 text-xs font-medium text-destructive">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4M12 16h.01" />
+                  </svg>
+                  <span>Character already exists</span>
+                </div>
+                <p className="mt-1.5 text-[11px] text-destructive/70">
+                  "{existingCharacterMatch}" is already a true character in this scenario.
+                </p>
+              </motion.div>
+            )}
+
+            {/* NPC/Remembered character promotion indicator */}
+            {step === 0 && !existingCharacterMatch && autoFilledFrom && currentMatch && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`mt-3 p-3 rounded-lg border ${
+                  currentMatch.type === "remembered"
+                    ? "bg-amber-500/10 border-amber-500/20"
+                    : "bg-purple-500/10 border-purple-500/20"
+                }`}
+              >
+                <div className={`flex items-center gap-2 text-xs font-medium ${
+                  currentMatch.type === "remembered" ? "text-amber-400" : "text-purple-400"
+                }`}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    {currentMatch.type === "remembered" ? (
+                      <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    ) : (
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM17 11l2 2 4-4" />
+                    )}
+                  </svg>
+                  <span>
+                    {currentMatch.type === "remembered"
+                      ? "Character from story"
+                      : "Promote NPC to character"}
+                  </span>
+                </div>
+                <p className={`mt-1.5 text-[11px] ${
+                  currentMatch.type === "remembered" ? "text-amber-400/70" : "text-purple-400/70"
+                }`}>
+                  {currentMatch.type === "remembered"
+                    ? `Appeared ${(currentMatch.data as RememberedCharacter).appearances} times. Promoting to true character enables inner thoughts.`
+                    : "This NPC exists in the scenario. Promoting them to a true character lets you read their inner thoughts."}
+                </p>
+              </motion.div>
+            )}
+
             {/* Suggestions */}
             {currentStep.suggestions && (
               <div className="flex flex-wrap gap-2 mt-3">
@@ -354,44 +506,6 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
           </motion.p>
         )}
 
-        {/* NPC Match Prompt */}
-        <AnimatePresence>
-          {showNPCMatch && matchedNPC && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mt-4 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg"
-            >
-              <p className="text-sm text-purple-300 mb-3">
-                Found an NPC named <span className="font-semibold">"{matchedNPC.name}"</span> in the scenario.
-                Use their description?
-              </p>
-              {(matchedNPC.description || matchedNPC.personality) && (
-                <p className="text-xs text-muted-foreground mb-3 italic line-clamp-2">
-                  "{matchedNPC.description || matchedNPC.personality}"
-                </p>
-              )}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => applyNPCData(matchedNPC)}
-                  className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs rounded-lg transition-colors"
-                >
-                  Yes, use NPC data
-                </button>
-                <button
-                  onClick={() => {
-                    setShowNPCMatch(false);
-                    setStep(1);
-                  }}
-                  className="px-3 py-1.5 text-muted-foreground hover:text-foreground text-xs transition-colors"
-                >
-                  No, create fresh
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* Actions */}
         <div className="flex justify-between mt-6">

@@ -10,6 +10,7 @@ import websockets
 
 from .config import SERVER_HOST
 from . import db
+from . import api as api_module
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,20 @@ class WebSocketServer:
     """WebSocket server for web frontend clients."""
 
     def __init__(self, orchestrator):
-        self.orch = orchestrator
+        self._initial_orch = orchestrator  # Fallback for startup
         self.clients: Set[WSClient] = set()
         self._server = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+    @property
+    def orch(self):
+        """Get orchestrator dynamically - allows REST API to switch worlds."""
+        # Try to get from API module first (supports dynamic world switching)
+        api_orch = api_module.get_orchestrator()
+        if api_orch is not None:
+            return api_orch
+        # Fallback to initial orchestrator
+        return self._initial_orch
 
     async def start(self):
         self._loop = asyncio.get_running_loop()
@@ -153,7 +164,8 @@ class WebSocketServer:
             await client.send({"type": "characters", "characters": chars})
 
         elif cmd == "world":
-            await client.send({"type": "world", "snapshot": self.orch.world.snapshot()})
+            # Send world info as dict (not snapshot which is a string)
+            await client.send({"type": "world", "snapshot": self.orch.world.info()})
 
         elif cmd == "status":
             await client.send({

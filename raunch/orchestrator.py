@@ -11,8 +11,21 @@ from .agents import Narrator, Character
 from .world import WorldState
 from .config import BASE_PAGE_SECONDS
 from . import db
+from .db import save_potential_character
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_newchar_tags(narration: str) -> List[Dict[str, str]]:
+    """Extract [[NewChar: Name | description]] tags from narration."""
+    pattern = r'\[\[NewChar:\s*([^|]+)\s*\|\s*([^\]]+)\]\]'
+    matches = re.findall(pattern, narration)
+    return [{"name": n.strip(), "description": d.strip()} for n, d in matches]
+
+
+def _strip_newchar_tags(narration: str) -> str:
+    """Remove [[NewChar: ...]] tags from display text."""
+    return re.sub(r'\[\[NewChar:[^\]]+\]\]', '', narration).strip()
 
 
 def _extract_narration_from_raw(raw: str) -> str:
@@ -273,7 +286,16 @@ class Orchestrator:
                 narrator_result = self.narrator.page_stream(narrator_input, on_delta=on_chunk)
                 self._stream_callback(page_num, "narrator", "done", "")
             else:
+                # Non-streaming mode - still send start/done events for progress tracking
+                if self._stream_callback:
+                    self._stream_callback(page_num, "narrator", "start", "")
                 narrator_result = self.narrator.page(narrator_input)
+                if self._stream_callback:
+                    # Send complete response as single delta so frontend can display it
+                    raw_response = self.narrator.history[-1]["content"] if self.narrator.history else ""
+                    if raw_response:
+                        self._stream_callback(page_num, "narrator", "delta", raw_response)
+                    self._stream_callback(page_num, "narrator", "done", "")
 
             self.world.apply_narrator_update(narrator_result)
             # Extract narration, cleaning up any raw JSON fallback
@@ -283,6 +305,24 @@ class Orchestrator:
                 narration = _extract_narration_from_raw(raw)
             # Final cleanup - strip any remaining JSON artifacts
             narration = _clean_narration(narration)
+
+            # Parse and save new character tags before stripping them
+            new_chars = _parse_newchar_tags(narration)
+            for char_info in new_chars:
+                try:
+                    save_potential_character(
+                        self.world.world_id,
+                        char_info["name"],
+                        char_info["description"],
+                        page_num
+                    )
+                    logger.info(f"Detected new character: {char_info['name']}")
+                except Exception as e:
+                    logger.error(f"Failed to save potential character {char_info['name']}: {e}")
+
+            # Strip character tags from narration before display/save
+            narration = _strip_newchar_tags(narration)
+
             results["narration"] = narration
             results["events"] = narrator_result.get("events", [])
         except Exception as e:
@@ -291,8 +331,9 @@ class Orchestrator:
             results["events"] = []
 
         # 2. Each character reacts
+        # Take a snapshot to avoid "dictionary changed size during iteration" errors
         narration_text = results["narration"]
-        for name, char in self.characters.items():
+        for name, char in list(self.characters.items()):
             # Check for pending influence (whispered suggestion)
             influence = self.get_pending_influence(name)
 
@@ -342,7 +383,14 @@ class Orchestrator:
                     )
                     self._stream_callback(page_num, name, "done", "")
                 else:
+                    # Non-streaming mode - still send done event for progress tracking
                     char_result = char.page(char_input)
+                    if self._stream_callback:
+                        # Send complete response as single delta so frontend can display it
+                        raw_response = char.history[-1]["content"] if char.history else ""
+                        if raw_response:
+                            self._stream_callback(page_num, name, "delta", raw_response)
+                        self._stream_callback(page_num, name, "done", "")
                 results["characters"][name] = char_result
             except Exception as e:
                 logger.error(f"Character {name} page failed: {e}")
@@ -474,8 +522,20 @@ class Orchestrator:
             # Store trigger reason for streaming callback access
             self._last_page_trigger_reason = page_trigger_reason
 
-            results = self._run_page()
-            results['triggered_by'] = page_trigger_reason
+            try:
+                results = self._run_page()
+                results['triggered_by'] = page_trigger_reason
+            except Exception as e:
+                # Catch any errors in page generation and send error to callbacks
+                logger.error(f"Page generation crashed: {e}", exc_info=True)
+                results = {
+                    "page": self.world.page_count,
+                    "narration": f"[Page generation error: {e}]",
+                    "events": [],
+                    "characters": {},
+                    "_is_error": True,
+                    "triggered_by": page_trigger_reason,
+                }
 
             # Reset ready states after page completes (for multiplayer)
             if self.world.multiplayer and self._player_ready_states:

@@ -42,16 +42,41 @@ type DebugData = {
   stats: DebugStats;
 };
 
+type NPCInfo = {
+  name: string;
+  description?: string;
+  species?: string;
+  personality?: string;
+  appearance?: string;
+  desires?: string;
+  backstory?: string;
+};
+
+type PotentialCharacter = {
+  name: string;
+  description?: string;
+  first_page: number;
+  times_mentioned: number;
+};
+
+type NPCData = {
+  scenarioNpcs: NPCInfo[];
+  potentialCharacters: PotentialCharacter[];
+  trueCharacters: string[];
+};
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   sendCommand: (cmd: string, data?: Record<string, unknown>) => void;
+  apiUrl?: string;
 };
 
-export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
+export function DebugPanel({ isOpen, onClose, sendCommand, apiUrl = "http://localhost:8000" }: Props) {
   const [debugData, setDebugData] = useState<DebugData | null>(null);
+  const [npcData, setNpcData] = useState<NPCData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "pages" | "characters">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "pages" | "characters" | "npcs">("overview");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   const fetchDebugData = useCallback(() => {
@@ -59,6 +84,35 @@ export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
     setLoading(true);
     sendCommand("debug", { limit: 50, include_raw: true });
   }, [sendCommand]);
+
+  const fetchNpcData = useCallback(async () => {
+    try {
+      const [worldRes, potentialRes] = await Promise.all([
+        fetch(`${apiUrl}/api/v1/world`),
+        fetch(`${apiUrl}/api/v1/potential-characters`).catch(() => null),
+      ]);
+
+      const data: NPCData = {
+        scenarioNpcs: [],
+        potentialCharacters: [],
+        trueCharacters: [],
+      };
+
+      if (worldRes.ok) {
+        const worldData = await worldRes.json();
+        data.scenarioNpcs = worldData.npcs || [];
+        data.trueCharacters = worldData.characters || [];
+      }
+
+      if (potentialRes?.ok) {
+        data.potentialCharacters = await potentialRes.json();
+      }
+
+      setNpcData(data);
+    } catch (err) {
+      console.error("[DebugPanel] Failed to fetch NPC data:", err);
+    }
+  }, [apiUrl]);
 
   // Log when data arrives
   useEffect(() => {
@@ -85,7 +139,10 @@ export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
     if (isOpen && !debugData) {
       fetchDebugData();
     }
-  }, [isOpen, debugData, fetchDebugData]);
+    if (isOpen && !npcData) {
+      fetchNpcData();
+    }
+  }, [isOpen, debugData, npcData, fetchDebugData, fetchNpcData]);
 
   const toggleExpand = (key: string) => {
     setExpandedItems((prev) => {
@@ -130,7 +187,10 @@ export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={fetchDebugData}
+                onClick={() => {
+                  fetchDebugData();
+                  fetchNpcData();
+                }}
                 disabled={loading}
                 className="px-3 py-1.5 text-xs bg-primary/10 hover:bg-primary/20 text-primary rounded transition-colors disabled:opacity-50"
               >
@@ -149,7 +209,7 @@ export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
 
           {/* Tabs */}
           <div className="flex border-b border-border px-4 bg-muted/10">
-            {(["overview", "pages", "characters"] as const).map((tab) => (
+            {(["overview", "pages", "characters", "npcs"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -165,7 +225,7 @@ export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
           </div>
 
           {/* Content */}
-          <ScrollArea className="flex-1">
+          <div className="flex-1 overflow-y-auto min-h-0">
             <div className="p-6">
               {loading && !debugData ? (
                 <div className="flex items-center justify-center py-12">
@@ -175,6 +235,8 @@ export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
                 <div className="text-center py-12 text-muted-foreground">
                   No debug data available
                 </div>
+              ) : activeTab === "npcs" ? (
+                <NpcsTab npcData={npcData} expandedItems={expandedItems} toggleExpand={toggleExpand} />
               ) : activeTab === "overview" ? (
                 <OverviewTab stats={debugData.stats} characterPages={debugData.character_pages} />
               ) : activeTab === "pages" ? (
@@ -187,7 +249,7 @@ export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
                 />
               )}
             </div>
-          </ScrollArea>
+          </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
@@ -555,6 +617,231 @@ function FieldDisplay({ label, value }: { label: string; value: string | null })
       <p className={`text-xs mt-0.5 ${value ? "text-foreground/80" : "text-muted-foreground/50 italic"}`}>
         {value || "null"}
       </p>
+    </div>
+  );
+}
+
+function NpcsTab({
+  npcData,
+  expandedItems,
+  toggleExpand,
+}: {
+  npcData: NPCData | null;
+  expandedItems: Set<string>;
+  toggleExpand: (key: string) => void;
+}) {
+  if (!npcData) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        Loading NPC data...
+      </div>
+    );
+  }
+
+  // Categorize characters:
+  // - Scenario Defined: in trueCharacters AND has data in scenarioNpcs
+  // - Promoted: in trueCharacters but NOT in scenarioNpcs (came from potential)
+  // - Mentioned: in potentialCharacters (not yet promoted)
+
+  const scenarioNpcNames = new Set(npcData.scenarioNpcs.map(n => n.name.toLowerCase()));
+
+  const scenarioDefined = npcData.trueCharacters.filter(name =>
+    scenarioNpcNames.has(name.toLowerCase())
+  );
+  const promoted = npcData.trueCharacters.filter(name =>
+    !scenarioNpcNames.has(name.toLowerCase())
+  );
+  const mentioned = npcData.potentialCharacters;
+
+  // Get scenario data for a character
+  const getScenarioData = (name: string) =>
+    npcData.scenarioNpcs.find(n => n.name.toLowerCase() === name.toLowerCase());
+
+  return (
+    <div className="space-y-6">
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="rounded-lg border border-primary/20 p-4 bg-primary/10">
+          <p className="text-xs text-muted-foreground mb-1">Scenario Defined</p>
+          <p className="text-2xl font-bold text-primary">{scenarioDefined.length}</p>
+          <p className="text-[10px] text-primary/60 mt-1">can read thoughts</p>
+        </div>
+        <div className="rounded-lg border border-purple-500/20 p-4 bg-purple-500/10">
+          <p className="text-xs text-muted-foreground mb-1">Promoted</p>
+          <p className="text-2xl font-bold text-purple-400">{promoted.length}</p>
+          <p className="text-[10px] text-purple-400/60 mt-1">can read thoughts</p>
+        </div>
+        <div className="rounded-lg border border-amber-500/20 p-4 bg-amber-500/10">
+          <p className="text-xs text-muted-foreground mb-1">Mentioned</p>
+          <p className="text-2xl font-bold text-amber-400">{mentioned.length}</p>
+          <p className="text-[10px] text-amber-400/60 mt-1">not promoted yet</p>
+        </div>
+      </div>
+
+      {/* Scenario Defined Characters */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-primary" />
+          Scenario Defined
+          <span className="text-[10px] text-muted-foreground font-normal">(from scenario file, can read thoughts)</span>
+        </h3>
+        {scenarioDefined.length === 0 ? (
+          <p className="text-xs text-muted-foreground/50 italic">None</p>
+        ) : (
+          <div className="space-y-2">
+            {scenarioDefined.map((name) => {
+              const key = `scenario-${name}`;
+              const isExpanded = expandedItems.has(key);
+              const data = getScenarioData(name);
+
+              return (
+                <div key={key} className="border border-primary/20 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => toggleExpand(key)}
+                    className="w-full px-4 py-3 flex items-center justify-between bg-primary/5 hover:bg-primary/10 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-primary">{name}</span>
+                      {data?.species && (
+                        <span className="text-xs text-muted-foreground">{data.species}</span>
+                      )}
+                    </div>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      className={`transform transition-transform text-muted-foreground ${isExpanded ? "rotate-180" : ""}`}
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                  <AnimatePresence>
+                    {isExpanded && data && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="p-4 space-y-2 border-t border-primary/20 bg-card/50">
+                          <FieldDisplay label="Species" value={data.species || null} />
+                          <FieldDisplay label="Personality" value={data.personality || null} />
+                          <FieldDisplay label="Appearance" value={data.appearance || null} />
+                          <FieldDisplay label="Desires" value={data.desires || null} />
+                          <FieldDisplay label="Backstory" value={data.backstory || null} />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Promoted Characters */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-purple-400" />
+          Promoted
+          <span className="text-[10px] text-muted-foreground font-normal">(was mentioned, now true character)</span>
+        </h3>
+        {promoted.length === 0 ? (
+          <p className="text-xs text-muted-foreground/50 italic">None promoted yet</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {promoted.map((name) => (
+              <span
+                key={name}
+                className="px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-sm text-purple-400"
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Mentioned Characters (not yet promoted) */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-400" />
+          Mentioned
+          <span className="text-[10px] text-muted-foreground font-normal">(detected by narrator, not promoted)</span>
+        </h3>
+        {mentioned.length === 0 ? (
+          <p className="text-xs text-muted-foreground/50 italic">None detected yet</p>
+        ) : (
+          <div className="space-y-2">
+            {mentioned.map((pc) => {
+              const key = `mentioned-${pc.name}`;
+              const isExpanded = expandedItems.has(key);
+
+              return (
+                <div key={key} className="border border-amber-500/20 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => toggleExpand(key)}
+                    className="w-full px-4 py-3 flex items-center justify-between bg-amber-500/5 hover:bg-amber-500/10 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-amber-400">{pc.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        page {pc.first_page}
+                      </span>
+                      {pc.times_mentioned > 1 && (
+                        <span className="px-1.5 py-0.5 text-[10px] bg-amber-500/20 text-amber-400 rounded">
+                          x{pc.times_mentioned}
+                        </span>
+                      )}
+                    </div>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      className={`transform transition-transform text-muted-foreground ${isExpanded ? "rotate-180" : ""}`}
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="p-4 space-y-2 border-t border-amber-500/20 bg-card/50">
+                          <FieldDisplay label="Description" value={pc.description || null} />
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">First Page</label>
+                              <p className="text-xs text-foreground/80 mt-0.5">{pc.first_page}</p>
+                            </div>
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Times Mentioned</label>
+                              <p className="text-xs text-foreground/80 mt-0.5">{pc.times_mentioned}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -586,6 +586,7 @@ export function useGame(wsUrl: string) {
       getPageInterval: () => send({ cmd: "get_page_interval" }),
       triggerPage: () => send({ cmd: "page" }),
       clearError: () => dispatch({ type: "CLEAR_ERROR" }),
+      reset: () => dispatch({ type: "RESET" }),
       // Director mode
       toggleDirectorMode: () => dispatch({ type: "TOGGLE_DIRECTOR_MODE" }),
       submitDirectorGuidance: (text: string, autoReady = false) => {

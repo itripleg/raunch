@@ -60,11 +60,14 @@ type Actions = {
 type Props = {
   game: GameState;
   actions: Actions;
+  apiUrl: string;
   onAddCharacter?: () => void;
   onDeleteCharacter?: (name: string) => Promise<void>;
+  onStopWorld?: () => void;
+  onBackToDashboard?: () => void;
 };
 
-export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter }: Props) {
+export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteCharacter, onStopWorld, onBackToDashboard }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [autoScroll, _setAutoScroll] = useState(true);
@@ -72,7 +75,27 @@ export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter }:
   const [focusedPageNum, setFocusedPageNum] = useState<number | null>(null);
   const [previewCharacter, setPreviewCharacter] = useState<string | null>(null);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
+  const [nextClicked, setNextClicked] = useState(false);
+  const [waitingForPage, setWaitingForPage] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
+
+  // Handle next button click with animation
+  const handleNextClick = useCallback(() => {
+    if (actions.triggerPage) {
+      setNextClicked(true);
+      setWaitingForPage(true);
+      actions.triggerPage();
+      // Reset button animation after short delay
+      setTimeout(() => setNextClicked(false), 600);
+    }
+  }, [actions]);
+
+  // Clear waiting state when streaming starts
+  useEffect(() => {
+    if (game.streaming?.isStreaming) {
+      setWaitingForPage(false);
+    }
+  }, [game.streaming?.isStreaming]);
 
   // Handle character deletion
   const handleDeleteCharacter = useCallback(async (name: string) => {
@@ -231,16 +254,36 @@ export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter }:
           {/* Manual: Next button / Auto: Pause/Resume button - same position */}
           {game.manualMode ? (
             actions.triggerPage && (
-              <button
-                onClick={actions.triggerPage}
-                disabled={game.streaming?.isStreaming}
-                className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              <motion.button
+                onClick={handleNextClick}
+                disabled={game.streaming?.isStreaming || nextClicked}
+                className="relative flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed px-2 py-1 -my-1 rounded"
+                whileTap={{ scale: 0.95 }}
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                {/* Pulse ring on click */}
+                <AnimatePresence>
+                  {nextClicked && (
+                    <motion.span
+                      className="absolute inset-0 rounded bg-primary/20"
+                      initial={{ opacity: 0.8, scale: 0.8 }}
+                      animate={{ opacity: 0, scale: 1.5 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                    />
+                  )}
+                </AnimatePresence>
+                <motion.svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  animate={nextClicked ? { x: [0, 4, 0], scale: [1, 1.2, 1] } : {}}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                >
                   <path d="M8 5v14l11-7z" />
-                </svg>
-                Next
-              </button>
+                </motion.svg>
+                <span>Next</span>
+              </motion.button>
             )
           ) : (
             actions.togglePause && (
@@ -355,6 +398,8 @@ export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter }:
                 onClose={() => setSidebarOpen(false)}
                 onCharacterAttached={handleCharacterAttached}
                 onAddCharacter={onAddCharacter}
+                onDeleteCharacter={handleDeleteCharacter}
+                onStopWorld={onStopWorld}
               />
             </motion.div>
           )}
@@ -386,6 +431,8 @@ export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter }:
                   actions={actions}
                   onClose={() => setSidebarOpen(false)}
                   onCharacterAttached={handleCharacterAttached}
+                  onDeleteCharacter={handleDeleteCharacter}
+                  onStopWorld={onStopWorld}
                 />
               </motion.div>
             </div>
@@ -411,6 +458,8 @@ export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter }:
               onTapCharacter={handleTapCharacter}
               wideMode={wideMode}
               mood={(game.world as Record<string, unknown>)?.mood as string}
+              waitingForPage={waitingForPage}
+              nextPageNum={game.pages.length > 0 ? game.pages[game.pages.length - 1].page + 1 : 1}
             />
           </div>
 
@@ -554,6 +603,7 @@ export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter }:
         isOpen={debugPanelOpen}
         onClose={() => setDebugPanelOpen(false)}
         sendCommand={actions.sendCommand ?? (() => {})}
+        apiUrl={apiUrl}
       />
     </div>
   );

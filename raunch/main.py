@@ -104,6 +104,35 @@ def _show_attach_commands():
     )
 
 
+def _show_server_commands():
+    """Display available commands for the server console."""
+    console.print()
+    console.print(
+        Panel(
+            "[bold bright_cyan]PLAYBACK[/]\n"
+            "  [bold]n[/], [bold]next[/], [bold]Enter[/]     Advance to next page (manual mode)\n"
+            "  [bold]p[/], [bold]pause[/]            Pause/resume auto-advance\n"
+            "  [bold]t[/], [bold]timer[/] [dim]<sec>[/]     Set page interval (0=manual, 10+=auto)\n"
+            "\n"
+            "[bold bright_cyan]CHARACTERS[/]\n"
+            "  [bold]c[/], [bold]characters[/]       List all characters\n"
+            "  [bold]a[/], [bold]attach[/] [dim]<name>[/]   Attach to character's POV\n"
+            "  [bold]d[/], [bold]detach[/]           Detach from current character\n"
+            "\n"
+            "[bold bright_cyan]WORLD[/]\n"
+            "  [bold]w[/], [bold]world[/]            Show current world state\n"
+            "\n"
+            "[bold bright_cyan]SYSTEM[/]\n"
+            "  [bold]r[/], [bold]refresh[/]          Force OAuth token refresh\n"
+            "  [bold]q[/], [bold]quit[/]             Save and exit",
+            title="[bold]Server Commands[/]",
+            border_style="bright_cyan",
+            padding=(0, 2),
+        )
+    )
+    console.print()
+
+
 def _kill_raunch_servers() -> int:
     """Kill any running raunch server processes. Returns count killed."""
     import subprocess
@@ -440,63 +469,75 @@ def start(save_name, world_name, scenario_name, headless, force):
             except EOFError:
                 break
 
-            if not cmd or cmd == "n":
-                # Empty input or 'n' = trigger next page in manual mode
+            # Parse command and arguments
+            parts = cmd.split(None, 1)
+            cmd_name = parts[0].lower() if parts else ""
+            cmd_arg = parts[1].strip() if len(parts) > 1 else ""
+
+            # Handle empty input or 'n'/'next' = trigger next page
+            if not cmd or cmd_name in ("n", "next"):
                 if orch.is_manual_mode:
                     if not orch.trigger_page():
                         console.print("[yellow]Cannot page (paused or already running)[/yellow]")
-                    # Animation handles the "Advancing..." message
-                elif cmd == "n":
-                    console.print("[dim]Not in manual mode (use 't 0' to enable)[/dim]")
+                elif cmd:  # Only warn if they explicitly typed a command
+                    console.print("[dim]Not in manual mode (use 't 0' or 'timer 0' to enable)[/dim]")
                 continue
-            elif cmd == "q":
+
+            # Command matching (short and long forms)
+            if cmd_name in ("q", "quit", "exit"):
                 break
-            elif cmd == "p":
+            elif cmd_name in ("p", "pause", "resume"):
                 if orch._paused:
                     orch.resume()
                     console.print("[green]Resumed[/green]")
                 else:
                     orch.pause()
                     console.print("[yellow]Paused[/yellow]")
-            elif cmd == "c":
+            elif cmd_name in ("c", "chars", "characters"):
                 render_character_list(orch.characters, orch.attached_to)
-            elif cmd == "w":
+            elif cmd_name in ("w", "world"):
                 render_world_state(orch.world.snapshot())
-            elif cmd.startswith("a "):
-                name = cmd[2:].strip()
-                matches = [n for n in orch.characters if n.lower().startswith(name.lower())]
-                if matches:
-                    orch.attach(matches[0])
-                    console.print(f"[bright_magenta]Attached to {matches[0]}[/bright_magenta]")
+            elif cmd_name in ("a", "attach"):
+                if not cmd_arg:
+                    console.print("[red]Usage: a, attach <character_name>[/red]")
                 else:
-                    console.print(f"[red]No character matching '{name}'[/red]")
-            elif cmd == "d":
-                orch.attach(None)
-                console.print("[dim]Detached[/dim]")
-            elif cmd.startswith("t "):
-                try:
-                    seconds = int(cmd[2:].strip())
-                    orch.set_page_interval(seconds)
-                    if orch.is_manual_mode:
-                        console.print("[green]Manual mode enabled (press Enter or 'n' to page)[/green]")
+                    matches = [n for n in orch.characters if n.lower().startswith(cmd_arg.lower())]
+                    if matches:
+                        orch.attach(matches[0])
+                        render_attach_animation(matches[0])
                     else:
-                        console.print(f"[green]Page interval set to {orch.page_interval}s[/green]")
-                except ValueError:
-                    console.print("[red]Usage: t <seconds> (0=manual, 10+=auto)[/red]")
-            elif cmd == "t":
-                if orch.is_manual_mode:
-                    console.print("[cyan]Page mode: manual (press Enter or 'n' to page)[/cyan]")
+                        console.print(f"[red]No character matching '{cmd_arg}'[/red]")
+            elif cmd_name in ("d", "detach"):
+                if orch.attached_to:
+                    render_detach_animation(orch.attached_to)
+                orch.attach(None)
+            elif cmd_name in ("t", "timer", "interval"):
+                if cmd_arg:
+                    try:
+                        seconds = int(cmd_arg)
+                        orch.set_page_interval(seconds)
+                        if orch.is_manual_mode:
+                            console.print("[green]Manual mode enabled (press Enter or 'n' to advance)[/green]")
+                        else:
+                            console.print(f"[green]Page interval set to {orch.page_interval}s[/green]")
+                    except ValueError:
+                        console.print("[red]Usage: t, timer <seconds> (0=manual, 10+=auto)[/red]")
                 else:
-                    console.print(f"[cyan]Page interval: {orch.page_interval}s[/cyan]")
-            elif cmd == "r":
+                    if orch.is_manual_mode:
+                        console.print("[cyan]Page mode: manual (press Enter or 'n' to advance)[/cyan]")
+                    else:
+                        console.print(f"[cyan]Page interval: {orch.page_interval}s[/cyan]")
+            elif cmd_name in ("r", "refresh"):
                 # Force token refresh
                 client = get_client()
                 if client.force_refresh():
                     console.print("[green]Token refreshed successfully[/green]")
                 else:
                     console.print("[red]Token refresh failed - try logging in again with `claude`[/red]")
+            elif cmd_name in ("?", "help", "commands"):
+                _show_server_commands()
             else:
-                console.print("[dim]Unknown command.[/dim]")
+                console.print("[dim]Unknown command. Type [bold]?[/bold] for help.[/dim]")
     except KeyboardInterrupt:
         pass
     finally:

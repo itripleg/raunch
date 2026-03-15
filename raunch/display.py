@@ -809,6 +809,45 @@ def _animate_logo_line(line: str, color_offset: int) -> str:
     return "".join(result)
 
 
+def _animate_motherhaven_tagline(animated: bool = True) -> None:
+    """Animate the Motherhaven tagline under the logo."""
+    tagline = "a motherhaven joint"
+
+    if not animated:
+        console.print(f"[dim italic]{tagline:^54}[/]")
+        return
+
+    # Animate: letters appear one by one with a sparkle
+    sys.stdout.write("\033[?25l")  # Hide cursor
+
+    try:
+        # Center the tagline (logo is ~54 chars wide)
+        padding = (54 - len(tagline)) // 2
+
+        for i in range(len(tagline) + 1):
+            revealed = tagline[:i]
+            sparkle = "✧" if _supports_unicode() and i < len(tagline) else ""
+            line = f"{' ' * padding}{revealed}{sparkle}"
+            sys.stdout.write(f"\r{DIM}{ITALIC}{line}{RESET}")
+            sys.stdout.flush()
+            time.sleep(0.04)
+
+        # Final flourish - brief color pulse
+        for color in [213, 219, 225, 255, 225, 219, 213]:
+            line = f"{' ' * padding}{tagline}"
+            sys.stdout.write(f"\r{_c256(color)}{ITALIC}{line}{RESET}")
+            sys.stdout.flush()
+            time.sleep(0.03)
+
+        # Settle on dim
+        line = f"{' ' * padding}{tagline}"
+        sys.stdout.write(f"\r{DIM}{ITALIC}{line}{RESET}\n")
+        sys.stdout.flush()
+
+    finally:
+        sys.stdout.write("\033[?25h")  # Show cursor
+
+
 def render_server_startup(
     world_name: str,
     world_id: str,
@@ -822,6 +861,8 @@ def render_server_startup(
     logo = RAUNCH_LOGO if _supports_unicode() else RAUNCH_LOGO_ASCII
     lines = logo.strip().split('\n')
 
+    # Extra spacing to prevent overlap with any previous output
+    console.print()
     console.print()
 
     if animated:
@@ -830,7 +871,12 @@ def render_server_startup(
         sys.stdout.flush()
 
         try:
-            # Animate the logo with color cycling
+            # Print logo lines first (creates the buffer for animation)
+            for line in lines:
+                sys.stdout.write(f"{line}\n")
+            sys.stdout.flush()
+
+            # Now animate with color cycling
             for frame in range(12):
                 sys.stdout.write(f"\033[{len(lines)}A")  # Move up
                 for i, line in enumerate(lines):
@@ -845,6 +891,9 @@ def render_server_startup(
         # Static logo
         for line in lines:
             console.print(f"[bright_magenta]{line}[/]")
+
+    # Motherhaven tagline animation
+    _animate_motherhaven_tagline(animated)
 
     console.print()
 
@@ -862,14 +911,14 @@ def render_server_startup(
 
     # Commands with sexy formatting
     bullet = "-" if not _supports_unicode() else "─"
-    console.print(f"  [bold bright_cyan]{star} COMMANDS {star}[/]")
+    console.print(f"  [bold bright_cyan]{star} COMMANDS {star}[/]  [dim](type [bold]?[/bold] for full list)[/]")
     console.print()
-    console.print(f"  [bold]n[/] [dim]or[/] [bold]Enter[/]  [dim]{bullet}[/]  Next page")
-    console.print(f"  [bold]c[/]             [dim]{bullet}[/]  List characters")
-    console.print(f"  [bold]w[/]             [dim]{bullet}[/]  World state")
-    console.print(f"  [bold]p[/]             [dim]{bullet}[/]  Pause/resume")
-    console.print(f"  [bold]t N[/]           [dim]{bullet}[/]  Set page interval (0=manual)")
-    console.print(f"  [bold]q[/]             [dim]{bullet}[/]  Quit & save")
+    console.print(f"  [bold]n[/], [bold]next[/], [bold]Enter[/]    [dim]{bullet}[/]  Advance page")
+    console.print(f"  [bold]c[/], [bold]characters[/]     [dim]{bullet}[/]  List characters")
+    console.print(f"  [bold]w[/], [bold]world[/]          [dim]{bullet}[/]  World state")
+    console.print(f"  [bold]p[/], [bold]pause[/]          [dim]{bullet}[/]  Pause/resume")
+    console.print(f"  [bold]t[/], [bold]timer[/] [dim]<sec>[/]   [dim]{bullet}[/]  Set interval (0=manual)")
+    console.print(f"  [bold]q[/], [bold]quit[/]           [dim]{bullet}[/]  Save & exit")
     console.print()
     console.print(f"[dim]{dash * 60}[/]")
     console.print()

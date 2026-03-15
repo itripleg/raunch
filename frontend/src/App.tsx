@@ -2,12 +2,18 @@ import { useState, useEffect, useCallback, Component, type ReactNode } from "rea
 import { AnimatePresence, motion } from "motion/react";
 import { useGame } from "./hooks/useGame";
 import { SplashScreen } from "./components/SplashScreen";
+import { AlphaDashboard } from "./components/AlphaDashboard";
+import { AdminSettings } from "./components/AdminSettings";
+import { FeedbackKanban } from "./components/FeedbackKanban";
+import { VotingPolls } from "./components/VotingPolls";
+import { AboutPage } from "./components/AboutPage";
 import { GameLayout } from "./components/GameLayout";
 import { NicknamePrompt } from "./components/NicknamePrompt";
-import { ScenarioSelector } from "./components/ScenarioSelector";
 import { CharacterWizard } from "./components/CharacterWizard";
 
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
+
+type AppView = "splash" | "dashboard" | "kanban" | "voting" | "about" | "storage" | "game";
 
 // Smart URL detection for local vs remote/production
 function getServerUrls(): { wsUrl: string; apiUrl: string } {
@@ -70,6 +76,15 @@ function setStoredNickname(nickname: string): void {
   }
 }
 
+// Helper to check admin status from localStorage
+function getStoredAdmin(): boolean {
+  try {
+    return localStorage.getItem("raunch_admin") === "true";
+  } catch {
+    return false;
+  }
+}
+
 // Error boundary to catch rendering crashes
 class ErrorBoundary extends Component<
   { children: ReactNode; onReset: () => void },
@@ -119,6 +134,11 @@ function App() {
   const [apiUrl] = useState(DEFAULT_API_URL);
   const { wsState, game, actions } = useGame(wsUrl);
 
+  // View state (new alpha dashboard flow)
+  const [view, setView] = useState<AppView>("splash");
+  const [isAdmin, setIsAdmin] = useState(() => getStoredAdmin());
+  const [showSettings, setShowSettings] = useState(false);
+
   // Nickname state with localStorage persistence
   const [nickname, setNickname] = useState<string>(() => getStoredNickname() ?? "");
   const [nicknameConfirmed, setNicknameConfirmed] = useState(() => hasStoredNickname());
@@ -127,11 +147,34 @@ function App() {
   const [worldRunning, setWorldRunning] = useState<boolean | null>(null);
   const [worldCheckError, setWorldCheckError] = useState<string | null>(null);
 
-  // Scenarios list from REST API (for pre-fetching)
-  const [scenariosAvailable, setScenariosAvailable] = useState<boolean>(false);
 
   // Character wizard state
   const [showCharacterWizard, setShowCharacterWizard] = useState(false);
+
+  // Game sub-view: connecting vs actual game (scenario selection removed for alpha)
+  const [gameSubView, setGameSubView] = useState<"connecting" | "playing">("connecting");
+
+  // Handle splash completion
+  const handleSplashComplete = useCallback(() => {
+    setView("dashboard");
+  }, []);
+
+  // Handle navigation from dashboard
+  const handleNavigate = useCallback((newView: AppView) => {
+    if (newView === "game") {
+      // Connect WebSocket when entering game
+      if (wsState !== "connected") {
+        actions.connect();
+      }
+      setGameSubView("connecting");
+    }
+    setView(newView);
+  }, [wsState, actions]);
+
+  // Handle back to dashboard
+  const handleBackToDashboard = useCallback(() => {
+    setView("dashboard");
+  }, []);
 
   // Handle character added via wizard
   const handleCharacterAdded = useCallback(() => {
@@ -170,17 +213,32 @@ function App() {
       setWorldRunning(worldData.running === true);
       setWorldCheckError(null);
 
-      // Pre-fetch scenarios list to verify API availability
-      const scenariosResponse = await fetch(`${apiUrl}/api/v1/scenarios`);
-      if (scenariosResponse.ok) {
-        const scenariosData = await scenariosResponse.json();
-        setScenariosAvailable(Array.isArray(scenariosData) && scenariosData.length > 0);
-      }
     } catch (err) {
       setWorldCheckError(err instanceof Error ? err.message : "Failed to check world status");
       setWorldRunning(false);
     }
   }, [apiUrl]);
+
+  // Stop the current world and return to dashboard
+  const handleStopWorld = useCallback(async () => {
+    try {
+      const response = await fetch(`${apiUrl}/api/v1/world/stop`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || "Failed to stop world");
+      }
+      // Reset game state
+      actions.reset();
+      actions.disconnect();
+      // Return to dashboard
+      setWorldRunning(false);
+      setView("dashboard");
+    } catch (err) {
+      console.error("Failed to stop world:", err);
+    }
+  }, [apiUrl, actions]);
 
   // Derived state - define these early so they can be used in effects
   const isConnected = wsState === "connected";
@@ -192,11 +250,15 @@ function App() {
   useEffect(() => {
     if (wsState === "connected") {
       checkWorldStatus();
+      // Also request world state via WebSocket to sync game.world
+      actions.getWorld();
+      // Request character list
+      actions.listCharacters();
     } else if (wsState === "disconnected") {
       // Reset world status when disconnected
       setWorldRunning(null);
     }
-  }, [wsState, checkWorldStatus]);
+  }, [wsState, checkWorldStatus, actions]);
 
   // Send join command only in multiplayer mode after nickname confirmed
   useEffect(() => {
@@ -213,6 +275,13 @@ function App() {
     }
   }, [game.world, worldRunning]);
 
+  // Update game sub-view when connected and world is running
+  useEffect(() => {
+    if (isConnected && hasWorld && gameSubView === "connecting") {
+      setGameSubView("playing");
+    }
+  }, [isConnected, hasWorld, gameSubView]);
+
   // In solo mode, auto-confirm nickname (skip the prompt)
   useEffect(() => {
     if (isConnected && hasWorld && !isMultiplayer && !nicknameConfirmed) {
@@ -228,85 +297,205 @@ function App() {
     setNicknameConfirmed(true);
   };
 
-  // Handle scenario loaded - refresh world status
-  const handleScenarioLoaded = useCallback(() => {
-    checkWorldStatus();
-  }, [checkWorldStatus]);
 
-  // Show nickname prompt only in multiplayer mode
-  if (isConnected && hasWorld && needsNicknamePrompt) {
-    return (
-      <AnimatePresence mode="wait">
-        <motion.div
-          key="nickname"
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.5, ease: "easeInOut" }}
-        >
-          <NicknamePrompt onSubmit={handleNicknameSubmit} />
-        </motion.div>
-      </AnimatePresence>
-    );
-  }
-
+  // Render based on view state
   return (
-    <AnimatePresence mode="wait">
-      {!isConnected ? (
-        <motion.div
-          key="splash"
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.8, ease: "easeInOut" }}
-        >
-          <SplashScreen
-            onConnect={actions.connect}
-            wsState={wsState}
-            wsUrl={wsUrl}
-            onUrlChange={setWsUrl}
-          />
-        </motion.div>
-      ) : !hasWorld ? (
-        <motion.div
-          key="scenario"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.8, ease: "easeInOut" }}
-        >
-          <ScenarioSelector
-            apiUrl={apiUrl}
-            onScenarioLoaded={handleScenarioLoaded}
-          />
-        </motion.div>
-      ) : (
-        <motion.div
-          key="game"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1.2, delay: 0.2, ease: "easeOut" }}
-          className="min-h-screen"
-        >
-          <ErrorBoundary onReset={() => window.location.reload()}>
-            <GameLayout
-              game={game}
-              actions={actions}
-              onAddCharacter={() => setShowCharacterWizard(true)}
-              onDeleteCharacter={handleDeleteCharacter}
-            />
-          </ErrorBoundary>
+    <>
+      <AnimatePresence mode="wait">
+        {view === "splash" && (
+          <motion.div
+            key="splash"
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <SplashScreen onComplete={handleSplashComplete} />
+          </motion.div>
+        )}
 
-          {/* Character creation wizard */}
-          <AnimatePresence>
-            {showCharacterWizard && (
-              <CharacterWizard
-                apiUrl={apiUrl}
-                onCharacterAdded={handleCharacterAdded}
-                onClose={() => setShowCharacterWizard(false)}
-                existingCharacters={game.characterNames}
-              />
+        {view === "dashboard" && (
+          <motion.div
+            key="dashboard"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <AlphaDashboard
+              onNavigate={handleNavigate}
+              isAdmin={isAdmin}
+              onOpenSettings={() => setShowSettings(true)}
+              apiUrl={apiUrl}
+            />
+          </motion.div>
+        )}
+
+        {view === "kanban" && (
+          <motion.div
+            key="kanban"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <FeedbackKanban
+              onBack={handleBackToDashboard}
+              isAdmin={isAdmin}
+              apiUrl={apiUrl}
+            />
+          </motion.div>
+        )}
+
+        {view === "voting" && (
+          <motion.div
+            key="voting"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <VotingPolls
+              onBack={handleBackToDashboard}
+              isAdmin={isAdmin}
+              apiUrl={apiUrl}
+            />
+          </motion.div>
+        )}
+
+        {view === "about" && (
+          <motion.div
+            key="about"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <AboutPage
+              onBack={handleBackToDashboard}
+              isAdmin={isAdmin}
+              apiUrl={apiUrl}
+            />
+          </motion.div>
+        )}
+
+        {view === "game" && (
+          <motion.div
+            key="game"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            {/* Nickname prompt for multiplayer */}
+            {isConnected && hasWorld && needsNicknamePrompt ? (
+              <NicknamePrompt onSubmit={handleNicknameSubmit} />
+            ) : gameSubView === "connecting" || !hasWorld ? (
+              // Connecting / waiting for world state
+              <div className="min-h-screen flex items-center justify-center">
+                <div className="text-center space-y-6">
+                  {wsState === "connecting" && (
+                    <>
+                      <div className="flex gap-1.5 justify-center">
+                        {[0, 1, 2].map((i) => (
+                          <motion.div
+                            key={i}
+                            className="w-1.5 h-1.5 rounded-full bg-primary/50"
+                            animate={{
+                              opacity: [0.2, 0.8, 0.2],
+                              scale: [0.9, 1.1, 0.9],
+                            }}
+                            transition={{
+                              duration: 1.8,
+                              repeat: Infinity,
+                              delay: i * 0.25,
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground/40">connecting to server</p>
+                    </>
+                  )}
+
+                  {wsState === "disconnected" && (
+                    <>
+                      <p className="text-sm text-muted-foreground">Server not available</p>
+                      <p className="text-xs text-muted-foreground/50 max-w-xs">
+                        Start the server with <code className="font-mono text-primary/70">raunch start</code>
+                      </p>
+                      <div className="flex gap-3 justify-center">
+                        <button
+                          onClick={() => actions.connect()}
+                          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm"
+                        >
+                          Retry
+                        </button>
+                        <button
+                          onClick={handleBackToDashboard}
+                          className="px-4 py-2 text-muted-foreground hover:text-foreground text-sm"
+                        >
+                          Back
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {isConnected && !hasWorld && (
+                    <>
+                      <p className="text-sm text-muted-foreground">No world running</p>
+                      <p className="text-xs text-muted-foreground/50 max-w-xs">
+                        Start a scenario from the CLI with <code className="font-mono text-primary/70">raunch start --scenario name</code>
+                      </p>
+                      <button
+                        onClick={handleBackToDashboard}
+                        className="px-4 py-2 text-muted-foreground hover:text-foreground text-sm"
+                      >
+                        Back to Dashboard
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : (
+              // Main game interface
+              <ErrorBoundary onReset={() => window.location.reload()}>
+                <GameLayout
+                  game={game}
+                  actions={actions}
+                  apiUrl={apiUrl}
+                  onAddCharacter={() => {
+                    actions.listCharacters();
+                    setShowCharacterWizard(true);
+                  }}
+                  onDeleteCharacter={handleDeleteCharacter}
+                  onStopWorld={handleStopWorld}
+                  onBackToDashboard={handleBackToDashboard}
+                />
+              </ErrorBoundary>
             )}
-          </AnimatePresence>
-        </motion.div>
-      )}
-    </AnimatePresence>
+
+            {/* Character creation wizard */}
+            <AnimatePresence>
+              {showCharacterWizard && (
+                <CharacterWizard
+                  apiUrl={apiUrl}
+                  onCharacterAdded={handleCharacterAdded}
+                  onClose={() => setShowCharacterWizard(false)}
+                  existingCharacters={game.characterNames}
+                />
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin settings modal */}
+      <AdminSettings
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        isAdmin={isAdmin}
+        onAdminChange={setIsAdmin}
+        apiUrl={apiUrl}
+      />
+    </>
   );
 }
 

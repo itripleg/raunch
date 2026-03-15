@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { ArrowLeft } from "lucide-react";
 
 type Scenario = {
   file: string;
@@ -12,9 +13,10 @@ type Scenario = {
 type Props = {
   apiUrl: string;
   onScenarioLoaded: () => void;
+  onBack?: () => void;
 };
 
-export function ScenarioSelector({ apiUrl, onScenarioLoaded }: Props) {
+export function ScenarioSelector({ apiUrl, onScenarioLoaded, onBack }: Props) {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,7 +120,20 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded }: Props) {
         />
       </div>
 
-      <div className="relative z-10 flex flex-col items-center max-w-lg w-full px-6">
+      <div className="relative z-10 flex flex-col items-center max-w-2xl w-full px-6">
+        {/* Back button */}
+        {onBack && (
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            onClick={onBack}
+            className="absolute top-6 left-6 p-2 text-muted-foreground/50 hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </motion.button>
+        )}
+
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
@@ -126,14 +141,14 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded }: Props) {
           transition={{ duration: 1.2, ease: [0.25, 0.1, 0.25, 1] }}
           className="text-center mb-8"
         >
-          <h2 className="text-2xl font-bold tracking-tight text-foreground/90">
+          <h2 className="text-3xl font-bold tracking-tight text-foreground/90">
             select scenario
           </h2>
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5, duration: 0.8 }}
-            className="text-muted-foreground/50 text-sm mt-2"
+            className="text-muted-foreground/60 text-base mt-2"
           >
             choose a scenario to begin
           </motion.p>
@@ -144,7 +159,7 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded }: Props) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
-          className="w-full max-h-64 overflow-y-auto mb-6 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+          className="w-full max-h-96 overflow-y-auto mb-6 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
         >
           <AnimatePresence mode="wait">
             {loading ? (
@@ -180,7 +195,7 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded }: Props) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="text-center text-muted-foreground/40 text-sm py-8"
+                className="text-center text-muted-foreground/50 text-base py-8"
               >
                 no scenarios available
               </motion.p>
@@ -190,7 +205,7 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded }: Props) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="space-y-2"
+                className="space-y-3"
               >
                 {scenarios.map((scenario, index) => (
                   <motion.button
@@ -199,7 +214,7 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded }: Props) {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.05, duration: 0.4 }}
                     onClick={() => setSelectedScenario(scenario.file)}
-                    className={`w-full text-left px-4 py-3 rounded-lg border transition-all duration-300 ${
+                    className={`w-full text-left px-5 py-4 rounded-xl border transition-all duration-300 ${
                       selectedScenario === scenario.file
                         ? "border-primary/40 bg-primary/[0.05] shadow-[0_0_20px_oklch(0.65_0.22_340_/_0.08)]"
                         : "border-border/30 bg-card/30 hover:border-border/50 hover:bg-card/50"
@@ -207,34 +222,34 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded }: Props) {
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground/80 truncate">
+                        <p className="text-base font-medium text-foreground/90 truncate">
                           {scenario.name}
                         </p>
                         {scenario.setting && (
-                          <p className="text-xs text-muted-foreground/50 mt-1 line-clamp-2">
+                          <p className="text-sm text-muted-foreground/60 mt-1.5 line-clamp-2">
                             {scenario.setting}
                           </p>
                         )}
                       </div>
-                      <div className="ml-3 flex-shrink-0">
-                        <span className="text-xs text-muted-foreground/40">
+                      <div className="ml-4 flex-shrink-0">
+                        <span className="text-sm text-muted-foreground/50">
                           {scenario.characters} character{scenario.characters !== 1 ? "s" : ""}
                         </span>
                       </div>
                     </div>
                     {scenario.themes.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {scenario.themes.slice(0, 3).map((theme) => (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {scenario.themes.slice(0, 4).map((theme) => (
                           <span
                             key={theme}
-                            className="text-[10px] px-2 py-0.5 rounded-full bg-border/20 text-muted-foreground/50"
+                            className="text-xs px-2.5 py-1 rounded-full bg-border/20 text-muted-foreground/60"
                           >
                             {theme}
                           </span>
                         ))}
-                        {scenario.themes.length > 3 && (
-                          <span className="text-[10px] text-muted-foreground/30">
-                            +{scenario.themes.length - 3} more
+                        {scenario.themes.length > 4 && (
+                          <span className="text-xs text-muted-foreground/40">
+                            +{scenario.themes.length - 4} more
                           </span>
                         )}
                       </div>
@@ -265,13 +280,13 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded }: Props) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6, duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
-          className="flex flex-col sm:flex-row gap-3 w-full"
+          className="flex flex-col sm:flex-row gap-4 w-full"
         >
           {/* Roll Random Button */}
           <motion.button
             onClick={handleRollRandom}
             disabled={rolling}
-            className="flex-1 px-6 py-2.5 text-sm text-muted-foreground/70 hover:text-muted-foreground border border-border/30 hover:border-border/50 rounded-full transition-all duration-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-8 py-3 text-base text-muted-foreground/70 hover:text-muted-foreground border border-border/30 hover:border-border/50 rounded-full transition-all duration-500 disabled:opacity-50 disabled:cursor-not-allowed"
             whileHover={{ scale: rolling ? 1 : 1.02 }}
             whileTap={{ scale: rolling ? 1 : 0.98 }}
           >
@@ -282,7 +297,7 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded }: Props) {
           <motion.button
             onClick={handleLoadScenario}
             disabled={!selectedScenario || loadingWorld}
-            className="flex-1 px-6 py-2.5 text-sm text-primary/70 hover:text-primary border border-primary/20 hover:border-primary/40 rounded-full transition-all duration-500 hover:shadow-[0_0_30px_oklch(0.65_0.22_340_/_0.12)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
+            className="flex-1 px-8 py-3 text-base text-primary/80 hover:text-primary border border-primary/20 hover:border-primary/40 rounded-full transition-all duration-500 hover:shadow-[0_0_30px_oklch(0.65_0.22_340_/_0.12)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
             whileHover={{ scale: !selectedScenario || loadingWorld ? 1 : 1.02 }}
             whileTap={{ scale: !selectedScenario || loadingWorld ? 1 : 0.98 }}
           >
@@ -298,7 +313,7 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded }: Props) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.4 }}
-              className="text-[10px] text-muted-foreground/30 mt-4 text-center"
+              className="text-xs text-muted-foreground/40 mt-4 text-center"
             >
               {selectedScenarioData.name} • {selectedScenarioData.characters} character
               {selectedScenarioData.characters !== 1 ? "s" : ""}

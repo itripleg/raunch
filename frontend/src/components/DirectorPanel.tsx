@@ -111,26 +111,25 @@ export function DirectorPanel({ pageData, pendingGuidance, onClose, onDeleteChar
             )}
 
             {/* All characters at this page */}
-            {characters.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-[9px] uppercase tracking-wider text-muted-foreground">
-                    Characters
-                  </label>
-                  {onAddCharacter && (
-                    <button
-                      onClick={onAddCharacter}
-                      className="text-[9px] text-pink-400/70 hover:text-purple-400 transition-colors flex items-center gap-1"
-                      title="Add character"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 5v14M5 12h14" />
-                      </svg>
-                      Add
-                    </button>
-                  )}
-                </div>
-                {characters.map(([name, data]) => (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                  Characters
+                </label>
+                {onAddCharacter && (
+                  <button
+                    onClick={onAddCharacter}
+                    className="text-[9px] text-pink-400/70 hover:text-purple-400 transition-colors flex items-center gap-1"
+                    title="Add character"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    Add
+                  </button>
+                )}
+              </div>
+              {characters.length > 0 ? characters.map(([name, data]) => (
                   <div key={name} className="space-y-1 group">
                     <div className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rounded-full bg-primary/60 shrink-0" />
@@ -170,9 +169,10 @@ export function DirectorPanel({ pageData, pendingGuidance, onClose, onDeleteChar
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
-            )}
+                )) : (
+                  <p className="text-xs text-muted-foreground/50 italic">No character data for this page</p>
+                )}
+            </div>
 
             {/* Empty state */}
             {!pageData && (

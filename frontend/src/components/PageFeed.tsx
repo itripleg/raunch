@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useMemo, useState, Fragment } from "react";
+import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { PageData, StreamingState } from "@/hooks/useGame";
 import { Badge } from "@/components/ui/badge";
@@ -74,37 +74,22 @@ function formatTimestamp(timestamp?: string | number): string {
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-// Kink/intensity words that should pulse with color
-const INTENSITY_WORDS: Record<string, "hot" | "warm" | "primal"> = {
-  // Primal/breeding (deep rose/red)
-  breed: "primal", breeding: "primal", bred: "primal", impregnate: "primal",
-  pregnant: "primal", fertility: "primal", fertile: "primal", womb: "primal",
-  seed: "primal", knocked: "primal", belly: "primal", swollen: "primal",
-  // Hot/crude (warm amber)
-  cock: "hot", cunt: "hot", pussy: "hot", fuck: "hot", fucking: "hot",
-  fucked: "hot", cum: "hot", cumming: "hot", dick: "hot", tits: "hot",
-  ass: "hot", slut: "hot", whore: "hot", hole: "hot", wet: "hot",
-  dripping: "hot", throb: "hot", throbbing: "hot", ache: "hot", aching: "hot",
-  // Warm/sensual (soft coral)
-  moan: "warm", moaning: "warm", gasp: "warm", gasping: "warm",
-  shudder: "warm", tremble: "warm", trembling: "warm", quiver: "warm",
-  pleasure: "warm", desire: "warm", need: "warm", wanting: "warm",
-  desperate: "warm", hunger: "warm", hungry: "warm", bury: "warm",
-  deep: "warm", deeper: "warm", tight: "warm", spread: "warm",
+// Intensity levels based on asterisk markers from narrator
+// *warm* = sensual, **hot** = crude, ***primal*** = breeding
+type IntensityLevel = "warm" | "hot" | "primal";
+
+// Static colors for intensity phrases (no animation needed for old pages)
+const INTENSITY_STYLES: Record<IntensityLevel, string> = {
+  warm: "text-orange-300/90",
+  hot: "text-amber-400",
+  primal: "text-rose-400",
 };
 
-// Actual color values for animation (Tailwind can't be animated)
-const INTENSITY_COLORS = {
-  primal: "#fb7185", // rose-400
-  hot: "#fbbf24",    // amber-400
-  warm: "#fdba74cc", // orange-300/80
-};
-
-// Glow effects for intensity words (used in text-shadow)
-const INTENSITY_GLOW = {
-  primal: "0 0 12px rgba(251, 113, 133, 0.6), 0 0 24px rgba(251, 113, 133, 0.3)",
-  hot: "0 0 10px rgba(251, 191, 36, 0.5), 0 0 20px rgba(251, 191, 36, 0.25)",
+// Glow effects for intensity phrases
+const INTENSITY_GLOW: Record<IntensityLevel, string> = {
   warm: "0 0 8px rgba(253, 186, 116, 0.4)",
+  hot: "0 0 10px rgba(251, 191, 36, 0.5)",
+  primal: "0 0 12px rgba(251, 113, 133, 0.6)",
 };
 
 // Mood-based accent colors for atmosphere
@@ -137,136 +122,153 @@ const SCENE_BREAKS = [
   "·  ·  ·",
 ];
 
-/** Parse text into segments: plain text, dialogue, and intensity words */
-function parseNarration(text: string) {
-  const segments: Array<
-    | { type: "text"; content: string }
-    | { type: "dialogue"; content: string }
-    | { type: "intensity"; content: string; level: "hot" | "warm" | "primal" }
-  > = [];
+type NarrationSegment =
+  | { type: "text"; content: string }
+  | { type: "dialogue"; content: string }
+  | { type: "dialogue-intensity"; content: string; level: IntensityLevel }
+  | { type: "intensity"; content: string; level: IntensityLevel };
 
-  // First, split by dialogue quotes (double quotes only - straight or curly)
-  const dialogueRegex = /(["""])((?:[^"""])*?)(["""])/g;
+/** Parse text for intensity markers only */
+function parseIntensity(text: string, isDialogue: boolean): NarrationSegment[] {
+  const segments: NarrationSegment[] = [];
+  const intensityRegex = /(\*{1,3})([^*]+?)\1/g;
   let lastIndex = 0;
   let match;
 
-  while ((match = dialogueRegex.exec(text)) !== null) {
-    // Process text before dialogue
+  while ((match = intensityRegex.exec(text)) !== null) {
+    // Add text before this match
     if (match.index > lastIndex) {
-      const beforeText = text.slice(lastIndex, match.index);
-      segments.push(...parseIntensityWords(beforeText));
+      segments.push({
+        type: isDialogue ? "dialogue" : "text",
+        content: text.slice(lastIndex, match.index)
+      });
     }
-    // Add dialogue segment (match[0] is the full match regardless of which alternation)
-    segments.push({ type: "dialogue", content: match[0] });
+
+    const asterisks = match[1];
+    const content = match[2];
+    const level: IntensityLevel = asterisks.length === 3 ? "primal" : asterisks.length === 2 ? "hot" : "warm";
+    segments.push({
+      type: isDialogue ? "dialogue-intensity" : "intensity",
+      content,
+      level
+    });
+
     lastIndex = match.index + match[0].length;
   }
 
-  // Process remaining text
+  // Add remaining text
   if (lastIndex < text.length) {
-    segments.push(...parseIntensityWords(text.slice(lastIndex)));
+    segments.push({
+      type: isDialogue ? "dialogue" : "text",
+      content: text.slice(lastIndex)
+    });
   }
 
   return segments;
 }
 
-// Grammar words that intensify when paired with crude words
-const PRONOUNS = new Set([
-  'her', 'his', 'my', 'your', 'me', 'him', 'them', 'she', 'he', 'i', 'you',
-  'hers', 'herself', 'himself', 'myself', 'yourself', 'themselves',
-]);
-const PREPOSITIONS = new Set([
-  'inside', 'into', 'in', 'on', 'against', 'beneath', 'under', 'over',
-  'through', 'between', 'around', 'behind', 'onto', 'upon', 'within',
-]);
+/** Parse text into segments: plain text, dialogue, and intensity-marked phrases */
+function parseNarration(text: string): NarrationSegment[] {
+  const segments: NarrationSegment[] = [];
 
-/** Parse plain text for intensity phrases (crude word + surrounding grammar) */
-function parseIntensityWords(text: string) {
-  const segments: Array<
-    | { type: "text"; content: string }
-    | { type: "intensity"; content: string; level: "hot" | "warm" | "primal" }
-  > = [];
-
-  // Build pattern: (prep)? (pron)? INTENSITY (pron|prep)? (pron)?
-  const intensityWordPattern = Object.keys(INTENSITY_WORDS).join('|');
-  const pronPattern = Array.from(PRONOUNS).join('|');
-  const prepPattern = Array.from(PREPOSITIONS).join('|');
-
-  // Match intensity phrases with optional surrounding grammar
-  const phraseRegex = new RegExp(
-    `\\b(?:(${prepPattern})\\s+)?(?:(${pronPattern})\\s+)?(${intensityWordPattern})(?:\\s+(${pronPattern}|${prepPattern}))?(?:\\s+(${pronPattern}))?\\b`,
-    'gi'
-  );
-
+  // First pass: split by dialogue quotes
+  const dialogueRegex = /(["""])([^"""]*?)(["""])/g;
   let lastIndex = 0;
   let match;
 
-  while ((match = phraseRegex.exec(text)) !== null) {
-    const [fullMatch, , , intensityWord] = match;
-    const level = INTENSITY_WORDS[intensityWord.toLowerCase()];
-
-    if (level) {
-      // Add text before this phrase
-      if (match.index > lastIndex) {
-        segments.push({ type: "text", content: text.slice(lastIndex, match.index) });
-      }
-      // Add the full intensity phrase
-      segments.push({ type: "intensity", content: fullMatch, level });
-      lastIndex = match.index + fullMatch.length;
+  while ((match = dialogueRegex.exec(text)) !== null) {
+    // Parse text before dialogue for intensity
+    if (match.index > lastIndex) {
+      const beforeText = text.slice(lastIndex, match.index);
+      segments.push(...parseIntensity(beforeText, false));
     }
+
+    // Parse dialogue content for intensity (include the quotes in output)
+    const openQuote = match[1];
+    const dialogueContent = match[2];
+    const closeQuote = match[3];
+
+    // Add opening quote as dialogue
+    segments.push({ type: "dialogue", content: openQuote });
+    // Parse inner content for intensity markers
+    segments.push(...parseIntensity(dialogueContent, true));
+    // Add closing quote as dialogue
+    segments.push({ type: "dialogue", content: closeQuote });
+
+    lastIndex = match.index + match[0].length;
   }
 
-  // Add remaining text
+  // Parse remaining text for intensity
   if (lastIndex < text.length) {
-    segments.push({ type: "text", content: text.slice(lastIndex) });
-  } else if (segments.length === 0) {
+    segments.push(...parseIntensity(text.slice(lastIndex), false));
+  }
+
+  // Handle empty input
+  if (segments.length === 0 && text) {
     segments.push({ type: "text", content: text });
   }
 
   return segments;
 }
 
-/** Animated intensity word that pulses to color with glow after delay */
-function IntensityWord({ word, level, delay }: { word: string; level: "hot" | "warm" | "primal"; delay: number }) {
-  const [animate, setAnimate] = useState(false);
-  const [glowing, setGlowing] = useState(false);
+/** Intensity phrase - static colored text with optional glow */
+function IntensityPhrase({ content, level, animate = false }: { content: string; level: IntensityLevel; animate?: boolean }) {
+  const [visible, setVisible] = useState(!animate);
 
   useEffect(() => {
-    const colorTimer = setTimeout(() => setAnimate(true), delay);
-    // Glow comes slightly after color for dramatic effect
-    const glowTimer = setTimeout(() => setGlowing(true), delay + 800);
-    return () => {
-      clearTimeout(colorTimer);
-      clearTimeout(glowTimer);
-    };
-  }, [delay]);
+    if (animate) {
+      // Small delay before revealing for new pages
+      const timer = setTimeout(() => setVisible(true), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [animate]);
 
   return (
-    <motion.span
-      initial={{ color: "inherit" }}
-      animate={{
-        color: animate ? INTENSITY_COLORS[level] : "inherit",
-      }}
-      transition={{ duration: 2.5, ease: [0.4, 0, 0.2, 1] }}
-      style={{
-        display: "inline",
-        textShadow: glowing ? INTENSITY_GLOW[level] : "none",
-        transition: "text-shadow 1.5s ease-out",
-      }}
+    <span
+      className={`${INTENSITY_STYLES[level]} transition-all duration-500 ${visible ? "opacity-100" : "opacity-60"}`}
+      style={{ textShadow: visible ? INTENSITY_GLOW[level] : "none" }}
     >
-      {word}
-    </motion.span>
+      {content}
+    </span>
   );
 }
 
-/** Word-by-word typewriter reveal for new narration */
-function TypewriterText({ text, onComplete }: { text: string; onComplete?: () => void }) {
-  const words = useMemo(() => text.split(/(\s+)/), [text]);
+/** Word-by-word typewriter reveal that preserves formatting */
+function TypewriterNarration({
+  segments,
+  onComplete
+}: {
+  segments: NarrationSegment[];
+  onComplete?: () => void;
+}) {
+  // Flatten segments into words while preserving their type/styling
+  const words = useMemo(() => {
+    const result: Array<{
+      word: string;
+      type: NarrationSegment["type"];
+      level?: IntensityLevel;
+    }> = [];
+
+    for (const seg of segments) {
+      const segWords = seg.content.split(/(\s+)/);
+      for (const word of segWords) {
+        if (word) {
+          result.push({
+            word,
+            type: seg.type,
+            level: "level" in seg ? seg.level : undefined,
+          });
+        }
+      }
+    }
+    return result;
+  }, [segments]);
+
   const [visibleCount, setVisibleCount] = useState(0);
 
   useEffect(() => {
     if (visibleCount < words.length) {
-      // Variable timing: faster for short words/spaces, slower for long words
-      const currentWord = words[visibleCount] || "";
+      const currentWord = words[visibleCount]?.word || "";
       const isSpace = /^\s+$/.test(currentWord);
       const baseDelay = isSpace ? 10 : 35;
       const lengthBonus = Math.min(currentWord.length * 3, 30);
@@ -283,67 +285,99 @@ function TypewriterText({ text, onComplete }: { text: string; onComplete?: () =>
 
   return (
     <span>
-      {words.slice(0, visibleCount).join("")}
+      {words.slice(0, visibleCount).map((item, i) => {
+        if (item.type === "dialogue") {
+          return (
+            <span
+              key={i}
+              className="text-emerald-400/60 italic"
+              style={{ textShadow: "0 0 20px rgba(52, 211, 153, 0.15)" }}
+            >
+              {item.word}
+            </span>
+          );
+        } else if (item.type === "dialogue-intensity" && item.level) {
+          // Both dialogue styling AND intensity color
+          return (
+            <span
+              key={i}
+              className={`italic ${INTENSITY_STYLES[item.level]}`}
+              style={{ textShadow: INTENSITY_GLOW[item.level] }}
+            >
+              {item.word}
+            </span>
+          );
+        } else if (item.type === "intensity" && item.level) {
+          return (
+            <span
+              key={i}
+              className={INTENSITY_STYLES[item.level]}
+              style={{ textShadow: INTENSITY_GLOW[item.level] }}
+            >
+              {item.word}
+            </span>
+          );
+        }
+        return <span key={i}>{item.word}</span>;
+      })}
       {visibleCount < words.length && (
-        <span
-          className="inline-block w-0.5 h-4 bg-primary/60 ml-0.5 align-middle rounded-sm animate-pulse"
-        />
+        <span className="inline-block w-0.5 h-4 bg-primary/60 ml-0.5 align-middle rounded-sm animate-pulse" />
       )}
     </span>
   );
 }
 
-/** Highlights dialogue and animates intensity words */
-function NarrationText({ text, isNew = false, useTypewriter = false }: { text: string; isNew?: boolean; useTypewriter?: boolean }) {
+/** Highlights dialogue and intensity-marked phrases */
+function NarrationText({ text, isNew = false, useTypewriter = false, onComplete }: { text: string; isNew?: boolean; useTypewriter?: boolean; onComplete?: () => void }) {
   const segments = useMemo(() => parseNarration(text), [text]);
-  const [typewriterComplete, setTypewriterComplete] = useState(!useTypewriter);
 
-  // Calculate reading-based delays
-  // ~200 words per minute relaxed reading = ~300ms per word
-  // Add extra pause to let eyes settle first
-  const baseDelay = isNew ? 3000 : 0;
-  const msPerChar = 25; // Relaxed reading pace (~240 wpm)
-
-  // Track character position for reading-time estimation
-  let charPosition = 0;
-
-  // Typewriter mode: show raw text first, then apply formatting
-  if (useTypewriter && !typewriterComplete) {
+  // Typewriter mode: reveal with formatting preserved
+  if (useTypewriter) {
     return (
-      <TypewriterText
-        text={text}
-        onComplete={() => setTypewriterComplete(true)}
+      <TypewriterNarration
+        segments={segments}
+        onComplete={onComplete}
       />
     );
   }
 
+  // Static mode: signal complete on mount
+  useEffect(() => {
+    onComplete?.();
+  }, [onComplete]);
+
   return (
     <>
       {segments.map((seg, i) => {
-        const segmentStart = charPosition;
-        charPosition += seg.content.length;
-
         if (seg.type === "dialogue") {
           return (
-            <motion.span
+            <span
               key={i}
-              initial={useTypewriter ? { opacity: 0.7 } : false}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5, delay: i * 0.05 }}
               className="text-emerald-400/60 italic"
-              style={{
-                textShadow: "0 0 20px rgba(52, 211, 153, 0.15)",
-              }}
+              style={{ textShadow: "0 0 20px rgba(52, 211, 153, 0.15)" }}
             >
               {seg.content}
-            </motion.span>
+            </span>
+          );
+        } else if (seg.type === "dialogue-intensity") {
+          // Both dialogue styling AND intensity color
+          return (
+            <span
+              key={i}
+              className={`italic ${INTENSITY_STYLES[seg.level]}`}
+              style={{ textShadow: INTENSITY_GLOW[seg.level] }}
+            >
+              {seg.content}
+            </span>
           );
         } else if (seg.type === "intensity") {
-          // Delay based on when reader would reach this word
-          const readingDelay = segmentStart * msPerChar;
-          const delay = useTypewriter ? 500 + i * 100 : baseDelay + readingDelay;
           return (
-            <IntensityWord key={i} word={seg.content} level={seg.level} delay={delay} />
+            <IntensityPhrase
+              key={i}
+              content={seg.content}
+              level={seg.level}
+              animate={isNew}
+            />
           );
         } else {
           return <span key={i}>{seg.content}</span>;
@@ -377,8 +411,24 @@ function SceneBreak({ variant = 0 }: { variant?: number }) {
   );
 }
 
+/** Page header with page number */
+function PageHeader({ pageNum, isFirst }: { pageNum: number; isFirst: boolean }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: isFirst ? 0.8 : 0.4, delay: isFirst ? 0.3 : 0 }}
+      className="text-center mb-6"
+    >
+      <div className="text-xs uppercase tracking-[0.4em] text-primary/50 font-medium">
+        Page {pageNum === 1 ? "One" : pageNum === 2 ? "Two" : pageNum === 3 ? "Three" : pageNum}
+      </div>
+    </motion.div>
+  );
+}
+
 /** Grand opening for the first page - special treatment */
-function OpeningScene({ pageItem, children }: { pageItem: PageData; children: React.ReactNode }) {
+function OpeningScene({ children }: { children: React.ReactNode }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -386,33 +436,6 @@ function OpeningScene({ pageItem, children }: { pageItem: PageData; children: Re
       transition={{ duration: 1.2, ease: "easeOut" }}
       className="relative"
     >
-      {/* Atmospheric header */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 0.3 }}
-        className="text-center mb-8 space-y-2"
-      >
-        <div className="text-xs uppercase tracking-[0.4em] text-primary/50 font-medium">
-          Page One
-        </div>
-        {pageItem.events.length > 0 && (
-          <div className="flex justify-center gap-2 flex-wrap">
-            {pageItem.events.map((evt, i) => (
-              <motion.span
-                key={i}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.5 + i * 0.15, duration: 0.4 }}
-                className="text-[10px] text-muted-foreground/60 px-2 py-0.5 rounded-full border border-muted-foreground/20"
-              >
-                {evt}
-              </motion.span>
-            ))}
-          </div>
-        )}
-      </motion.div>
-
       {/* The actual content with dramatic entrance */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -421,15 +444,230 @@ function OpeningScene({ pageItem, children }: { pageItem: PageData; children: Re
       >
         {children}
       </motion.div>
+    </motion.div>
+  );
+}
 
-      {/* Decorative flourish after opening */}
+// Witty loading messages for the intermission - cycles through these
+const INTERMISSION_MESSAGES = [
+  "Summoning the muse...",
+  "The narrator clears their throat...",
+  "Characters are warming up backstage...",
+  "Consulting the oracle of plot...",
+  "Weaving narrative threads...",
+  "Setting the mood lighting...",
+  "The stage manager signals ready...",
+  "Dramatic tension building...",
+  "Cue the atmosphere...",
+  "Almost time for your scene...",
+  "The ink is flowing...",
+  "Words are finding their places...",
+];
+
+/** Theatrical intermission while waiting for page generation */
+function PageIntermission({
+  pageNum,
+  onScrollNeeded
+}: {
+  pageNum: number;
+  onScrollNeeded?: () => void;
+}) {
+  const [phase, setPhase] = useState(0);
+  const [messageIndex, setMessageIndex] = useState(0);
+  const [dots, setDots] = useState(1);
+  const scrollTriggered = useRef(false);
+
+  // Format page number as word for low numbers
+  const pageWord = pageNum === 1 ? "One" : pageNum === 2 ? "Two" : pageNum === 3 ? "Three" :
+                   pageNum === 4 ? "Four" : pageNum === 5 ? "Five" : pageNum === 6 ? "Six" :
+                   pageNum === 7 ? "Seven" : pageNum === 8 ? "Eight" : pageNum === 9 ? "Nine" :
+                   pageNum === 10 ? "Ten" : String(pageNum);
+
+  // Animate dots
+  useEffect(() => {
+    const dotTimer = setInterval(() => {
+      setDots(d => (d % 3) + 1);
+    }, 400);
+    return () => clearInterval(dotTimer);
+  }, []);
+
+  // Cycle through messages
+  useEffect(() => {
+    const messageTimer = setInterval(() => {
+      setMessageIndex(i => (i + 1) % INTERMISSION_MESSAGES.length);
+    }, 2800);
+    return () => clearInterval(messageTimer);
+  }, []);
+
+  // Phase progression: 0 -> 1 -> 2 -> 3
+  // Phase 0: 0-6s - Initial fade in, first message
+  // Phase 1: 6-14s - Message cycling, decorative elements appear
+  // Phase 2: 14-20s - More atmosphere, building anticipation
+  // Phase 3: 20-23s - "Ready" state, trigger scroll
+  useEffect(() => {
+    const phase1 = setTimeout(() => setPhase(1), 6000);
+    const phase2 = setTimeout(() => setPhase(2), 14000);
+    const phase3 = setTimeout(() => {
+      setPhase(3);
+      if (!scrollTriggered.current) {
+        scrollTriggered.current = true;
+        onScrollNeeded?.();
+      }
+    }, 20000);
+
+    return () => {
+      clearTimeout(phase1);
+      clearTimeout(phase2);
+      clearTimeout(phase3);
+    };
+  }, [onScrollNeeded]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.8 }}
+      className="space-y-8 py-8"
+    >
+      {/* Page header - fades in immediately */}
+      <motion.div
+        initial={{ opacity: 0, y: -15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 1, delay: 0.3 }}
+        className="text-center"
+      >
+        <div className="text-xs uppercase tracking-[0.4em] text-primary/40 font-medium">
+          Page {pageWord}
+        </div>
+      </motion.div>
+
+      {/* Decorative placeholder "page" */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.8, delay: 0.5 }}
+        className="relative"
+      >
+        {/* Faux content lines - simulating where text will appear */}
+        <div className="space-y-3 pl-3 border-l-2 border-primary/10">
+          {[0.7, 0.9, 0.5, 0.8, 0.6].map((width, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{
+                opacity: phase >= 1 ? [0.1, 0.15, 0.1] : 0.08,
+                x: 0
+              }}
+              transition={{
+                duration: 0.5,
+                delay: 1 + i * 0.15,
+                opacity: { duration: 2, repeat: Infinity, ease: "easeInOut" }
+              }}
+              className="h-3 bg-muted-foreground/10 rounded"
+              style={{ width: `${width * 100}%` }}
+            />
+          ))}
+        </div>
+
+        {/* Floating decorative elements - appear in phase 1+ */}
+        <AnimatePresence>
+          {phase >= 1 && (
+            <>
+              <motion.div
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ opacity: 0.3, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.6 }}
+                className="absolute -right-2 top-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary/20 to-transparent blur-sm"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ opacity: 0.2, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                className="absolute -left-4 bottom-2 w-6 h-6 rounded-full bg-gradient-to-br from-amber-400/20 to-transparent blur-sm"
+              />
+            </>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* Loading message - centered, elegant */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 2, duration: 1 }}
-        className="mt-8"
+        transition={{ duration: 0.6, delay: 1.5 }}
+        className="text-center space-y-4"
       >
-        <SceneBreak variant={0} />
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={messageIndex}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 0.6, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.4 }}
+            className="text-sm text-muted-foreground/70 italic"
+          >
+            {INTERMISSION_MESSAGES[messageIndex]}
+          </motion.p>
+        </AnimatePresence>
+
+        {/* Animated dots indicator */}
+        <div className="flex justify-center gap-1.5">
+          {[0, 1, 2].map(i => (
+            <motion.span
+              key={i}
+              animate={{
+                scale: i < dots ? 1 : 0.6,
+                opacity: i < dots ? 0.8 : 0.3,
+              }}
+              transition={{ duration: 0.2 }}
+              className="w-1.5 h-1.5 rounded-full bg-primary/60"
+            />
+          ))}
+        </div>
+      </motion.div>
+
+      {/* Phase 2+: Additional atmospheric elements */}
+      <AnimatePresence>
+        {phase >= 2 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1 }}
+            className="flex justify-center"
+          >
+            <span className="text-muted-foreground/20 text-xs tracking-[0.3em]">
+              · · · ✧ · · ·
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Phase 3: Ready indicator */}
+      <AnimatePresence>
+        {phase >= 3 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="text-center"
+          >
+            <span className="text-xs text-primary/50 uppercase tracking-wider">
+              Ready{".".repeat(dots)}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Scene break footer */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: phase >= 1 ? 0.5 : 0.2 }}
+        transition={{ duration: 1, delay: 2.5 }}
+      >
+        <SceneBreak variant={pageNum} />
       </motion.div>
     </motion.div>
   );
@@ -447,15 +685,18 @@ type Props = {
   onTapCharacter?: (name: string) => void;
   wideMode?: boolean;
   mood?: string;
+  waitingForPage?: boolean;
+  nextPageNum?: number;
 };
 
-export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, onPageFocus, containerRef, streaming, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation" }: Props) {
+export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, onPageFocus, containerRef, streaming, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
 
   // Track which page was streamed so we don't re-animate it when finalized
+  // Only mark as streamed if we actually displayed streaming content (narrator had content)
   const streamedPageRef = useRef<number | null>(null);
-  if (streaming?.isStreaming && streaming.page) {
+  if (streaming?.isStreaming && streaming.page && streaming.narrator && streaming.narrator.length > 50) {
     streamedPageRef.current = streaming.page;
   }
 
@@ -542,26 +783,13 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
     );
   }
 
-  // Determine if we should show scene breaks (when there's a significant gap or mood change)
-  const shouldShowSceneBreak = (index: number) => {
-    if (index === 0) return false;
-    const current = pages[index];
-    // Show break every 4 pages or when events indicate a scene change
-    const eventIndicatesBreak = current.events.some(e =>
-      e.toLowerCase().includes("scene") ||
-      e.toLowerCase().includes("later") ||
-      e.toLowerCase().includes("transition")
-    );
-    return eventIndicatesBreak || (index % 4 === 0);
-  };
-
   return (
     <div className={`mx-auto px-4 sm:px-6 py-4 space-y-6 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
       <AnimatePresence mode="popLayout">
         {pages.map((pageItem, index) => {
           const isFirst = index === 0;
           const isNewest = pageItem.page === newestPage;
-          const showBreak = shouldShowSceneBreak(index);
+          const isLast = index === pages.length - 1;
 
           const entry = (
             <PageEntry
@@ -580,22 +808,51 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
             />
           );
 
-          // Wrap first page in OpeningScene for grand entrance
+          const content = (
+            <>
+              <PageHeader pageNum={pageItem.page} isFirst={isFirst} />
+              {entry}
+              {!isLast && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: isFirst ? 2 : 0.5, duration: 0.6 }}
+                  className="mt-8"
+                >
+                  <SceneBreak variant={index} />
+                </motion.div>
+              )}
+            </>
+          );
+
+          // Wrap first page in OpeningScene for grand entrance animation
           if (isFirst) {
             return (
-              <OpeningScene key={`opening-${pageItem.page}`} pageItem={pageItem}>
-                {entry}
+              <OpeningScene key={`opening-${pageItem.page}`}>
+                {content}
               </OpeningScene>
             );
           }
 
+          // Use div instead of Fragment - AnimatePresence needs refs on children
           return (
-            <Fragment key={pageItem.page}>
-              {showBreak && <SceneBreak variant={index} />}
-              {entry}
-            </Fragment>
+            <div key={pageItem.page}>
+              {content}
+            </div>
           );
         })}
+      </AnimatePresence>
+
+      {/* Intermission while waiting for generation to start */}
+      <AnimatePresence>
+        {waitingForPage && !streaming?.isStreaming && (
+          <PageIntermission
+            pageNum={nextPageNum}
+            onScrollNeeded={() => {
+              endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+            }}
+          />
+        )}
       </AnimatePresence>
 
       {/* Currently streaming page */}
@@ -622,14 +879,29 @@ type PageEntryProps = {
   moodStyle: { border: string; glow: string };
 };
 
+/** Check if a timestamp is within the last N seconds */
+function isRecentTimestamp(timestamp?: string | number, maxAgeSeconds = 60): boolean {
+  if (!timestamp) return false;
+  const date = typeof timestamp === "string"
+    ? new Date(timestamp.includes("T") ? timestamp : timestamp + "Z")
+    : new Date(timestamp);
+  if (isNaN(date.getTime())) return false;
+  const diffMs = Date.now() - date.getTime();
+  return diffMs < maxAgeSeconds * 1000;
+}
+
 function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirst, wasStreamed, setRef, onHoverCharacter, onTapCharacter, characterNames, moodStyle }: PageEntryProps) {
   const localRef = useRef<HTMLElement>(null);
   const [firstRevealDone, setFirstRevealDone] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
 
-  // Use typewriter effect only for newest non-streamed pages (dramatic reveal)
-  const useTypewriter = isNew && !wasStreamed && !isFirst;
+  // Only use typewriter for truly recent pages (created < 1 min ago)
+  const isTrulyNew = isNew && !wasStreamed && !isFirst && isRecentTimestamp(pageItem.created_at, 60);
+  const useTypewriter = isTrulyNew;
+
+  // Track narration completion for staggering character dialogue
+  const [narrationComplete, setNarrationComplete] = useState(!useTypewriter);
 
   // Combine refs
   const handleRef = useCallback((el: HTMLElement | null) => {
@@ -727,53 +999,62 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
       >
         <NarrationText
           text={pageItem.narration}
-          isNew={isNew && !skipAnimation}
+          isNew={isTrulyNew && !skipAnimation}
           useTypewriter={useTypewriter}
+          onComplete={() => setNarrationComplete(true)}
         />
       </motion.div>
 
       {/* Character dialogue (speech) shown here - actions/thoughts go to CharacterPanel */}
-      {Object.entries(pageItem.characters).some(([, rawData]) => {
-        const data = extractCharacterFromRaw(rawData as Record<string, unknown>);
-        return data?.dialogue;
-      }) && (
-        <div className="space-y-3 pl-3 mt-4">
-          {Object.entries(pageItem.characters).map(([name, rawData], charIndex) => {
-            const data = extractCharacterFromRaw(rawData as Record<string, unknown>);
-            if (!data?.dialogue) return null;
-            const colors = getCharacterColor(name, characterNames);
+      {/* For typewriter pages, wait for narration to complete before showing */}
+      <AnimatePresence>
+        {(narrationComplete || !useTypewriter) && Object.entries(pageItem.characters).some(([, rawData]) => {
+          const data = extractCharacterFromRaw(rawData as Record<string, unknown>);
+          return data?.dialogue;
+        }) && (
+          <motion.div
+            initial={useTypewriter ? { opacity: 0, y: 8 } : false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            className="space-y-3 pl-3 mt-4"
+          >
+            {Object.entries(pageItem.characters).map(([name, rawData], charIndex) => {
+              const data = extractCharacterFromRaw(rawData as Record<string, unknown>);
+              if (!data?.dialogue) return null;
+              const colors = getCharacterColor(name, characterNames);
 
-            return (
-              <motion.div
-                key={name}
-                initial={skipAnimation ? false : { opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.3 + charIndex * 0.15, duration: 0.4 }}
-                className="text-sm relative"
-              >
-                {/* Character name with distinct color */}
-                <span
-                  className={`text-xs font-semibold ${colors.text} hover:brightness-125 cursor-pointer transition-all`}
-                  onMouseEnter={() => onHoverCharacter?.(name)}
-                  onMouseLeave={() => onHoverCharacter?.(null)}
-                  onClick={() => onTapCharacter?.(name)}
-                  style={{ textShadow: `0 0 12px currentColor` }}
+              return (
+                <motion.div
+                  key={name}
+                  initial={useTypewriter ? { opacity: 0, x: -8 } : (skipAnimation ? false : { opacity: 0, x: -8 })}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: useTypewriter ? 0.15 + charIndex * 0.2 : (skipAnimation ? 0 : 0.3 + charIndex * 0.15), duration: 0.4 }}
+                  className="text-sm relative"
                 >
-                  {name}
-                </span>
+                  {/* Character name with distinct color */}
+                  <span
+                    className={`text-xs font-semibold ${colors.text} hover:brightness-125 cursor-pointer transition-all`}
+                    onMouseEnter={() => onHoverCharacter?.(name)}
+                    onMouseLeave={() => onHoverCharacter?.(null)}
+                    onClick={() => onTapCharacter?.(name)}
+                    style={{ textShadow: `0 0 12px currentColor` }}
+                  >
+                    {name}
+                  </span>
 
-                {/* Dialogue with matching accent and elegant quotes */}
-                <span className="text-muted-foreground/50 mx-1">—</span>
-                <span className={`italic ${colors.quote}`}>
-                  <span className="text-muted-foreground/30 not-italic">"</span>
-                  {data.dialogue as string}
-                  <span className="text-muted-foreground/30 not-italic">"</span>
-                </span>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
+                  {/* Dialogue with matching accent and elegant quotes */}
+                  <span className="text-muted-foreground/50 mx-1">—</span>
+                  <span className={`italic ${colors.quote}`}>
+                    <span className="text-muted-foreground/30 not-italic">"</span>
+                    {data.dialogue as string}
+                    <span className="text-muted-foreground/30 not-italic">"</span>
+                  </span>
+                </motion.div>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.article>
   );
 }

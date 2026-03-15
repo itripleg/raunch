@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
@@ -28,10 +29,26 @@ type Props = {
   onClose: () => void;
   onCharacterAttached?: () => void;
   onAddCharacter?: () => void;
+  onDeleteCharacter?: (name: string) => void;
+  onStopWorld?: () => void;
 };
 
-export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddCharacter }: Props) {
+export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddCharacter, onDeleteCharacter, onStopWorld }: Props) {
   const world = game.world as Record<string, unknown> | null;
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [confirmStop, setConfirmStop] = useState(false);
+
+  const handleDelete = (name: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Don't toggle attachment
+    if (confirmDelete === name) {
+      onDeleteCharacter?.(name);
+      setConfirmDelete(null);
+    } else {
+      setConfirmDelete(name);
+      // Auto-cancel after 3 seconds
+      setTimeout(() => setConfirmDelete(null), 3000);
+    }
+  };
 
   return (
     <aside className="min-w-[256px] h-full border-r border-border/50 bg-card/20 flex flex-col shrink-0 pt-12 overflow-hidden">
@@ -50,7 +67,7 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
             </svg>
           </button>
         </div>
-        {world && (
+        {world ? (
           <div className="space-y-1.5">
             <p className="text-sm font-medium">{world.world_name as string}</p>
             <div className="text-[11px] text-muted-foreground space-y-0.5">
@@ -61,6 +78,29 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
               </div>
             </div>
           </div>
+        ) : (
+          <p className="text-sm text-muted-foreground/50 italic">Loading...</p>
+        )}
+        {/* End Session button - always available when onStopWorld provided */}
+        {onStopWorld && (
+          <button
+            onClick={() => {
+              if (confirmStop) {
+                onStopWorld();
+                setConfirmStop(false);
+              } else {
+                setConfirmStop(true);
+                setTimeout(() => setConfirmStop(false), 3000);
+              }
+            }}
+            className={`mt-2 text-[10px] transition-all ${
+              confirmStop
+                ? "text-destructive font-medium"
+                : "opacity-0 group-hover:opacity-100 text-muted-foreground/50 hover:text-muted-foreground"
+            }`}
+          >
+            {confirmStop ? "Click again to end" : "End session"}
+          </button>
         )}
       </div>
 
@@ -152,9 +192,23 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
               >
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full shrink-0 ${isAttached ? "bg-primary animate-pulse" : "bg-muted-foreground/30"}`} />
-                  <span className={`text-sm font-medium ${isAttached ? "text-primary" : "text-foreground/80 group-hover:text-foreground"}`}>
+                  <span className={`text-sm font-medium flex-1 ${isAttached ? "text-primary" : "text-foreground/80 group-hover:text-foreground"}`}>
                     {name}
                   </span>
+                  {/* Delete button - shows on hover for any character */}
+                  {onDeleteCharacter && (
+                    <span
+                      onClick={(e) => handleDelete(name, e)}
+                      className={`text-[9px] transition-all ${
+                        confirmDelete === name
+                          ? "text-destructive font-medium opacity-100"
+                          : "opacity-0 group-hover:opacity-100 text-pink-400/70 hover:text-purple-400"
+                      }`}
+                      title={confirmDelete === name ? "Click again to confirm" : "Remove character"}
+                    >
+                      {confirmDelete === name ? "Remove?" : "×"}
+                    </span>
+                  )}
                 </div>
                 {info && (
                   <div className="ml-4 mt-1 text-[10px] text-muted-foreground space-y-0.5">
@@ -164,18 +218,6 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
                     {(liveState || info.emotional_state) ? (
                       <div className="text-amber-400/60 italic truncate">{String(liveState || info.emotional_state)}</div>
                     ) : null}
-                  </div>
-                )}
-                {isAttached && (
-                  <div className="ml-4 mt-1.5 flex items-center gap-2">
-                    <span className="text-[10px] text-primary/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                      Click to detach
-                    </span>
-                    {typeof world?.page_count === "number" && (
-                      <span className="text-[9px] font-mono text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
-                        page {world.page_count}
-                      </span>
-                    )}
                   </div>
                 )}
               </button>
