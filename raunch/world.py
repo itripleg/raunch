@@ -73,7 +73,9 @@ class WorldState:
             lines.append("")
             lines.append("Recent events:")
             for entry in self.event_log[-5:]:
-                lines.append(f"  [{entry['page']}] {entry['event']}")
+                # Backwards compat: accept both 'page' and old 'tick' key
+                page_num = entry.get('page', entry.get('tick', '?'))
+                lines.append(f"  [{page_num}] {entry['event']}")
 
         return "\n".join(lines)
 
