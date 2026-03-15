@@ -120,7 +120,7 @@ export function DirectorPanel({ pageData, pendingGuidance, onClose, onDeleteChar
                   {onAddCharacter && (
                     <button
                       onClick={onAddCharacter}
-                      className="text-[9px] text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                      className="text-[9px] text-pink-400/70 hover:text-purple-400 transition-colors flex items-center gap-1"
                       title="Add character"
                     >
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
