@@ -242,7 +242,8 @@ function reducer(state: State, action: Action): State {
       return { ...state, pages: updatedPages };
     }
     case "ATTACHED":
-      return { ...state, attachedTo: action.character };
+      // Also exit director mode when attaching (prevents panel close/reopen)
+      return { ...state, attachedTo: action.character, directorMode: false };
     case "DETACHED":
       return { ...state, attachedTo: null };
     case "CHARACTERS":
@@ -333,7 +334,6 @@ function reducer(state: State, action: Action): State {
     case "DIRECTOR_QUEUED":
       return { ...state, pendingDirectorGuidance: action.text };
     case "PAGE_START":
-      console.log("[DEBUG useGame] PAGE_START received, page:", action.page);
       return {
         ...state,
         streaming: {

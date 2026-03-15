@@ -1,7 +1,6 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { PageData, StreamingState } from "@/hooks/useGame";
-import { Badge } from "@/components/ui/badge";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PREMIUM NARRATION FEED - Immersive storytelling experience
@@ -782,7 +781,7 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
   }
 
   return (
-    <div className={`mx-auto px-4 sm:px-6 py-4 space-y-6 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
+    <div className={`mx-auto px-4 sm:px-6 py-4 space-y-6 transition-[max-width] duration-300 ease-out ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
       <AnimatePresence mode="popLayout">
         {pages.map((pageItem, index) => {
           const isFirst = index === 0;
@@ -842,8 +841,6 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
       </AnimatePresence>
 
       {/* Intermission while waiting for generation to start */}
-      {/* DEBUG */}
-      {console.log("[DEBUG PageFeed] waitingForPage:", waitingForPage, "isStreaming:", streaming?.isStreaming, "pages:", pages.length)}
       <AnimatePresence>
         {waitingForPage && !streaming?.isStreaming && (
           <PageIntermission
@@ -892,27 +889,10 @@ function isRecentTimestamp(timestamp?: string | number, maxAgeSeconds = 60): boo
 
 function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirst, wasStreamed, setRef, onHoverCharacter, onTapCharacter, characterNames, moodStyle }: PageEntryProps) {
   const localRef = useRef<HTMLElement>(null);
-  const [firstRevealDone, setFirstRevealDone] = useState(false);
-  const [isRevealing, setIsRevealing] = useState(false);
-  const [isHovering, setIsHovering] = useState(false);
 
   // Only use typewriter for truly recent pages (created < 1 min ago)
   const isTrulyNew = isNew && !wasStreamed && !isFirst && isRecentTimestamp(pageItem.created_at, 60);
   const useTypewriter = isTrulyNew;
-
-  // DEBUG
-  if (isNew) {
-    console.log("[DEBUG PageEntry]", {
-      page: pageItem.page,
-      isNew,
-      wasStreamed,
-      isFirst,
-      created_at: pageItem.created_at,
-      isRecent: isRecentTimestamp(pageItem.created_at, 60),
-      isTrulyNew,
-      useTypewriter
-    });
-  }
 
   // Track narration completion for staggering character dialogue
   const [narrationComplete, setNarrationComplete] = useState(!useTypewriter);
@@ -932,38 +912,18 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
     setRef(el);
   }, [setRef]);
 
-  // Handle first hover to trigger staggered reveal
-  const handleMouseEnter = useCallback(() => {
-    setIsHovering(true);
-    if (!firstRevealDone && pageItem.events.length > 0) {
-      setIsRevealing(true);
-      // Mark reveal done after stagger completes
-      const staggerDuration = pageItem.events.length * 200 + 150;
-      setTimeout(() => {
-        setFirstRevealDone(true);
-        setIsRevealing(false);
-      }, staggerDuration);
-    }
-  }, [firstRevealDone, pageItem.events.length]);
-
-  const handleMouseLeave = useCallback(() => {
-    setIsHovering(false);
-  }, []);
-
   // Skip entrance animation if this page was just streamed (prevents jarring re-render)
   const skipAnimation = wasStreamed;
 
   return (
     <motion.article
       ref={handleRef}
-      layout
       initial={skipAnimation ? false : { opacity: 0, y: 20, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -10, scale: 0.98 }}
       transition={{
         duration: 0.4,
         ease: [0.25, 0.46, 0.45, 0.94],
-        layout: { duration: 0.3 }
       }}
       className={`space-y-3 transition-all duration-200 ${
         isFocused
@@ -973,19 +933,22 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
     >
       {/* Timestamp header */}
       <motion.div
-        className="flex items-center gap-2"
+        className="flex items-center gap-2 group/timestamp"
         initial={skipAnimation ? false : { opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.1, duration: 0.3 }}
       >
+        {/* Short timestamp, hover for full */}
         <span
           className={`text-[10px] font-mono transition-colors duration-200 cursor-default ${
             isFocused ? "text-primary/80" : "text-muted-foreground/60"
           }`}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          title={pageItem.created_at ? new Date(pageItem.created_at).toLocaleString() : undefined}
         >
-          {formatTimestamp(pageItem.created_at)}
+          <span className="group-hover/timestamp:hidden">{formatTimestamp(pageItem.created_at)}</span>
+          <span className="hidden group-hover/timestamp:inline text-muted-foreground/80">
+            {pageItem.created_at ? new Date(pageItem.created_at).toLocaleString() : ""}
+          </span>
         </span>
       </motion.div>
 
@@ -1031,14 +994,14 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
                   initial={useTypewriter ? { opacity: 0, x: -8 } : (skipAnimation ? false : { opacity: 0, x: -8 })}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: useTypewriter ? 0.15 + charIndex * 0.2 : (skipAnimation ? 0 : 0.3 + charIndex * 0.15), duration: 0.4 }}
-                  className="text-sm relative"
+                  className="text-sm relative cursor-pointer hover:brightness-110 transition-all"
+                  onMouseEnter={() => onHoverCharacter?.(name)}
+                  onMouseLeave={() => onHoverCharacter?.(null)}
+                  onClick={() => onTapCharacter?.(name)}
                 >
                   {/* Character name with distinct color */}
                   <span
-                    className={`text-xs font-semibold ${colors.text} hover:brightness-125 cursor-pointer transition-all`}
-                    onMouseEnter={() => onHoverCharacter?.(name)}
-                    onMouseLeave={() => onHoverCharacter?.(null)}
-                    onClick={() => onTapCharacter?.(name)}
+                    className={`text-xs font-semibold ${colors.text}`}
                     style={{ textShadow: `0 0 12px currentColor` }}
                   >
                     {name}
@@ -1058,47 +1021,7 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
         )}
       </AnimatePresence>
 
-      {/* Events section at bottom - subtle hover trigger */}
-      {pageItem.events.length > 0 && (
-        <motion.div
-          className="mt-4 group"
-          initial={skipAnimation ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-        >
-          {/* Subtle "events" label - always visible */}
-          <span className="text-[9px] uppercase tracking-wider text-muted-foreground/30 group-hover:text-muted-foreground/50 transition-colors cursor-default">
-            events
-          </span>
-          {/* Events badges - appear on hover */}
-          <AnimatePresence>
-            {isHovering && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.2 }}
-                className="flex gap-1.5 flex-wrap mt-1"
-              >
-                {pageItem.events.map((evt, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: isRevealing ? i * 0.15 : 0, duration: 0.15 }}
-                  >
-                    <Badge variant="secondary" className="text-[10px]">
-                      {evt}
-                    </Badge>
-                  </motion.div>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      )}
+      {/* Events removed - viewable in director panel */}
     </motion.article>
   );
 }

@@ -647,10 +647,14 @@ def get_alpha_message() -> Optional[Dict[str, Any]]:
     ).fetchone()
     if not row:
         return None
+    # Convert SQLite timestamp to ISO8601 format for JavaScript
+    updated_at = row["updated_at"]
+    if updated_at and " " in updated_at and "T" not in updated_at:
+        updated_at = updated_at.replace(" ", "T") + "Z"
     return {
         "id": row["id"],
         "content": row["content"],
-        "updated_at": row["updated_at"],
+        "updated_at": updated_at,
     }
 
 

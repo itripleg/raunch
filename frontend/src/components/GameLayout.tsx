@@ -82,7 +82,6 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
   // Handle next button click with animation
   const handleNextClick = useCallback(() => {
     if (actions.triggerPage) {
-      console.log("[DEBUG] Next clicked, setting waitingForPage=true");
       setNextClicked(true);
       setWaitingForPage(true);
       actions.triggerPage();
@@ -97,12 +96,10 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
   useEffect(() => {
     // Clear when streaming starts
     if (game.streaming?.isStreaming) {
-      console.log("[DEBUG] Clearing waitingForPage: streaming started");
       setWaitingForPage(false);
     }
     // Clear when a new page arrives (non-streaming mode)
     if (pageCount > prevPageCountRef.current) {
-      console.log("[DEBUG] Clearing waitingForPage: new page arrived", pageCount, ">", prevPageCountRef.current);
       setWaitingForPage(false);
     }
     prevPageCountRef.current = pageCount;
@@ -504,8 +501,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
           )}
         </main>
 
-        {/* Right panel: attached character - synced with scroll */}
-        {/* Desktop right panel - Director or Character */}
+        {/* Right panel: Director or Character with smooth crossfade */}
         <AnimatePresence initial={false}>
           {(game.directorMode || game.attachedTo || previewCharacter) && (
             <motion.div
@@ -515,30 +511,50 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="hidden lg:block overflow-hidden shrink-0 h-full"
             >
-              {game.directorMode ? (
-                <DirectorPanel
-                  pageData={focusedPage}
-                  pendingGuidance={game.pendingDirectorGuidance}
-                  onDeleteCharacter={handleDeleteCharacter}
-                  onAddCharacter={onAddCharacter}
-                />
-              ) : (
-                <CharacterPanel
-                  name={displayedCharacterName!}
-                  data={displayedCharacterData}
-                  isPreview={!!previewCharacter}
-                  pendingInfluence={
-                    game.pendingInfluence?.character === displayedCharacterName
-                      ? game.pendingInfluence.text
-                      : null
-                  }
-                  streamingText={
-                    game.streaming?.isStreaming && displayedCharacterName
-                      ? game.streaming.characters[displayedCharacterName]
-                      : undefined
-                  }
-                />
-              )}
+              <AnimatePresence mode="wait" initial={false}>
+                {game.directorMode ? (
+                  <motion.div
+                    key="director"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="h-full"
+                  >
+                    <DirectorPanel
+                      pageData={focusedPage}
+                      pendingGuidance={game.pendingDirectorGuidance}
+                      onDeleteCharacter={handleDeleteCharacter}
+                      onAddCharacter={onAddCharacter}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key={`character-${displayedCharacterName}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="h-full"
+                  >
+                    <CharacterPanel
+                      name={displayedCharacterName!}
+                      data={displayedCharacterData}
+                      isPreview={!!previewCharacter}
+                      pendingInfluence={
+                        game.pendingInfluence?.character === displayedCharacterName
+                          ? game.pendingInfluence.text
+                          : null
+                      }
+                      streamingText={
+                        game.streaming?.isStreaming && displayedCharacterName
+                          ? game.streaming.characters[displayedCharacterName]
+                          : undefined
+                      }
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>

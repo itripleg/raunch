@@ -178,8 +178,7 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
                   if (isAttached) {
                     actions.detach();
                   } else {
-                    // Exit director mode when attaching to a character
-                    if (game.directorMode) actions.toggleDirectorMode?.();
+                    // Attach - reducer will also exit director mode atomically
                     actions.attach(name);
                     onCharacterAttached?.();
                   }
