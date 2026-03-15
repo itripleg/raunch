@@ -138,10 +138,10 @@ export function DirectorPanel({ pageData, pendingGuidance, onClose, onDeleteChar
                       {onDeleteCharacter && (
                         <button
                           onClick={() => handleDelete(name)}
-                          className={`opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded ${
+                          className={`opacity-0 group-hover:opacity-100 transition-all p-0.5 rounded ${
                             confirmDelete === name
                               ? "opacity-100 text-destructive"
-                              : "text-muted-foreground/50 hover:text-destructive"
+                              : "text-pink-400/70 hover:text-purple-400"
                           }`}
                           title={confirmDelete === name ? "Click again to confirm" : "Remove character"}
                         >
