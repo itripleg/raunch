@@ -3,15 +3,17 @@
 
 services:
   - type: web
-    name: raunch-game
+    name: raunch-backend
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: python -c "from raunch.main import cli; cli()" start --scenario milk_money --headless
+    startCommand: uvicorn raunch.api:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
       - key: CLAUDE_CODE_OAUTH_TOKEN
         sync: false  # Set manually in dashboard (1-year OAuth token)
-    # No healthCheckPath - WebSocket server doesn't respond to HTTP
+      - key: HOSTED_SCENARIO
+        value: milk_money  # Auto-start this scenario on boot
+    healthCheckPath: /health
     autoDeploy: true

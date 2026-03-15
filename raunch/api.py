@@ -1,10 +1,16 @@
-"""FastAPI REST API for raunch multiplayer endpoints."""
+"""FastAPI REST API for raunch multiplayer endpoints.
 
+Includes WebSocket endpoint for game connections (same port as REST).
+"""
+
+import asyncio
+import json
 import logging
 import os
-from typing import List, Optional, TYPE_CHECKING
+import uuid
+from typing import List, Optional, Dict, Any, Set, TYPE_CHECKING
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -207,6 +213,87 @@ app.add_middleware(
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+# =============================================================================
+# Hosted Mode: Auto-start a world on API startup
+# =============================================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize game world on startup if HOSTED_SCENARIO is set."""
+    scenario_name = os.environ.get("HOSTED_SCENARIO")
+    if not scenario_name:
+        logger.info("No HOSTED_SCENARIO set, running in API-only mode")
+        return
+
+    logger.info(f"Hosted mode: Starting world with scenario '{scenario_name}'")
+
+    try:
+        from .orchestrator import Orchestrator
+        from .world import World
+
+        # Load scenario
+        scenario = load_scenario(scenario_name)
+        if not scenario:
+            logger.error(f"Scenario '{scenario_name}' not found")
+            return
+
+        # Create world
+        world = World(world_name=scenario.get("scenario_name", scenario_name))
+        world.scenario = scenario
+        world.multiplayer = scenario.get("multiplayer", True)
+
+        # Create orchestrator
+        orch = Orchestrator(world)
+        orch.page_interval = 0  # Manual mode for multiplayer
+
+        # Apply scenario characters
+        from .agents.character import Character
+        setting = scenario.get("setting", "")
+        if setting:
+            loc_name = scenario.get("scenario_name", "The Scene")
+            orch.world.locations[loc_name] = setting
+
+        for char_data in scenario.get("characters", []):
+            char = Character(
+                name=char_data.get("name", "Unknown"),
+                species=char_data.get("species", "Human"),
+                personality=char_data.get("personality", ""),
+                appearance=char_data.get("appearance", ""),
+                desires=char_data.get("desires", ""),
+                backstory=char_data.get("backstory", ""),
+            )
+            if setting:
+                char.location = loc_name
+            orch.add_character(char)
+
+        # Set global orchestrator
+        set_orchestrator(orch)
+
+        # Wire up page callback to broadcast to WebSocket clients
+        def on_page(results):
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(ws_manager.broadcast_page(results))
+                else:
+                    loop.run_until_complete(ws_manager.broadcast_page(results))
+            except Exception as e:
+                logger.debug(f"Failed to broadcast page: {e}")
+
+        orch.add_page_callback(on_page)
+
+        # Start orchestrator (runs page generation loop)
+        orch.start()
+
+        logger.info(f"World '{world.world_name}' started with {len(orch.characters)} characters")
+
+    except Exception as e:
+        logger.error(f"Failed to start hosted world: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 @app.get("/api/v1/scenarios", response_model=List[ScenarioResponse])
@@ -887,3 +974,268 @@ async def remove_poll(poll_id: int):
     if not success:
         raise HTTPException(status_code=404, detail="Poll not found")
     return {"success": True}
+
+
+# =============================================================================
+# WebSocket Support (same port as REST API)
+# =============================================================================
+
+class WSClient:
+    """A connected WebSocket client."""
+
+    def __init__(self, websocket: WebSocket):
+        self.ws = websocket
+        self.attached_to: Optional[str] = None
+        self.player_id: Optional[str] = None
+        self.nickname: Optional[str] = None
+        self.ready: bool = False
+
+    async def send(self, data: Dict[str, Any]) -> bool:
+        try:
+            await self.ws.send_json(data)
+            return True
+        except Exception:
+            return False
+
+
+class WebSocketManager:
+    """Manages WebSocket connections for the game."""
+
+    def __init__(self):
+        self.clients: Set[WSClient] = set()
+
+    async def connect(self, websocket: WebSocket) -> WSClient:
+        await websocket.accept()
+        client = WSClient(websocket)
+        self.clients.add(client)
+        return client
+
+    def disconnect(self, client: WSClient):
+        self.clients.discard(client)
+
+    async def broadcast(self, data: Dict[str, Any]):
+        """Broadcast to all connected clients."""
+        for client in self.clients:
+            await client.send(data)
+
+    async def broadcast_page(self, page_data: Dict[str, Any]):
+        """Broadcast a new page to all clients."""
+        await self.broadcast({"type": "page", **page_data})
+
+
+# Global WebSocket manager
+ws_manager = WebSocketManager()
+
+
+def get_ws_manager() -> WebSocketManager:
+    """Get the WebSocket manager instance."""
+    return ws_manager
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for game connections."""
+    from . import db
+
+    client = await ws_manager.connect(websocket)
+    orch = get_orchestrator()
+
+    # Send welcome message
+    if orch:
+        char_names = list(orch.characters.keys())
+        initial_history = db.get_page_history(orch.world.world_id, limit=50)
+        await client.send({
+            "type": "welcome",
+            "world": orch.world.info(),
+            "characters": char_names,
+            "history": initial_history,
+            "page_interval": orch.page_interval,
+            "manual": orch.is_manual_mode,
+            "paused": orch._paused,
+            "player_id": client.player_id,
+        })
+    else:
+        await client.send({
+            "type": "welcome",
+            "world": None,
+            "characters": [],
+            "history": [],
+            "message": "No world running",
+        })
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            await process_ws_command(client, data)
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.debug(f"WebSocket error: {e}")
+    finally:
+        ws_manager.disconnect(client)
+        # Handle player leave
+        if client.player_id and orch and orch.world.multiplayer:
+            orch.clear_player_ready(client.player_id)
+            await broadcast_players()
+
+
+async def process_ws_command(client: WSClient, msg: Dict[str, Any]):
+    """Process a WebSocket command from a client."""
+    from . import db
+
+    orch = get_orchestrator()
+    cmd = msg.get("cmd", "")
+
+    if cmd == "attach":
+        if not orch:
+            await client.send({"type": "error", "message": "No world running"})
+            return
+        name = msg.get("character", "")
+        matches = [n for n in orch.characters if n.lower().startswith(name.lower())]
+        if matches:
+            client.attached_to = matches[0]
+            await client.send({"type": "attached", "character": matches[0]})
+        else:
+            await client.send({"type": "error", "message": f"No character matching '{name}'"})
+
+    elif cmd == "detach":
+        client.attached_to = None
+        await client.send({"type": "detached"})
+
+    elif cmd == "join":
+        nickname = msg.get("nickname", "").strip()
+        client.player_id = str(uuid.uuid4())
+        if not nickname:
+            player_count = sum(1 for c in ws_manager.clients if c.player_id is not None)
+            nickname = f"Player {player_count}"
+        client.nickname = nickname
+        client.ready = False
+        if orch and orch.world.multiplayer:
+            orch.set_player_ready(client.player_id, False)
+        await client.send({
+            "type": "joined",
+            "player_id": client.player_id,
+            "nickname": client.nickname,
+            "multiplayer": orch.world.multiplayer if orch else False,
+        })
+        await broadcast_players()
+
+    elif cmd == "list":
+        if not orch:
+            await client.send({"type": "characters", "characters": {}})
+            return
+        chars = {}
+        for cname, char in orch.characters.items():
+            chars[cname] = {
+                "species": char.character_data.get("species", "?"),
+                "emotional_state": char.emotional_state,
+                "location": char.location,
+            }
+        await client.send({"type": "characters", "characters": chars})
+
+    elif cmd == "world":
+        if orch:
+            await client.send({"type": "world", "snapshot": orch.world.info()})
+        else:
+            await client.send({"type": "world", "snapshot": None})
+
+    elif cmd == "status":
+        if orch:
+            await client.send({
+                "type": "status",
+                "world": orch.world.info(),
+                "characters": list(orch.characters.keys()),
+                "paused": orch._paused,
+                "clients": len(ws_manager.clients),
+                "page_interval": orch.page_interval,
+            })
+        else:
+            await client.send({"type": "status", "world": None, "characters": []})
+
+    elif cmd == "history":
+        if not orch:
+            await client.send({"type": "history", "pages": []})
+            return
+        limit = msg.get("count", 20)
+        offset = msg.get("offset", 0)
+        pages = db.get_page_history(orch.world.world_id, limit=limit, offset=offset)
+        await client.send({"type": "history", "pages": pages})
+
+    elif cmd == "replay":
+        if not orch:
+            await client.send({"type": "error", "message": "No world running"})
+            return
+        page_num = msg.get("page")
+        if page_num is None:
+            await client.send({"type": "error", "message": "Specify a page number"})
+        else:
+            page_data = db.get_full_page(orch.world.world_id, page_num)
+            if page_data:
+                await client.send({"type": "replay", **page_data})
+            else:
+                await client.send({"type": "error", "message": f"No data for page {page_num}"})
+
+    elif cmd == "action":
+        if not orch:
+            await client.send({"type": "error", "message": "No world running"})
+            return
+        text = msg.get("text", "").strip()
+        auto_ready = msg.get("ready", True)
+        if not text:
+            await client.send({"type": "error", "message": "Empty message"})
+        elif client.attached_to:
+            if orch.submit_influence(client.attached_to, text):
+                await client.send({
+                    "type": "influence_queued",
+                    "character": client.attached_to,
+                    "text": text,
+                })
+                if auto_ready and client.player_id and orch.world.multiplayer:
+                    client.ready = True
+                    orch.set_player_ready(client.player_id, True)
+            else:
+                await client.send({"type": "error", "message": f"Character {client.attached_to} not found"})
+        else:
+            await client.send({"type": "error", "message": "Attach to a character first"})
+
+    elif cmd == "ready":
+        if orch and client.player_id and orch.world.multiplayer:
+            client.ready = True
+            orch.set_player_ready(client.player_id, True)
+            await client.send({"type": "ready_confirmed"})
+
+    elif cmd == "pause":
+        if orch:
+            orch.pause()
+            await ws_manager.broadcast({"type": "paused", "paused": True})
+
+    elif cmd == "resume":
+        if orch:
+            orch.resume()
+            await ws_manager.broadcast({"type": "paused", "paused": False})
+
+    elif cmd == "director":
+        if not orch:
+            await client.send({"type": "error", "message": "No world running"})
+            return
+        text = msg.get("text", "").strip()
+        if text and hasattr(orch, 'submit_director_guidance'):
+            orch.submit_director_guidance(text)
+            await client.send({"type": "director_queued", "text": text})
+
+    else:
+        await client.send({"type": "error", "message": f"Unknown command: {cmd}"})
+
+
+async def broadcast_players():
+    """Broadcast current player list to all clients."""
+    players = []
+    for c in ws_manager.clients:
+        if c.player_id:
+            players.append({
+                "player_id": c.player_id,
+                "nickname": c.nickname,
+                "ready": c.ready,
+                "attached_to": c.attached_to,
+            })
+    await ws_manager.broadcast({"type": "players", "players": players})
