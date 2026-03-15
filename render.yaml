@@ -1,17 +1,17 @@
-# Render Blueprint for Raunch backend
+# Render Blueprint for Raunch game server
 # https://render.com/docs/blueprint-spec
 
 services:
   - type: web
-    name: raunch-backend
+    name: raunch-game
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn raunch.api:app --host 0.0.0.0 --port $PORT
+    startCommand: python -c "from raunch.main import cli; cli()" start --scenario milk_money --headless
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
-      - key: ANTHROPIC_API_KEY
-        sync: false  # Set manually in dashboard
-    healthCheckPath: /health
+      - key: CLAUDE_CODE_OAUTH_TOKEN
+        sync: false  # Set manually in dashboard (1-year OAuth token)
+    # No healthCheckPath - WebSocket server doesn't respond to HTTP
     autoDeploy: true
