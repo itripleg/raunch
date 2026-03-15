@@ -81,16 +81,6 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: 
 
   const cards = [
     {
-      id: "kanban",
-      title: "Feedback",
-      subtitle: "Shape the roadmap",
-      icon: MessageSquare,
-      color: "from-primary/20 to-primary/5",
-      borderColor: "border-primary/30",
-      hoverGlow: "hover:shadow-[0_0_40px_oklch(0.65_0.22_340_/_0.15)]",
-      onClick: () => onNavigate("kanban"),
-    },
-    {
       id: "game",
       title: "Play Raunch",
       subtitle: "Dive into your story",
@@ -100,6 +90,16 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: 
       hoverGlow: "hover:shadow-[0_0_60px_oklch(0.6_0.25_300_/_0.3)]",
       onClick: () => onNavigate("game"),
       featured: true,
+    },
+    {
+      id: "kanban",
+      title: "Feedback",
+      subtitle: "Shape the roadmap",
+      icon: MessageSquare,
+      color: "from-primary/20 to-primary/5",
+      borderColor: "border-primary/30",
+      hoverGlow: "hover:shadow-[0_0_40px_oklch(0.65_0.22_340_/_0.15)]",
+      onClick: () => onNavigate("kanban"),
     },
     {
       id: "about",
