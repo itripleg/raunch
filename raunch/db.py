@@ -168,7 +168,7 @@ def get_page_history(world_id: str, limit: int = 50, offset: int = 0) -> List[Di
             }
 
         results.append({
-            "page_num": page_number,
+            "page": page_number,  # API uses 'page', DB column is 'page_num'
             "narration": r["narration"],
             "events": json.loads(r["events"]) if r["events"] else [],
             "world_time": r["world_time"],
@@ -191,7 +191,7 @@ def get_character_history(world_id: str, character_name: str,
     ).fetchall()
     return [
         {
-            "page_num": r["page_num"],
+            "page": r["page_num"],  # API uses 'page', DB column is 'page_num'
             "inner_thoughts": r["inner_thoughts"],
             "action": r["action"],
             "dialogue": r["dialogue"],
@@ -223,7 +223,7 @@ def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
     for r in page_rows:
         pages.append({
             "id": r["id"],
-            "page_num": r["page_num"],
+            "page": r["page_num"],  # API uses 'page', DB column is 'page_num'
             "narration": r["narration"],
             "events": json.loads(r["events"]) if r["events"] else [],
             "world_time": r["world_time"],
@@ -265,7 +265,7 @@ def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
 
         entry = {
             "id": r["id"],
-            "page_num": r["page_num"],
+            "page": r["page_num"],  # API uses 'page', DB column is 'page_num'
             "character_name": r["character_name"],
             "inner_thoughts": r["inner_thoughts"],
             "action": r["action"],
@@ -324,7 +324,7 @@ def get_full_page(world_id: str, page_num: int) -> Optional[Dict[str, Any]]:
     ).fetchall()
 
     return {
-        "page_num": row["page_num"],
+        "page": row["page_num"],  # API uses 'page', DB column is 'page_num'
         "narration": row["narration"],
         "events": json.loads(row["events"]) if row["events"] else [],
         "world_time": row["world_time"],
