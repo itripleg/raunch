@@ -277,8 +277,21 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: 
               <motion.button
                 key={card.id}
                 initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.6 + index * 0.1 }}
+                animate={card.featured ? {
+                  opacity: 1,
+                  y: 0,
+                  rotate: [0, -0.5, 0.5, -0.3, 0.3, 0],
+                } : { opacity: 1, y: 0 }}
+                transition={card.featured ? {
+                  duration: 0.5,
+                  delay: 0.6 + index * 0.1,
+                  rotate: {
+                    duration: 2.5,
+                    repeat: Infinity,
+                    repeatDelay: 3,
+                    ease: "easeInOut",
+                  }
+                } : { duration: 0.5, delay: 0.6 + index * 0.1 }}
                 onClick={card.onClick}
                 disabled={card.disabled}
                 className={`
