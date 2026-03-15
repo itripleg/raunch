@@ -73,13 +73,12 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
             <div className="text-[11px] text-muted-foreground space-y-0.5">
               <div>Time: {world.world_time as string ?? "?"}</div>
               <div>Mood: {world.mood as string ?? "?"}</div>
-              <div>Pages: {world.page_count as number ?? "?"}</div>
             </div>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground/50 italic">Loading...</p>
         )}
-        {/* End Session button - always available when onStopWorld provided */}
+        {/* Return to menu button */}
         {onStopWorld && (
           <button
             onClick={() => {
@@ -91,13 +90,13 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
                 setTimeout(() => setConfirmStop(false), 3000);
               }
             }}
-            className={`mt-2 text-[10px] transition-all ${
+            className={`mt-3 text-[10px] transition-all ${
               confirmStop
                 ? "text-destructive font-medium"
-                : "opacity-0 group-hover:opacity-100 text-pink-400/70 hover:text-pink-400"
+                : "text-pink-400/70 hover:text-pink-400"
             }`}
           >
-            {confirmStop ? "Click again to end" : "End session"}
+            {confirmStop ? "Click again to confirm" : "Return to menu"}
           </button>
         )}
       </div>
