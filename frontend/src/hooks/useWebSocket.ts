@@ -23,7 +23,9 @@ export function useWebSocket(url: string) {
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
-    ws.onopen = () => setState("connected");
+    ws.onopen = () => {
+      setState("connected");
+    };
 
     ws.onmessage = (e) => {
       try {
