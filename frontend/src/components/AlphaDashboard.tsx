@@ -277,21 +277,8 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: 
               <motion.button
                 key={card.id}
                 initial={{ opacity: 0, y: 20 }}
-                animate={card.featured ? {
-                  opacity: 1,
-                  y: 0,
-                  rotate: [0, -0.5, 0.5, -0.3, 0.3, 0],
-                } : { opacity: 1, y: 0 }}
-                transition={card.featured ? {
-                  duration: 0.5,
-                  delay: 0.6 + index * 0.1,
-                  rotate: {
-                    duration: 2.5,
-                    repeat: Infinity,
-                    repeatDelay: 3,
-                    ease: "easeInOut",
-                  }
-                } : { duration: 0.5, delay: 0.6 + index * 0.1 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.6 + index * 0.1 }}
                 onClick={card.onClick}
                 disabled={card.disabled}
                 className={`
@@ -316,17 +303,15 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: 
                   />
                 </div>
 
-                {/* Featured card animated glow */}
+                {/* Featured card shimmer effect */}
                 {card.featured && (
                   <motion.div
-                    className="absolute -inset-1 bg-gradient-to-r from-violet-500/20 via-fuchsia-500/20 to-primary/20 rounded-2xl blur-xl"
-                    animate={{
-                      opacity: [0.3, 0.6, 0.3],
-                      scale: [1, 1.02, 1],
-                    }}
+                    className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent skew-x-12"
+                    animate={{ x: ["-100%", "200%"] }}
                     transition={{
-                      duration: 3,
+                      duration: 2,
                       repeat: Infinity,
+                      repeatDelay: 3,
                       ease: "easeInOut",
                     }}
                   />
