@@ -846,11 +846,10 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
       </AnimatePresence>
 
       {/* Intermission while waiting for generation to start */}
-      {/* Show intermission when waiting AND (not streaming OR streaming but no content yet) */}
       {/* DEBUG */}
-      {console.log("[DEBUG PageFeed] waitingForPage:", waitingForPage, "isStreaming:", streaming?.isStreaming, "narrator:", streaming?.narrator?.length || 0, "pages:", pages.length)}
+      {console.log("[DEBUG PageFeed] waitingForPage:", waitingForPage, "isStreaming:", streaming?.isStreaming, "pages:", pages.length)}
       <AnimatePresence>
-        {waitingForPage && (!streaming?.isStreaming || !streaming?.narrator) && (
+        {waitingForPage && !streaming?.isStreaming && (
           <PageIntermission
             pageNum={nextPageNum}
             onScrollNeeded={() => {
