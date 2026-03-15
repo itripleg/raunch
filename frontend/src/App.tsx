@@ -489,16 +489,49 @@ function App() {
 
                   {isConnected && !hasWorld && (
                     <>
-                      <p className="text-sm text-muted-foreground">No world running</p>
-                      <p className="text-xs text-muted-foreground/50 max-w-xs">
-                        Start a scenario from the CLI with <code className="font-mono text-primary/70">raunch start --scenario name</code>
-                      </p>
-                      <button
-                        onClick={handleBackToDashboard}
-                        className="px-4 py-2 text-muted-foreground hover:text-foreground text-sm"
+                      {/* Loading dots while waiting for world info */}
+                      <motion.div
+                        initial={{ opacity: 1 }}
+                        animate={{ opacity: 0 }}
+                        transition={{ delay: 1.2, duration: 0.3 }}
+                        className="absolute inset-0 flex items-center justify-center"
                       >
-                        Back to Dashboard
-                      </button>
+                        <div className="flex gap-1.5">
+                          {[0, 1, 2].map((i) => (
+                            <motion.div
+                              key={i}
+                              className="w-1.5 h-1.5 rounded-full bg-primary/50"
+                              animate={{
+                                opacity: [0.2, 0.8, 0.2],
+                                scale: [0.9, 1.1, 0.9],
+                              }}
+                              transition={{
+                                duration: 1.8,
+                                repeat: Infinity,
+                                delay: i * 0.25,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </motion.div>
+                      {/* Show "No world" message after delay */}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 1.5, duration: 0.3 }}
+                        className="text-center space-y-4"
+                      >
+                        <p className="text-sm text-muted-foreground">No world running</p>
+                        <p className="text-xs text-muted-foreground/50 max-w-xs">
+                          Start a scenario from the CLI with <code className="font-mono text-primary/70">raunch start --scenario name</code>
+                        </p>
+                        <button
+                          onClick={handleBackToDashboard}
+                          className="px-4 py-2 text-muted-foreground hover:text-foreground text-sm"
+                        >
+                          Back to Dashboard
+                        </button>
+                      </motion.div>
                     </>
                   )}
                 </div>
