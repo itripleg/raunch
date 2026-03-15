@@ -10,10 +10,11 @@ import { AboutPage } from "./components/AboutPage";
 import { GameLayout } from "./components/GameLayout";
 import { NicknamePrompt } from "./components/NicknamePrompt";
 import { CharacterWizard } from "./components/CharacterWizard";
+import { WizardPage } from "./components/WizardPage";
 
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
 
-type AppView = "splash" | "dashboard" | "kanban" | "voting" | "about" | "storage" | "game";
+type AppView = "splash" | "dashboard" | "kanban" | "voting" | "about" | "wizard" | "game";
 
 // Smart URL detection for local vs remote/production
 function getServerUrls(): { wsUrl: string; apiUrl: string } {
@@ -372,6 +373,21 @@ function App() {
             <AboutPage
               onBack={handleBackToDashboard}
               isAdmin={isAdmin}
+              apiUrl={apiUrl}
+            />
+          </motion.div>
+        )}
+
+        {view === "wizard" && (
+          <motion.div
+            key="wizard"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <WizardPage
+              onBack={handleBackToDashboard}
               apiUrl={apiUrl}
             />
           </motion.div>

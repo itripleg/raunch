@@ -5,12 +5,13 @@ import {
   Gamepad2,
   BookOpen,
   Vote,
+  Wand2,
   Lock,
   Settings,
   ChevronRight,
 } from "lucide-react";
 
-type View = "dashboard" | "kanban" | "voting" | "about" | "storage" | "game";
+type View = "dashboard" | "kanban" | "voting" | "about" | "wizard" | "game";
 
 type Props = {
   onNavigate: (view: View) => void;
@@ -119,6 +120,16 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: 
       borderColor: "border-amber-500/30",
       hoverGlow: "hover:shadow-[0_0_40px_oklch(0.7_0.18_60_/_0.15)]",
       onClick: () => onNavigate("voting"),
+    },
+    {
+      id: "wizard",
+      title: "Smut Wizard",
+      subtitle: "Generate scenarios",
+      icon: Wand2,
+      color: "from-fuchsia-500/20 to-fuchsia-500/5",
+      borderColor: "border-fuchsia-500/30",
+      hoverGlow: "hover:shadow-[0_0_40px_oklch(0.65_0.25_320_/_0.15)]",
+      onClick: () => onNavigate("wizard"),
     },
     {
       id: "storage",
