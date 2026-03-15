@@ -483,6 +483,20 @@ class WebSocketServer:
             except Exception:
                 pass
 
+    def broadcast_page_generating(self, page_num: int):
+        """Notify frontend that page generation has started (non-streaming mode)."""
+        if not self._loop or not self.clients:
+            return
+        msg = {
+            "type": "page_generating",
+            "page": page_num,
+        }
+        for client in list(self.clients):
+            try:
+                asyncio.run_coroutine_threadsafe(client.send(msg), self._loop)
+            except Exception:
+                pass
+
     def broadcast_narrator_ready(self, page_num: int, narration: str, mood: str = ""):
         """Send narrator content to frontend before characters are done (non-streaming mode)."""
         if not self._loop or not self.clients:

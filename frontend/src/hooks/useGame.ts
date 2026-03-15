@@ -93,6 +93,8 @@ type State = {
   pendingDirectorGuidance: string | null;
   // Streaming
   streaming: StreamingState;
+  // Non-streaming page generation
+  pageGenerating: number | null;
   // Multiplayer
   multiplayer: boolean;
   playerId: string | null;
@@ -126,6 +128,7 @@ type Action =
   | { type: "STREAM_SYNC"; page: number; narrator: string; characters: Record<string, string> }
   | { type: "STREAM_DONE"; page: number; source: string }
   // Non-streaming progressive updates
+  | { type: "PAGE_GENERATING"; page: number }
   | { type: "NARRATOR_READY"; page: number; narration: string; mood: string; created_at: string }
   // Multiplayer
   | { type: "JOINED"; player_id: string; nickname: string }
@@ -158,6 +161,7 @@ const initial: State = {
     narratorDone: false,
     charactersDone: [],
   },
+  pageGenerating: null,
   // Multiplayer
   multiplayer: false,
   playerId: null,
@@ -188,6 +192,7 @@ function reducer(state: State, action: Action): State {
           pendingInfluence: null,
           pendingDirectorGuidance: null,
           streaming: { ...initial.streaming },
+          pageGenerating: null,
         };
       }
       return {
@@ -196,8 +201,12 @@ function reducer(state: State, action: Action): State {
         pendingInfluence: null,
         pendingDirectorGuidance: null,
         streaming: { ...initial.streaming },
+        pageGenerating: null,
       };
     }
+    case "PAGE_GENERATING":
+      // Non-streaming mode: page generation started
+      return { ...state, pageGenerating: action.page };
     case "NARRATOR_READY": {
       // Add partial page with just narration (non-streaming mode)
       // This allows typewriter to start before characters are done
@@ -214,6 +223,7 @@ function reducer(state: State, action: Action): State {
         pages: [...state.pages.slice(-100), partialPage],
         pendingInfluence: null,
         pendingDirectorGuidance: null,
+        pageGenerating: null, // Clear - page content is now arriving
       };
     }
     case "ATTACHED":
@@ -497,6 +507,10 @@ export function useGame(wsUrl: string) {
         break;
       case "page":
         dispatch({ type: "PAGE", data: msg as unknown as PageData });
+        break;
+      case "page_generating":
+        // Non-streaming mode: page generation started (show intermission)
+        dispatch({ type: "PAGE_GENERATING", page: msg.page as number });
         break;
       case "narrator_ready":
         // Non-streaming mode: narrator finished, show narration before characters are done

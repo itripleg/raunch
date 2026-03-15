@@ -108,6 +108,9 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
     prevPageCountRef.current = pageCount;
   }, [game.streaming?.isStreaming, pageCount]);
 
+  // Also show intermission when backend signals page is generating (CLI-triggered)
+  const isWaitingForPage = waitingForPage || game.pageGenerating !== null;
+
   // Handle character deletion
   const handleDeleteCharacter = useCallback(async (name: string) => {
     if (onDeleteCharacter) {
@@ -469,8 +472,8 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
               onTapCharacter={handleTapCharacter}
               wideMode={wideMode}
               mood={(game.world as Record<string, unknown>)?.mood as string}
-              waitingForPage={waitingForPage}
-              nextPageNum={game.pages.length > 0 ? game.pages[game.pages.length - 1].page + 1 : 1}
+              waitingForPage={isWaitingForPage}
+              nextPageNum={game.pageGenerating ?? (game.pages.length > 0 ? game.pages[game.pages.length - 1].page + 1 : 1)}
             />
           </div>
 

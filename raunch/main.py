@@ -354,6 +354,9 @@ def start(save_name, world_name, scenario_name, headless, force):
             # This prevents frontend from showing empty StreamingPageEntry
             if orch.streaming_enabled:
                 ws_server.broadcast_page_start(page_num, orch._last_page_trigger_reason)
+            else:
+                # Non-streaming: notify frontend that page is generating (for intermission)
+                ws_server.broadcast_page_generating(page_num)
 
         elif event_type == "delta":
             # Only broadcast deltas if actually streaming
