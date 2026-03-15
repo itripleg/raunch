@@ -1,4 +1,4 @@
-"""Orchestrator — manages the world tick loop and agent coordination."""
+"""Orchestrator — manages the world page loop and agent coordination."""
 
 import json
 import logging
@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional, Callable, List
 
 from .agents import Narrator, Character
 from .world import WorldState
-from .config import BASE_TICK_SECONDS
+from .config import BASE_PAGE_SECONDS
 from . import db
 
 logger = logging.getLogger(__name__)
@@ -75,13 +75,13 @@ class Orchestrator:
         self._running = False
         self._paused = False
         self._thread: Optional[threading.Thread] = None
-        self._tick_callbacks: List[Callable] = []  # Called after each tick with results
+        self._page_callbacks: List[Callable] = []  # Called after each page with results
         self._player_input: Optional[str] = None  # Pending player action (legacy)
         self._player_event = threading.Event()
         self._pause_event = threading.Event()  # Signaled when pause state changes
         self._pause_event.set()  # Start unpaused (set = not paused)
-        self._manual_tick_event = threading.Event()  # For manual tick mode
-        self._host_triggered = False  # True when tick triggered by CLI/host (bypasses multiplayer wait)
+        self._manual_page_event = threading.Event()  # For manual page mode
+        self._host_triggered = False  # True when page triggered by CLI/host (bypasses multiplayer wait)
 
         # Influence system - whisper suggestions to characters
         self._influences: Dict[str, str] = {}  # character_name -> influence text
@@ -94,18 +94,18 @@ class Orchestrator:
         self.save_name: Optional[str] = None  # Name to save under (derived from scenario/world)
         self._initial_save_done = False  # Track if we've done the first auto-save
 
-        # Tick interval (can be changed at runtime, 0 = manual mode)
-        self.tick_interval = BASE_TICK_SECONDS
+        # Page interval (can be changed at runtime, 0 = manual mode)
+        self.page_interval = BASE_PAGE_SECONDS
 
         # Streaming support
         self.streaming_enabled = True
         self._stream_callback: Optional[Callable[[int, str, str, str], None]] = None
 
         # Turn-based multiplayer support
-        self.turn_timeout: int = 60  # Seconds before timeout triggers tick (0 = no timeout)
+        self.turn_timeout: int = 60  # Seconds before timeout triggers page (0 = no timeout)
         self._player_ready_states: Dict[str, bool] = {}  # player_id -> ready state
         self._turn_start_time: Optional[float] = None  # When current turn started
-        self._last_tick_trigger_reason: str = 'auto'  # Reason for last tick: 'all_ready', 'timeout', 'host', 'auto'
+        self._last_page_trigger_reason: str = 'auto'  # Reason for last page: 'all_ready', 'timeout', 'host', 'auto'
 
     def add_character(self, character: Character, location: str = "The Nexus Station") -> None:
         """Add a character to the world."""
@@ -135,7 +135,7 @@ class Orchestrator:
         self._player_event.set()
 
     def submit_influence(self, character_name: str, text: str) -> bool:
-        """Whisper an influence/suggestion to a character for their next tick."""
+        """Whisper an influence/suggestion to a character for their next page."""
         if character_name not in self.characters:
             logger.warning(f"Influence rejected: character '{character_name}' not found")
             return False
@@ -148,7 +148,7 @@ class Orchestrator:
         return self._influences.pop(character_name, None)
 
     def submit_director_guidance(self, text: str) -> bool:
-        """Queue guidance for the narrator for the next tick."""
+        """Queue guidance for the narrator for the next page."""
         self._director_guidance = text
         logger.info(f"[DIRECTOR] Queued guidance: {text[:50]}...")
         return True
@@ -175,7 +175,7 @@ class Orchestrator:
             logger.debug(f"Player {player_id} removed from ready tracking")
 
     def reset_ready_states(self) -> None:
-        """Reset all player ready states to False (after tick completes)."""
+        """Reset all player ready states to False (after page completes)."""
         for player_id in self._player_ready_states:
             self._player_ready_states[player_id] = False
         self._turn_start_time = time.time()
@@ -222,7 +222,7 @@ class Orchestrator:
 
         Reasons: 'all_ready', 'timeout', 'no_players', or '' if not ready.
         """
-        # No players tracked - don't auto-tick (spec: "No auto-tick when 0 players connected")
+        # No players tracked - don't auto-page (spec: "No auto-page when 0 players connected")
         if not self._player_ready_states:
             return (False, 'no_players')
 
@@ -236,11 +236,11 @@ class Orchestrator:
 
         return (False, '')
 
-    def _run_tick(self) -> Dict[str, Any]:
-        """Execute one world tick. Returns all results."""
-        self.world.tick_count += 1
-        tick_num = self.world.tick_count
-        results: Dict[str, Any] = {"tick": tick_num, "characters": {}}
+    def _run_page(self) -> Dict[str, Any]:
+        """Execute one world page. Returns all results."""
+        self.world.page_count += 1
+        page_num = self.world.page_count
+        results: Dict[str, Any] = {"page": page_num, "characters": {}}
 
         # 1. Narrator advances the world
         world_snapshot = self.world.snapshot()
@@ -267,13 +267,13 @@ class Orchestrator:
         try:
             if self.streaming_enabled and self._stream_callback:
                 # Streaming mode
-                self._stream_callback(tick_num, "narrator", "start", "")
+                self._stream_callback(page_num, "narrator", "start", "")
                 def on_chunk(chunk):
-                    self._stream_callback(tick_num, "narrator", "delta", chunk)
-                narrator_result = self.narrator.tick_stream(narrator_input, on_delta=on_chunk)
-                self._stream_callback(tick_num, "narrator", "done", "")
+                    self._stream_callback(page_num, "narrator", "delta", chunk)
+                narrator_result = self.narrator.page_stream(narrator_input, on_delta=on_chunk)
+                self._stream_callback(page_num, "narrator", "done", "")
             else:
-                narrator_result = self.narrator.tick(narrator_input)
+                narrator_result = self.narrator.page(narrator_input)
 
             self.world.apply_narrator_update(narrator_result)
             # Extract narration, cleaning up any raw JSON fallback
@@ -286,7 +286,7 @@ class Orchestrator:
             results["narration"] = narration
             results["events"] = narrator_result.get("events", [])
         except Exception as e:
-            logger.error(f"Narrator tick failed: {e}", exc_info=True)
+            logger.error(f"Narrator page failed: {e}", exc_info=True)
             results["narration"] = f"[Narrator error: {e}]"
             results["events"] = []
 
@@ -309,7 +309,7 @@ class Orchestrator:
                     self._player_input = None
                     self._player_event.clear()
                 else:
-                    # Waiting for player — skip this character's tick
+                    # Waiting for player — skip this character's page
                     results["characters"][name] = {
                         "inner_thoughts": "[Awaiting player input...]",
                         "action": None,
@@ -334,23 +334,23 @@ class Orchestrator:
 
             try:
                 if self.streaming_enabled and self._stream_callback:
-                    # Don't send "start" for characters - only narrator gets tick_start
+                    # Don't send "start" for characters - only narrator gets page_start
                     # This preserves the narrator content in the frontend streaming state
-                    char_result = char.tick_stream(
+                    char_result = char.page_stream(
                         char_input,
-                        on_delta=lambda chunk, n=name: self._stream_callback(tick_num, n, "delta", chunk)
+                        on_delta=lambda chunk, n=name: self._stream_callback(page_num, n, "delta", chunk)
                     )
-                    self._stream_callback(tick_num, name, "done", "")
+                    self._stream_callback(page_num, name, "done", "")
                 else:
-                    char_result = char.tick(char_input)
+                    char_result = char.page(char_input)
                 results["characters"][name] = char_result
             except Exception as e:
-                logger.error(f"Character {name} tick failed: {e}")
+                logger.error(f"Character {name} page failed: {e}")
                 results["characters"][name] = {"inner_thoughts": f"[Error: {e}]", "action": None}
 
-        # 3. Persist tick to database (skip if error tick)
+        # 3. Persist page to database (skip if error page)
         narration = results.get("narration", "")
-        is_error_tick = (
+        is_error_page = (
             narration.startswith("[Narrator error") or
             narration.startswith("[Error") or
             "401" in narration or
@@ -359,22 +359,22 @@ class Orchestrator:
             "authentication" in narration.lower()
         )
 
-        if is_error_tick:
-            logger.warning(f"Skipping DB save for error tick {tick_num}: {narration[:100]}")
+        if is_error_page:
+            logger.warning(f"Skipping DB save for error page {page_num}: {narration[:100]}")
             results["_is_error"] = True
         else:
             try:
-                db.save_tick(
-                    self.world.world_id, tick_num, narration,
+                db.save_page(
+                    self.world.world_id, page_num, narration,
                     results.get("events", []), self.world.world_time, self.world.mood,
                 )
                 for cname, cdata in results.get("characters", {}).items():
                     if isinstance(cdata, dict) and not cdata.get("waiting_for_player"):
-                        db.save_character_tick(self.world.world_id, tick_num, cname, cdata)
+                        db.save_character_page(self.world.world_id, page_num, cname, cdata)
             except Exception as e:
                 logger.error(f"DB save failed: {e}")
 
-        # 4. Autosave world state every tick (JSON is small, prevents data loss)
+        # 4. Autosave world state every page (JSON is small, prevents data loss)
         save_name = self.save_name or self._derive_save_name()
         self.world.save(save_name)
         if not self._initial_save_done:
@@ -407,7 +407,7 @@ class Orchestrator:
         return self._running
 
     def _loop(self) -> None:
-        """Main tick loop (runs in a thread)."""
+        """Main page loop (runs in a thread)."""
         consecutive_errors = 0
         while self._running:
             # Wait while paused
@@ -417,18 +417,18 @@ class Orchestrator:
             if not self._running:
                 break
 
-            # Manual mode: wait for trigger_tick() to be called
-            if self.tick_interval == 0:
-                self._manual_tick_event.clear()
-                self._manual_tick_event.wait()
+            # Manual mode: wait for trigger_page() to be called
+            if self.page_interval == 0:
+                self._manual_page_event.clear()
+                self._manual_page_event.wait()
                 if not self._running:
                     break
 
-            # If player mode, wait for player input before ticking
+            # If player mode, wait for player input before paging
             if self.player_character and self.player_character in self.characters:
                 if not self._player_input:
                     # Signal that we're waiting, then block
-                    for cb in self._tick_callbacks:
+                    for cb in self._page_callbacks:
                         try:
                             cb({"waiting_for_player": True, "character": self.player_character})
                         except Exception:
@@ -438,12 +438,12 @@ class Orchestrator:
                         break
 
             # Turn-based multiplayer: wait for all players ready OR timeout
-            # Skip this wait if tick was host-triggered (CLI override)
-            tick_trigger_reason = 'auto'  # Default for non-multiplayer mode
+            # Skip this wait if page was host-triggered (CLI override)
+            page_trigger_reason = 'auto'  # Default for non-multiplayer mode
             if self._host_triggered:
-                tick_trigger_reason = 'host'
-                self._host_triggered = False  # Reset for next tick
-                logger.info("Tick triggered by host, skipping multiplayer wait")
+                page_trigger_reason = 'host'
+                self._host_triggered = False  # Reset for next page
+                logger.info("Page triggered by host, skipping multiplayer wait")
             elif self._player_ready_states:
                 # Initialize turn start time if not set
                 if self._turn_start_time is None:
@@ -453,11 +453,11 @@ class Orchestrator:
                 while self._running and not self._paused:
                     ready, reason = self._check_turn_ready()
                     if ready:
-                        tick_trigger_reason = reason
+                        page_trigger_reason = reason
                         logger.info(f"Turn ready: {reason}")
                         break
                     if reason == 'no_players':
-                        # No players connected - don't tick, wait for players
+                        # No players connected - don't page, wait for players
                         time.sleep(0.5)
                         continue
                     # Not ready yet, sleep briefly and check again
@@ -466,29 +466,29 @@ class Orchestrator:
                 if not self._running:
                     break
 
-            # Check pause again before running tick
+            # Check pause again before running page
             if self._paused:
                 continue
 
             # Store trigger reason for streaming callback access
-            self._last_tick_trigger_reason = tick_trigger_reason
+            self._last_page_trigger_reason = page_trigger_reason
 
-            results = self._run_tick()
-            results['triggered_by'] = tick_trigger_reason
+            results = self._run_page()
+            results['triggered_by'] = page_trigger_reason
 
-            # Reset ready states after tick completes (for multiplayer)
+            # Reset ready states after page completes (for multiplayer)
             if self._player_ready_states:
                 self.reset_ready_states()
 
-            # Check if tick had errors
+            # Check if page had errors
             if results.get("_is_error"):
                 consecutive_errors += 1
                 backoff = min(30 * consecutive_errors, 120)
-                logger.warning(f"Tick errors ({consecutive_errors}), backing off {backoff}s")
+                logger.warning(f"Page errors ({consecutive_errors}), backing off {backoff}s")
                 # Send error to callbacks so frontend can show it as toast
-                for cb in self._tick_callbacks:
+                for cb in self._page_callbacks:
                     try:
-                        cb({"error": results.get("narration", "Unknown error"), "tick": results.get("tick")})
+                        cb({"error": results.get("narration", "Unknown error"), "page": results.get("page")})
                     except Exception as e:
                         logger.error(f"Error callback failed: {e}")
                 self._interruptible_sleep(backoff)
@@ -496,19 +496,19 @@ class Orchestrator:
             else:
                 consecutive_errors = 0
 
-            for cb in self._tick_callbacks:
+            for cb in self._page_callbacks:
                 try:
                     cb(results)
                 except Exception as e:
-                    logger.error(f"Tick callback error: {e}")
+                    logger.error(f"Page callback error: {e}")
 
-            # Interruptible sleep between ticks
-            if not self._interruptible_sleep(self.tick_interval):
+            # Interruptible sleep between pages
+            if not self._interruptible_sleep(self.page_interval):
                 break
 
-    def add_tick_callback(self, callback: Callable) -> None:
-        """Register a callback that fires after each tick."""
-        self._tick_callbacks.append(callback)
+    def add_page_callback(self, callback: Callable) -> None:
+        """Register a callback that fires after each page."""
+        self._page_callbacks.append(callback)
 
     def start(self) -> None:
         """Start the world simulation in a background thread."""
@@ -524,7 +524,7 @@ class Orchestrator:
         """Stop the simulation."""
         self._running = False
         self._player_event.set()  # Unblock if waiting for player
-        self._manual_tick_event.set()  # Unblock if waiting for manual tick
+        self._manual_page_event.set()  # Unblock if waiting for manual page
         if self._thread:
             self._thread.join(timeout=5)
         save_name = self.save_name or self._derive_save_name()
@@ -539,37 +539,37 @@ class Orchestrator:
         self._paused = False
         logger.info("World resumed")
 
-    def set_tick_interval(self, seconds: int) -> None:
-        """Set the tick interval in seconds. 0 = manual mode, otherwise min 10, max 86400."""
+    def set_page_interval(self, seconds: int) -> None:
+        """Set the page interval in seconds. 0 = manual mode, otherwise min 10, max 86400."""
         if seconds == 0:
-            self.tick_interval = 0
-            logger.info("Tick interval set to manual mode")
+            self.page_interval = 0
+            logger.info("Page interval set to manual mode")
         else:
-            self.tick_interval = max(10, min(86400, seconds))
-            logger.info(f"Tick interval set to {self.tick_interval}s")
+            self.page_interval = max(10, min(86400, seconds))
+            logger.info(f"Page interval set to {self.page_interval}s")
 
-    def trigger_tick(self, host_override: bool = True) -> bool:
-        """Manually trigger the next tick (only works in manual mode).
+    def trigger_page(self, host_override: bool = True) -> bool:
+        """Manually trigger the next page (only works in manual mode).
 
         Args:
             host_override: If True, bypasses multiplayer ready-check (CLI/host triggered).
         """
-        if self.tick_interval != 0:
-            logger.warning("trigger_tick() called but not in manual mode")
+        if self.page_interval != 0:
+            logger.warning("trigger_page() called but not in manual mode")
             return False
         if self._paused:
-            logger.warning("trigger_tick() called but simulation is paused")
+            logger.warning("trigger_page() called but simulation is paused")
             return False
         self._host_triggered = host_override
-        self._manual_tick_event.set()
+        self._manual_page_event.set()
         return True
 
     @property
     def is_manual_mode(self) -> bool:
-        return self.tick_interval == 0
+        return self.page_interval == 0
 
     def set_stream_callback(self, callback: Optional[Callable[[int, str, str, str], None]]) -> None:
-        """Set callback for streaming: callback(tick_num, source, event_type, data)."""
+        """Set callback for streaming: callback(page_num, source, event_type, data)."""
         self._stream_callback = callback
 
     @property

@@ -42,7 +42,7 @@ class ClientConnection:
 
 
 class GameServer:
-    """TCP server that broadcasts tick results to attached clients."""
+    """TCP server that broadcasts page results to attached clients."""
 
     def __init__(self, orchestrator):
         self.orch = orchestrator
@@ -161,8 +161,8 @@ class GameServer:
             # Full narration history from DB
             limit = msg.get("count", 20)
             offset = msg.get("offset", 0)
-            ticks = db.get_tick_history(self.orch.world.world_id, limit=limit, offset=offset)
-            client.send({"type": "history", "ticks": ticks})
+            pages = db.get_page_history(self.orch.world.world_id, limit=limit, offset=offset)
+            client.send({"type": "history", "pages": pages})
 
         elif cmd == "character_history":
             # Character thought history from DB
@@ -174,19 +174,19 @@ class GameServer:
                 limit = msg.get("count", 20)
                 offset = msg.get("offset", 0)
                 history = db.get_character_history(self.orch.world.world_id, matches[0], limit=limit, offset=offset)
-                client.send({"type": "character_history", "character": matches[0], "ticks": history})
+                client.send({"type": "character_history", "character": matches[0], "pages": history})
 
         elif cmd == "replay":
-            # Full replay of a specific tick
-            tick_num = msg.get("tick")
-            if tick_num is None:
-                client.send({"type": "error", "message": "Specify a tick number"})
+            # Full replay of a specific page
+            page_num = msg.get("page")
+            if page_num is None:
+                client.send({"type": "error", "message": "Specify a page number"})
             else:
-                tick_data = db.get_full_tick(self.orch.world.world_id, tick_num)
-                if tick_data:
-                    client.send({"type": "replay", **tick_data})
+                page_data = db.get_full_page(self.orch.world.world_id, page_num)
+                if page_data:
+                    client.send({"type": "replay", **page_data})
                 else:
-                    client.send({"type": "error", "message": f"No data for tick {tick_num}"})
+                    client.send({"type": "error", "message": f"No data for page {page_num}"})
 
         elif cmd == "action":
             if self.orch.player_character:
@@ -198,15 +198,15 @@ class GameServer:
         else:
             client.send({"type": "error", "message": f"Unknown command: {cmd}"})
 
-    def broadcast_tick(self, results: Dict[str, Any]):
-        """Send tick results to all connected clients, filtered by attachment."""
+    def broadcast_page(self, results: Dict[str, Any]):
+        """Send page results to all connected clients, filtered by attachment."""
         with self._lock:
             dead = []
             for client in self.clients:
                 # Build client-specific view
                 view = {
-                    "type": "tick",
-                    "tick": results.get("tick"),
+                    "type": "page",
+                    "page": results.get("page"),
                     "narration": results.get("narration", ""),
                     "events": results.get("events", []),
                     "characters": {},

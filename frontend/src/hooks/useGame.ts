@@ -7,7 +7,7 @@ export type CharacterInfo = {
   location?: string;
 };
 
-export type CharacterTick = {
+export type CharacterPage = {
   action?: string;
   dialogue?: string;
   emotional_state?: string;
@@ -15,11 +15,11 @@ export type CharacterTick = {
   desires_update?: string;
 };
 
-export type TickData = {
-  tick: number;
+export type PageData = {
+  page: number;
   narration: string;
   events: string[];
-  characters: Record<string, CharacterTick>;
+  characters: Record<string, CharacterPage>;
   attached_to: string | null;
   created_at?: string;
 };
@@ -28,23 +28,23 @@ export type WorldInfo = {
   world_id?: string;
   world_name?: string;
   created_at?: string;
-  tick_count?: number;
+  page_count?: number;
   world_time?: string;
   mood?: string;
 };
 
-type HistoryTick = {
-  tick: number;
+type HistoryPage = {
+  page: number;
   narration: string;
   events: string[];
   world_time?: string;
   mood?: string;
-  characters?: Record<string, CharacterTick>;
+  characters?: Record<string, CharacterPage>;
   created_at?: string;
 };
 
-type CharHistoryTick = {
-  tick: number;
+type CharHistoryPage = {
+  page: number;
   inner_thoughts?: string;
   action?: string;
   dialogue?: string;
@@ -52,7 +52,7 @@ type CharHistoryTick = {
 };
 
 export type StreamingState = {
-  tick: number | null;
+  page: number | null;
   narrator: string;
   characters: Record<string, string>;
   isStreaming: boolean;
@@ -78,14 +78,14 @@ type State = {
   characterNames: string[];
   characterDetails: Record<string, CharacterInfo>;
   attachedTo: string | null;
-  ticks: TickData[];
-  history: HistoryTick[];
-  characterHistory: { name: string; ticks: CharHistoryTick[] } | null;
-  replayTick: Record<string, unknown> | null;
+  pages: PageData[];
+  history: HistoryPage[];
+  characterHistory: { name: string; pages: CharHistoryPage[] } | null;
+  replayPage: Record<string, unknown> | null;
   status: Record<string, unknown> | null;
   error: string | null;
   paused: boolean;
-  tickInterval: number;
+  pageInterval: number;
   manualMode: boolean;
   pendingInfluence: { character: string; text: string } | null;
   // Director mode
@@ -103,17 +103,17 @@ type State = {
 
 type Action =
   | { type: "WELCOME"; world: WorldInfo; characters: string[]; multiplayer: boolean }
-  | { type: "TICK"; data: TickData }
+  | { type: "PAGE"; data: PageData }
   | { type: "ATTACHED"; character: string }
   | { type: "DETACHED" }
   | { type: "CHARACTERS"; characters: Record<string, CharacterInfo> }
   | { type: "WORLD"; snapshot: Record<string, unknown> }
   | { type: "STATUS"; data: Record<string, unknown> }
-  | { type: "HISTORY"; ticks: HistoryTick[] }
-  | { type: "CHARACTER_HISTORY"; character: string; ticks: CharHistoryTick[] }
+  | { type: "HISTORY"; pages: HistoryPage[] }
+  | { type: "CHARACTER_HISTORY"; character: string; pages: CharHistoryPage[] }
   | { type: "REPLAY"; data: Record<string, unknown> }
   | { type: "PAUSE_STATE"; paused: boolean }
-  | { type: "TICK_INTERVAL"; seconds: number; manual: boolean }
+  | { type: "PAGE_INTERVAL"; seconds: number; manual: boolean }
   | { type: "ERROR"; message: string }
   | { type: "CLEAR_ERROR" }
   | { type: "INFLUENCE_QUEUED"; character: string; text: string }
@@ -122,9 +122,9 @@ type Action =
   | { type: "TOGGLE_DIRECTOR_MODE" }
   | { type: "DIRECTOR_QUEUED"; text: string }
   // Streaming
-  | { type: "TICK_START"; tick: number }
-  | { type: "STREAM_SYNC"; tick: number; narrator: string; characters: Record<string, string> }
-  | { type: "STREAM_DONE"; tick: number; source: string }
+  | { type: "PAGE_START"; page: number }
+  | { type: "STREAM_SYNC"; page: number; narrator: string; characters: Record<string, string> }
+  | { type: "STREAM_DONE"; page: number; source: string }
   // Multiplayer
   | { type: "JOINED"; player_id: string; nickname: string }
   | { type: "PLAYERS"; players: Player[] }
@@ -136,20 +136,20 @@ const initial: State = {
   characterNames: [],
   characterDetails: {},
   attachedTo: null,
-  ticks: [],
+  pages: [],
   history: [],
   characterHistory: null,
-  replayTick: null,
+  replayPage: null,
   status: null,
   error: null,
   paused: false,
-  tickInterval: 0,
+  pageInterval: 0,
   manualMode: true,
   pendingInfluence: null,
   directorMode: false,
   pendingDirectorGuidance: null,
   streaming: {
-    tick: null,
+    page: null,
     narrator: "",
     characters: {},
     isStreaming: false,
@@ -168,11 +168,11 @@ function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "WELCOME":
       return { ...initial, world: action.world, characterNames: action.characters, multiplayer: action.multiplayer };
-    case "TICK": {
-      // Clear pending influence/director and streaming when tick arrives
-      // Deduplicate - don't add if tick number already exists
-      const tickExists = state.ticks.some(t => t.tick === action.data.tick);
-      if (tickExists) {
+    case "PAGE": {
+      // Clear pending influence/director and streaming when page arrives
+      // Deduplicate - don't add if page number already exists
+      const pageExists = state.pages.some(p => p.page === action.data.page);
+      if (pageExists) {
         return {
           ...state,
           pendingInfluence: null,
@@ -182,7 +182,7 @@ function reducer(state: State, action: Action): State {
       }
       return {
         ...state,
-        ticks: [...state.ticks.slice(-100), action.data],
+        pages: [...state.pages.slice(-100), action.data],
         pendingInfluence: null,
         pendingDirectorGuidance: null,
         streaming: { ...initial.streaming },
@@ -207,20 +207,20 @@ function reducer(state: State, action: Action): State {
         paused: (action.data as { paused?: boolean }).paused ?? state.paused,
       };
     case "HISTORY": {
-      // Convert history ticks to TickData, merging with existing live ticks
-      // History has full character data from DB; live ticks may have partial data
+      // Convert history pages to PageData, merging with existing live pages
+      // History has full character data from DB; live pages may have partial data
       // (only attached character's inner_thoughts). We need to merge, not replace.
-      const existingTickMap = new Map(state.ticks.map(t => [t.tick, t]));
+      const existingPageMap = new Map(state.pages.map(p => [p.page, p]));
 
-      const historyAsTicks: TickData[] = action.ticks.map(h => {
-        const existing = existingTickMap.get(h.tick);
-        const historyCharacters = (h.characters || {}) as Record<string, CharacterTick>;
+      const historyAsPages: PageData[] = action.pages.map(h => {
+        const existing = existingPageMap.get(h.page);
+        const historyCharacters = (h.characters || {}) as Record<string, CharacterPage>;
 
         if (existing) {
           // Merge: history has full data, existing may have partial
           // For each character, prefer history data (has inner_thoughts from DB)
           // but keep any live data that might be more recent
-          const mergedCharacters: Record<string, CharacterTick> = { ...historyCharacters };
+          const mergedCharacters: Record<string, CharacterPage> = { ...historyCharacters };
           for (const [name, liveData] of Object.entries(existing.characters)) {
             if (!mergedCharacters[name]) {
               mergedCharacters[name] = liveData;
@@ -244,7 +244,7 @@ function reducer(state: State, action: Action): State {
         }
 
         return {
-          tick: h.tick,
+          page: h.page,
           narration: h.narration || "",
           events: h.events || [],
           characters: historyCharacters,
@@ -253,22 +253,22 @@ function reducer(state: State, action: Action): State {
         };
       });
 
-      // Merge with any ticks that weren't in history (shouldn't happen normally)
-      const historyTickNums = new Set(action.ticks.map(h => h.tick));
-      const nonHistoryTicks = state.ticks.filter(t => !historyTickNums.has(t.tick));
-      const merged = [...historyAsTicks, ...nonHistoryTicks];
-      merged.sort((a, b) => a.tick - b.tick);
+      // Merge with any pages that weren't in history (shouldn't happen normally)
+      const historyPageNums = new Set(action.pages.map(h => h.page));
+      const nonHistoryPages = state.pages.filter(p => !historyPageNums.has(p.page));
+      const merged = [...historyAsPages, ...nonHistoryPages];
+      merged.sort((a, b) => a.page - b.page);
 
-      return { ...state, ticks: merged, history: action.ticks };
+      return { ...state, pages: merged, history: action.pages };
     }
     case "CHARACTER_HISTORY":
-      return { ...state, characterHistory: { name: action.character, ticks: action.ticks } };
+      return { ...state, characterHistory: { name: action.character, pages: action.pages } };
     case "REPLAY":
-      return { ...state, replayTick: action.data };
+      return { ...state, replayPage: action.data };
     case "PAUSE_STATE":
       return { ...state, paused: action.paused };
-    case "TICK_INTERVAL":
-      return { ...state, tickInterval: action.seconds, manualMode: action.manual };
+    case "PAGE_INTERVAL":
+      return { ...state, pageInterval: action.seconds, manualMode: action.manual };
     case "ERROR":
       return { ...state, error: action.message };
     case "CLEAR_ERROR":
@@ -279,11 +279,11 @@ function reducer(state: State, action: Action): State {
       return { ...state, directorMode: !state.directorMode };
     case "DIRECTOR_QUEUED":
       return { ...state, pendingDirectorGuidance: action.text };
-    case "TICK_START":
+    case "PAGE_START":
       return {
         ...state,
         streaming: {
-          tick: action.tick,
+          page: action.page,
           narrator: "",
           characters: {},
           isStreaming: true,
@@ -293,7 +293,7 @@ function reducer(state: State, action: Action): State {
       };
     case "STREAM_SYNC":
       // Throttled sync from ref - replace entire streaming content (preserve done states)
-      if (state.streaming.tick !== action.tick) return state;
+      if (state.streaming.page !== action.page) return state;
       return {
         ...state,
         streaming: {
@@ -305,7 +305,7 @@ function reducer(state: State, action: Action): State {
       };
     case "STREAM_DONE":
       // Track which sources are done (narrator or character names)
-      if (state.streaming.tick !== action.tick) return state;
+      if (state.streaming.page !== action.page) return state;
       if (action.source === "narrator") {
         return {
           ...state,
@@ -333,7 +333,7 @@ function reducer(state: State, action: Action): State {
           world_name: action.name,
         },
         characterNames: action.characters,
-        ticks: [],
+        pages: [],
         history: [],
       };
     case "TURN_STATE":
@@ -358,12 +358,12 @@ export function useGame(wsUrl: string) {
 
   // Use ref for streaming accumulation - updates are throttled to avoid React batching all at once
   const streamingRef = useRef<{
-    tick: number | null;
+    page: number | null;
     narrator: string;
     characters: Record<string, string>;
     dirty: boolean;
   }>({
-    tick: null,
+    page: null,
     narrator: "",
     characters: {},
     dirty: false,
@@ -374,11 +374,11 @@ export function useGame(wsUrl: string) {
     const interval = setInterval(() => {
       try {
         const ref = streamingRef.current;
-        if (ref && ref.dirty && ref.tick !== null) {
+        if (ref && ref.dirty && ref.page !== null) {
           ref.dirty = false;
           dispatch({
             type: "STREAM_SYNC",
-            tick: ref.tick,
+            page: ref.page,
             narrator: ref.narrator || "",
             characters: ref.characters ? { ...ref.characters } : {},
           });
@@ -394,19 +394,19 @@ export function useGame(wsUrl: string) {
   useEffect(() => {
     setOnMessage((msg: ServerMessage) => {
       // Handle streaming messages - accumulate in ref, mark dirty for throttled sync
-      if (msg.type === "tick_start") {
+      if (msg.type === "page_start") {
         streamingRef.current = {
-          tick: msg.tick as number,
+          page: msg.page as number,
           narrator: "",
           characters: {},
           dirty: false,
         };
-        dispatch({ type: "TICK_START", tick: msg.tick as number });
+        dispatch({ type: "PAGE_START", page: msg.page as number });
       } else if (msg.type === "stream_delta") {
-        const tick = msg.tick as number;
+        const page = msg.page as number;
         const source = msg.source as string;
         const delta = msg.delta as string;
-        if (streamingRef.current.tick === tick) {
+        if (streamingRef.current.page === page) {
           if (source === "narrator") {
             streamingRef.current.narrator += delta;
           } else {
@@ -417,17 +417,17 @@ export function useGame(wsUrl: string) {
         }
       } else if (msg.type === "stream_done") {
         // Final sync before marking done
-        if (streamingRef.current.tick !== null) {
+        if (streamingRef.current.page !== null) {
           dispatch({
             type: "STREAM_SYNC",
-            tick: streamingRef.current.tick,
+            page: streamingRef.current.page,
             narrator: streamingRef.current.narrator,
             characters: { ...streamingRef.current.characters },
           });
         }
         dispatch({
           type: "STREAM_DONE",
-          tick: msg.tick as number,
+          page: msg.page as number,
           source: msg.source as string,
         });
       }
@@ -442,7 +442,7 @@ export function useGame(wsUrl: string) {
     const msg = lastMessage as ServerMessage;
 
     // Skip streaming messages (handled above)
-    if (msg.type === "tick_start" || msg.type === "stream_delta" || msg.type === "stream_done") {
+    if (msg.type === "page_start" || msg.type === "stream_delta" || msg.type === "stream_done") {
       return;
     }
 
@@ -456,18 +456,18 @@ export function useGame(wsUrl: string) {
         });
         // Process initial history if included
         if (msg.history && Array.isArray(msg.history)) {
-          dispatch({ type: "HISTORY", ticks: msg.history as HistoryTick[] });
+          dispatch({ type: "HISTORY", pages: msg.history as HistoryPage[] });
         }
-        // Process initial tick interval and pause state
-        if (typeof msg.tick_interval === "number") {
-          dispatch({ type: "TICK_INTERVAL", seconds: msg.tick_interval, manual: msg.manual === true });
+        // Process initial page interval and pause state
+        if (typeof msg.page_interval === "number") {
+          dispatch({ type: "PAGE_INTERVAL", seconds: msg.page_interval, manual: msg.manual === true });
         }
         if (typeof msg.paused === "boolean") {
           dispatch({ type: "PAUSE_STATE", paused: msg.paused });
         }
         break;
-      case "tick":
-        dispatch({ type: "TICK", data: msg as unknown as TickData });
+      case "page":
+        dispatch({ type: "PAGE", data: msg as unknown as PageData });
         break;
       case "attached":
         dispatch({ type: "ATTACHED", character: msg.character as string });
@@ -485,13 +485,13 @@ export function useGame(wsUrl: string) {
         dispatch({ type: "STATUS", data: msg });
         break;
       case "history":
-        dispatch({ type: "HISTORY", ticks: msg.ticks as HistoryTick[] });
+        dispatch({ type: "HISTORY", pages: msg.pages as HistoryPage[] });
         break;
       case "character_history":
         dispatch({
           type: "CHARACTER_HISTORY",
           character: msg.character as string,
-          ticks: msg.ticks as CharHistoryTick[],
+          pages: msg.pages as CharHistoryPage[],
         });
         break;
       case "replay":
@@ -500,8 +500,8 @@ export function useGame(wsUrl: string) {
       case "pause_state":
         dispatch({ type: "PAUSE_STATE", paused: msg.paused as boolean });
         break;
-      case "tick_interval":
-        dispatch({ type: "TICK_INTERVAL", seconds: msg.seconds as number, manual: msg.manual === true });
+      case "page_interval":
+        dispatch({ type: "PAGE_INTERVAL", seconds: msg.seconds as number, manual: msg.manual === true });
         break;
       case "error":
         dispatch({ type: "ERROR", message: msg.message as string });
@@ -550,7 +550,7 @@ export function useGame(wsUrl: string) {
         console.log("[useGame] Received debug data, dispatching event", msg.stats);
         window.dispatchEvent(new CustomEvent("raunch-debug-data", { detail: msg }));
         break;
-      // tick_start, stream_delta, stream_done handled synchronously above
+      // page_start, stream_delta, stream_done handled synchronously above
     }
   }, [lastMessage]);
 
@@ -572,7 +572,7 @@ export function useGame(wsUrl: string) {
       getHistory: (count = 20, offset = 0) => send({ cmd: "history", count, offset }),
       getCharacterHistory: (name: string, count = 20) =>
         send({ cmd: "character_history", character: name, count }),
-      replay: (tick: number) => send({ cmd: "replay", tick }),
+      replay: (page: number) => send({ cmd: "replay", page }),
       submitAction: (text: string, autoReady = false) => {
         send({ cmd: "action", text });
         if (autoReady) {
@@ -582,9 +582,9 @@ export function useGame(wsUrl: string) {
       togglePause: () => send({ cmd: "toggle_pause" }),
       pause: () => send({ cmd: "pause" }),
       resume: () => send({ cmd: "resume" }),
-      setTickInterval: (seconds: number) => send({ cmd: "set_tick_interval", seconds }),
-      getTickInterval: () => send({ cmd: "get_tick_interval" }),
-      triggerTick: () => send({ cmd: "tick" }),
+      setPageInterval: (seconds: number) => send({ cmd: "set_page_interval", seconds }),
+      getPageInterval: () => send({ cmd: "get_page_interval" }),
+      triggerPage: () => send({ cmd: "page" }),
       clearError: () => dispatch({ type: "CLEAR_ERROR" }),
       // Director mode
       toggleDirectorMode: () => dispatch({ type: "TOGGLE_DIRECTOR_MODE" }),

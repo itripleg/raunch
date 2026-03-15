@@ -70,10 +70,10 @@ def init_db() -> None:
     """Create tables if they don't exist."""
     conn = _get_conn()
     conn.executescript("""
-        CREATE TABLE IF NOT EXISTS ticks (
+        CREATE TABLE IF NOT EXISTS pages (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             world_id    TEXT NOT NULL,
-            tick        INTEGER NOT NULL,
+            page_num    INTEGER NOT NULL,
             narration   TEXT,
             events      TEXT,
             world_time  TEXT,
@@ -81,10 +81,10 @@ def init_db() -> None:
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
-        CREATE TABLE IF NOT EXISTS character_ticks (
+        CREATE TABLE IF NOT EXISTS character_pages (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             world_id        TEXT NOT NULL,
-            tick            INTEGER NOT NULL,
+            page_num        INTEGER NOT NULL,
             character_name  TEXT NOT NULL,
             inner_thoughts  TEXT,
             action          TEXT,
@@ -95,38 +95,38 @@ def init_db() -> None:
             created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
-        CREATE INDEX IF NOT EXISTS idx_ticks_world ON ticks(world_id, tick);
-        CREATE INDEX IF NOT EXISTS idx_char_ticks_world ON character_ticks(world_id, tick);
-        CREATE INDEX IF NOT EXISTS idx_char_ticks_name ON character_ticks(world_id, character_name, tick);
+        CREATE INDEX IF NOT EXISTS idx_pages_world ON pages(world_id, page_num);
+        CREATE INDEX IF NOT EXISTS idx_char_pages_world ON character_pages(world_id, page_num);
+        CREATE INDEX IF NOT EXISTS idx_char_pages_name ON character_pages(world_id, character_name, page_num);
     """)
     conn.commit()
 
 
-def save_tick(world_id: str, tick: int, narration: str, events: List[str],
+def save_page(world_id: str, page_num: int, narration: str, events: List[str],
               world_time: str, mood: str) -> None:
-    """Record a narrator tick."""
+    """Record a narrator page."""
     conn = _get_conn()
     conn.execute(
-        "INSERT INTO ticks (world_id, tick, narration, events, world_time, mood) VALUES (?, ?, ?, ?, ?, ?)",
-        (world_id, tick, narration, json.dumps(events), world_time, mood),
+        "INSERT INTO pages (world_id, page_num, narration, events, world_time, mood) VALUES (?, ?, ?, ?, ?, ?)",
+        (world_id, page_num, narration, json.dumps(events), world_time, mood),
     )
     conn.commit()
 
 
-def save_character_tick(world_id: str, tick: int, character_name: str,
+def save_character_page(world_id: str, page_num: int, character_name: str,
                         data: Dict[str, Any]) -> None:
-    """Record a character's tick output."""
+    """Record a character's page output."""
     # Extract fields from raw JSON if needed
     extracted = _extract_character_fields(data)
 
     conn = _get_conn()
     conn.execute(
-        """INSERT INTO character_ticks
-           (world_id, tick, character_name, inner_thoughts, action, dialogue,
+        """INSERT INTO character_pages
+           (world_id, page_num, character_name, inner_thoughts, action, dialogue,
             emotional_state, desires_update, raw_json)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            world_id, tick, character_name,
+            world_id, page_num, character_name,
             extracted.get("inner_thoughts"),
             extracted.get("action"),
             extracted.get("dialogue"),
@@ -138,23 +138,23 @@ def save_character_tick(world_id: str, tick: int, character_name: str,
     conn.commit()
 
 
-def get_tick_history(world_id: str, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+def get_page_history(world_id: str, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
     """Get narration history for a world, including character data."""
     conn = _get_conn()
     rows = conn.execute(
-        "SELECT tick, narration, events, world_time, mood, created_at FROM ticks "
-        "WHERE world_id = ? ORDER BY tick DESC LIMIT ? OFFSET ?",
+        "SELECT page_num, narration, events, world_time, mood, created_at FROM pages "
+        "WHERE world_id = ? ORDER BY page_num DESC LIMIT ? OFFSET ?",
         (world_id, limit, offset),
     ).fetchall()
 
     results = []
     for r in reversed(rows):  # Return in chronological order
-        tick_num = r["tick"]
-        # Fetch character data for this tick
+        page_number = r["page_num"]
+        # Fetch character data for this page
         char_rows = conn.execute(
             "SELECT character_name, inner_thoughts, action, dialogue, emotional_state, desires_update "
-            "FROM character_ticks WHERE world_id = ? AND tick = ?",
-            (world_id, tick_num),
+            "FROM character_pages WHERE world_id = ? AND page_num = ?",
+            (world_id, page_number),
         ).fetchall()
 
         characters = {}
@@ -168,7 +168,7 @@ def get_tick_history(world_id: str, limit: int = 50, offset: int = 0) -> List[Di
             }
 
         results.append({
-            "tick": tick_num,
+            "page_num": page_number,
             "narration": r["narration"],
             "events": json.loads(r["events"]) if r["events"] else [],
             "world_time": r["world_time"],
@@ -184,14 +184,14 @@ def get_character_history(world_id: str, character_name: str,
     """Get a character's thought/action history."""
     conn = _get_conn()
     rows = conn.execute(
-        "SELECT tick, inner_thoughts, action, dialogue, emotional_state, desires_update, created_at "
-        "FROM character_ticks WHERE world_id = ? AND character_name = ? "
-        "ORDER BY tick DESC LIMIT ? OFFSET ?",
+        "SELECT page_num, inner_thoughts, action, dialogue, emotional_state, desires_update, created_at "
+        "FROM character_pages WHERE world_id = ? AND character_name = ? "
+        "ORDER BY page_num DESC LIMIT ? OFFSET ?",
         (world_id, character_name, limit, offset),
     ).fetchall()
     return [
         {
-            "tick": r["tick"],
+            "page_num": r["page_num"],
             "inner_thoughts": r["inner_thoughts"],
             "action": r["action"],
             "dialogue": r["dialogue"],
@@ -207,23 +207,23 @@ def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
                    include_raw: bool = True) -> Dict[str, Any]:
     """Get raw database data for debugging.
 
-    Returns tick and character_tick data with full raw_json,
+    Returns page and character_page data with full raw_json,
     identifies refusals, parsing failures, etc.
     """
     conn = _get_conn()
 
-    # Get tick data
-    tick_rows = conn.execute(
-        "SELECT id, tick, narration, events, world_time, mood, created_at "
-        "FROM ticks WHERE world_id = ? ORDER BY tick DESC LIMIT ? OFFSET ?",
+    # Get page data
+    page_rows = conn.execute(
+        "SELECT id, page_num, narration, events, world_time, mood, created_at "
+        "FROM pages WHERE world_id = ? ORDER BY page_num DESC LIMIT ? OFFSET ?",
         (world_id, limit, offset),
     ).fetchall()
 
-    ticks = []
-    for r in tick_rows:
-        ticks.append({
+    pages = []
+    for r in page_rows:
+        pages.append({
             "id": r["id"],
-            "tick": r["tick"],
+            "page_num": r["page_num"],
             "narration": r["narration"],
             "events": json.loads(r["events"]) if r["events"] else [],
             "world_time": r["world_time"],
@@ -231,15 +231,15 @@ def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
             "created_at": r["created_at"],
         })
 
-    # Get character tick data with raw_json
+    # Get character page data with raw_json
     char_rows = conn.execute(
-        "SELECT id, tick, character_name, inner_thoughts, action, dialogue, "
+        "SELECT id, page_num, character_name, inner_thoughts, action, dialogue, "
         "emotional_state, desires_update, raw_json, created_at "
-        "FROM character_ticks WHERE world_id = ? ORDER BY tick DESC, id DESC LIMIT ? OFFSET ?",
-        (world_id, limit * 3, offset),  # More char ticks since multiple per tick
+        "FROM character_pages WHERE world_id = ? ORDER BY page_num DESC, id DESC LIMIT ? OFFSET ?",
+        (world_id, limit * 3, offset),  # More char pages since multiple per page
     ).fetchall()
 
-    character_ticks = []
+    character_pages = []
     for r in char_rows:
         raw_json = r["raw_json"]
         raw_parsed = None
@@ -265,7 +265,7 @@ def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
 
         entry = {
             "id": r["id"],
-            "tick": r["tick"],
+            "page_num": r["page_num"],
             "character_name": r["character_name"],
             "inner_thoughts": r["inner_thoughts"],
             "action": r["action"],
@@ -279,52 +279,52 @@ def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
         }
         if include_raw:
             entry["raw_json"] = raw_parsed
-        character_ticks.append(entry)
+        character_pages.append(entry)
 
     # Get summary stats
     stats = {
-        "total_ticks": conn.execute(
-            "SELECT COUNT(*) FROM ticks WHERE world_id = ?", (world_id,)
+        "total_pages": conn.execute(
+            "SELECT COUNT(*) FROM pages WHERE world_id = ?", (world_id,)
         ).fetchone()[0],
-        "total_character_ticks": conn.execute(
-            "SELECT COUNT(*) FROM character_ticks WHERE world_id = ?", (world_id,)
+        "total_character_pages": conn.execute(
+            "SELECT COUNT(*) FROM character_pages WHERE world_id = ?", (world_id,)
         ).fetchone()[0],
         "refusals": conn.execute(
-            "SELECT COUNT(*) FROM character_ticks WHERE world_id = ? AND inner_thoughts IS NULL AND raw_json IS NOT NULL",
+            "SELECT COUNT(*) FROM character_pages WHERE world_id = ? AND inner_thoughts IS NULL AND raw_json IS NOT NULL",
             (world_id,)
         ).fetchone()[0],
         "successfully_parsed": conn.execute(
-            "SELECT COUNT(*) FROM character_ticks WHERE world_id = ? AND inner_thoughts IS NOT NULL",
+            "SELECT COUNT(*) FROM character_pages WHERE world_id = ? AND inner_thoughts IS NOT NULL",
             (world_id,)
         ).fetchone()[0],
     }
 
     return {
         "world_id": world_id,
-        "ticks": ticks,
-        "character_ticks": character_ticks,
+        "pages": pages,
+        "character_pages": character_pages,
         "stats": stats,
     }
 
 
-def get_full_tick(world_id: str, tick: int) -> Optional[Dict[str, Any]]:
-    """Get everything that happened on a specific tick."""
+def get_full_page(world_id: str, page_num: int) -> Optional[Dict[str, Any]]:
+    """Get everything that happened on a specific page."""
     conn = _get_conn()
     row = conn.execute(
-        "SELECT tick, narration, events, world_time, mood FROM ticks WHERE world_id = ? AND tick = ?",
-        (world_id, tick),
+        "SELECT page_num, narration, events, world_time, mood FROM pages WHERE world_id = ? AND page_num = ?",
+        (world_id, page_num),
     ).fetchone()
     if not row:
         return None
 
     char_rows = conn.execute(
         "SELECT character_name, inner_thoughts, action, dialogue, emotional_state, desires_update "
-        "FROM character_ticks WHERE world_id = ? AND tick = ?",
-        (world_id, tick),
+        "FROM character_pages WHERE world_id = ? AND page_num = ?",
+        (world_id, page_num),
     ).fetchall()
 
     return {
-        "tick": row["tick"],
+        "page_num": row["page_num"],
         "narration": row["narration"],
         "events": json.loads(row["events"]) if row["events"] else [],
         "world_time": row["world_time"],

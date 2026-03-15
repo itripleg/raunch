@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useMemo, useState, Fragment } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { TickData, StreamingState } from "@/hooks/useGame";
+import type { PageData, StreamingState } from "@/hooks/useGame";
 import { Badge } from "@/components/ui/badge";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -377,8 +377,8 @@ function SceneBreak({ variant = 0 }: { variant?: number }) {
   );
 }
 
-/** Grand opening for the first tick - special treatment */
-function OpeningScene({ tick, children }: { tick: TickData; children: React.ReactNode }) {
+/** Grand opening for the first page - special treatment */
+function OpeningScene({ pageItem, children }: { pageItem: PageData; children: React.ReactNode }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -394,11 +394,11 @@ function OpeningScene({ tick, children }: { tick: TickData; children: React.Reac
         className="text-center mb-8 space-y-2"
       >
         <div className="text-xs uppercase tracking-[0.4em] text-primary/50 font-medium">
-          Scene One
+          Page One
         </div>
-        {tick.events.length > 0 && (
+        {pageItem.events.length > 0 && (
           <div className="flex justify-center gap-2 flex-wrap">
-            {tick.events.map((evt, i) => (
+            {pageItem.events.map((evt, i) => (
               <motion.span
                 key={i}
                 initial={{ opacity: 0, scale: 0.8 }}
@@ -436,11 +436,11 @@ function OpeningScene({ tick, children }: { tick: TickData; children: React.Reac
 }
 
 type Props = {
-  ticks: TickData[];
+  pages: PageData[];
   attachedTo: string | null;
   autoScroll?: boolean;
-  focusedTick?: number | null;
-  onTickFocus?: (tickNum: number) => void;
+  focusedPage?: number | null;
+  onPageFocus?: (pageNum: number) => void;
   containerRef?: React.RefObject<HTMLDivElement | null>;
   streaming?: StreamingState;
   onHoverCharacter?: (name: string | null) => void;
@@ -449,67 +449,67 @@ type Props = {
   mood?: string;
 };
 
-export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, onTickFocus, containerRef, streaming, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation" }: Props) {
+export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, onPageFocus, containerRef, streaming, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation" }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
-  const tickRefs = useRef<Map<number, HTMLElement>>(new Map());
+  const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
 
-  // Track which tick was streamed so we don't re-animate it when finalized
-  const streamedTickRef = useRef<number | null>(null);
-  if (streaming?.isStreaming && streaming.tick) {
-    streamedTickRef.current = streaming.tick;
+  // Track which page was streamed so we don't re-animate it when finalized
+  const streamedPageRef = useRef<number | null>(null);
+  if (streaming?.isStreaming && streaming.page) {
+    streamedPageRef.current = streaming.page;
   }
 
-  // Track newest tick synchronously (not in effect) so isNew works on first render
-  const newestTick = useMemo(() => {
-    return ticks.length > 0 ? ticks[ticks.length - 1].tick : null;
-  }, [ticks]);
+  // Track newest page synchronously (not in effect) so isNew works on first render
+  const newestPage = useMemo(() => {
+    return pages.length > 0 ? pages[pages.length - 1].page : null;
+  }, [pages]);
 
   // Get all character names for consistent coloring
   const allCharacterNames = useMemo(() => {
     const names = new Set<string>();
-    ticks.forEach(tick => {
-      Object.keys(tick.characters).forEach(name => names.add(name));
+    pages.forEach(pageItem => {
+      Object.keys(pageItem.characters).forEach(name => names.add(name));
     });
     return Array.from(names);
-  }, [ticks]);
+  }, [pages]);
 
   // Get mood-based styling
   const moodStyle = MOOD_COLORS[mood] || MOOD_COLORS.default;
 
-  // Register tick element refs
-  const setTickRef = useCallback((tickNum: number, el: HTMLElement | null) => {
+  // Register page element refs
+  const setPageRef = useCallback((pageNum: number, el: HTMLElement | null) => {
     if (el) {
-      tickRefs.current.set(tickNum, el);
+      pageRefs.current.set(pageNum, el);
     } else {
-      tickRefs.current.delete(tickNum);
+      pageRefs.current.delete(pageNum);
     }
   }, []);
 
-  // Find which tick is most centered in the viewport
+  // Find which page is most centered in the viewport
   useEffect(() => {
     const container = containerRef?.current;
-    if (!container || !onTickFocus) return;
+    if (!container || !onPageFocus) return;
 
     const handleScroll = () => {
       const containerRect = container.getBoundingClientRect();
       const containerCenter = containerRect.top + containerRect.height / 2;
 
-      let closestTick: number | null = null;
+      let closestPage: number | null = null;
       let closestDistance = Infinity;
 
-      tickRefs.current.forEach((el, tickNum) => {
+      pageRefs.current.forEach((el, pageNum) => {
         const rect = el.getBoundingClientRect();
         const elCenter = rect.top + rect.height / 2;
         const distance = Math.abs(elCenter - containerCenter);
 
         if (distance < closestDistance) {
           closestDistance = distance;
-          closestTick = tickNum;
+          closestPage = pageNum;
         }
       });
 
-      if (closestTick !== null) {
-        onTickFocus(closestTick);
+      if (closestPage !== null) {
+        onPageFocus(closestPage);
       }
     };
 
@@ -518,16 +518,16 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
 
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [containerRef, onTickFocus, ticks.length]);
+  }, [containerRef, onPageFocus, pages.length]);
 
   // Only auto-scroll if enabled
   useEffect(() => {
     if (autoScroll && endRef.current) {
       endRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
     }
-  }, [ticks.length, autoScroll]);
+  }, [pages.length, autoScroll]);
 
-  if (ticks.length === 0) {
+  if (pages.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center space-y-3">
@@ -536,7 +536,7 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
             animate={{ rotate: 360 }}
             transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
           />
-          <p className="text-muted-foreground text-sm">Waiting for the world to tick...</p>
+          <p className="text-muted-foreground text-sm">Waiting for the next page...</p>
         </div>
       </div>
     );
@@ -545,8 +545,8 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
   // Determine if we should show scene breaks (when there's a significant gap or mood change)
   const shouldShowSceneBreak = (index: number) => {
     if (index === 0) return false;
-    const current = ticks[index];
-    // Show break every 4 ticks or when events indicate a scene change
+    const current = pages[index];
+    // Show break every 4 pages or when events indicate a scene change
     const eventIndicatesBreak = current.events.some(e =>
       e.toLowerCase().includes("scene") ||
       e.toLowerCase().includes("later") ||
@@ -558,21 +558,21 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
   return (
     <div className={`mx-auto px-4 sm:px-6 py-4 space-y-6 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
       <AnimatePresence mode="popLayout">
-        {ticks.map((tick, index) => {
+        {pages.map((pageItem, index) => {
           const isFirst = index === 0;
-          const isNewest = tick.tick === newestTick;
+          const isNewest = pageItem.page === newestPage;
           const showBreak = shouldShowSceneBreak(index);
 
           const entry = (
-            <TickEntry
-              key={tick.tick}
-              tick={tick}
+            <PageEntry
+              key={pageItem.page}
+              pageItem={pageItem}
               attachedTo={attachedTo}
-              isFocused={focusedTick === tick.tick}
+              isFocused={focusedPage === pageItem.page}
               isNew={isNewest}
               isFirst={isFirst}
-              wasStreamed={tick.tick === streamedTickRef.current}
-              setRef={(el) => setTickRef(tick.tick, el)}
+              wasStreamed={pageItem.page === streamedPageRef.current}
+              setRef={(el) => setPageRef(pageItem.page, el)}
               onHoverCharacter={onHoverCharacter}
               onTapCharacter={onTapCharacter}
               characterNames={allCharacterNames}
@@ -580,17 +580,17 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
             />
           );
 
-          // Wrap first tick in OpeningScene for grand entrance
+          // Wrap first page in OpeningScene for grand entrance
           if (isFirst) {
             return (
-              <OpeningScene key={`opening-${tick.tick}`} tick={tick}>
+              <OpeningScene key={`opening-${pageItem.page}`} pageItem={pageItem}>
                 {entry}
               </OpeningScene>
             );
           }
 
           return (
-            <Fragment key={tick.tick}>
+            <Fragment key={pageItem.page}>
               {showBreak && <SceneBreak variant={index} />}
               {entry}
             </Fragment>
@@ -598,9 +598,9 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
         })}
       </AnimatePresence>
 
-      {/* Currently streaming tick */}
+      {/* Currently streaming page */}
       {streaming?.isStreaming && (
-        <StreamingTickEntry streaming={streaming} characterNames={allCharacterNames} />
+        <StreamingPageEntry streaming={streaming} characterNames={allCharacterNames} />
       )}
 
       <div ref={endRef} />
@@ -608,8 +608,8 @@ export function TickFeed({ ticks, attachedTo, autoScroll = false, focusedTick, o
   );
 }
 
-type TickEntryProps = {
-  tick: TickData;
+type PageEntryProps = {
+  pageItem: PageData;
   attachedTo: string | null;
   isFocused: boolean;
   isNew: boolean;
@@ -622,13 +622,13 @@ type TickEntryProps = {
   moodStyle: { border: string; glow: string };
 };
 
-function TickEntry({ tick, attachedTo: _attachedTo, isFocused, isNew, isFirst, wasStreamed, setRef, onHoverCharacter, onTapCharacter, characterNames, moodStyle }: TickEntryProps) {
+function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirst, wasStreamed, setRef, onHoverCharacter, onTapCharacter, characterNames, moodStyle }: PageEntryProps) {
   const localRef = useRef<HTMLElement>(null);
   const [firstRevealDone, setFirstRevealDone] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
 
-  // Use typewriter effect only for newest non-streamed ticks (dramatic reveal)
+  // Use typewriter effect only for newest non-streamed pages (dramatic reveal)
   const useTypewriter = isNew && !wasStreamed && !isFirst;
 
   // Combine refs
@@ -640,22 +640,22 @@ function TickEntry({ tick, attachedTo: _attachedTo, isFocused, isNew, isFirst, w
   // Handle first hover to trigger staggered reveal
   const handleMouseEnter = useCallback(() => {
     setIsHovering(true);
-    if (!firstRevealDone && tick.events.length > 0) {
+    if (!firstRevealDone && pageItem.events.length > 0) {
       setIsRevealing(true);
       // Mark reveal done after stagger completes
-      const staggerDuration = tick.events.length * 200 + 150;
+      const staggerDuration = pageItem.events.length * 200 + 150;
       setTimeout(() => {
         setFirstRevealDone(true);
         setIsRevealing(false);
       }, staggerDuration);
     }
-  }, [firstRevealDone, tick.events.length]);
+  }, [firstRevealDone, pageItem.events.length]);
 
   const handleMouseLeave = useCallback(() => {
     setIsHovering(false);
   }, []);
 
-  // Skip entrance animation if this tick was just streamed (prevents jarring re-render)
+  // Skip entrance animation if this page was just streamed (prevents jarring re-render)
   const skipAnimation = wasStreamed;
 
   return (
@@ -690,11 +690,11 @@ function TickEntry({ tick, attachedTo: _attachedTo, isFocused, isNew, isFirst, w
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          {formatTimestamp(tick.created_at)}
+          {formatTimestamp(pageItem.created_at)}
         </span>
-        {tick.events.length > 0 && (
+        {pageItem.events.length > 0 && (
           <div className="flex gap-1.5 flex-wrap">
-            {tick.events.map((evt, i) => (
+            {pageItem.events.map((evt, i) => (
               <motion.div
                 key={i}
                 initial={false}
@@ -726,19 +726,19 @@ function TickEntry({ tick, attachedTo: _attachedTo, isFocused, isNew, isFirst, w
         transition={{ delay: 0.2, duration: 0.4 }}
       >
         <NarrationText
-          text={tick.narration}
+          text={pageItem.narration}
           isNew={isNew && !skipAnimation}
           useTypewriter={useTypewriter}
         />
       </motion.div>
 
       {/* Character dialogue (speech) shown here - actions/thoughts go to CharacterPanel */}
-      {Object.entries(tick.characters).some(([, rawData]) => {
+      {Object.entries(pageItem.characters).some(([, rawData]) => {
         const data = extractCharacterFromRaw(rawData as Record<string, unknown>);
         return data?.dialogue;
       }) && (
         <div className="space-y-3 pl-3 mt-4">
-          {Object.entries(tick.characters).map(([name, rawData], charIndex) => {
+          {Object.entries(pageItem.characters).map(([name, rawData], charIndex) => {
             const data = extractCharacterFromRaw(rawData as Record<string, unknown>);
             if (!data?.dialogue) return null;
             const colors = getCharacterColor(name, characterNames);
@@ -858,10 +858,10 @@ function StreamingCursor() {
   );
 }
 
-/** Streaming tick entry - smooth word-by-word display */
-function StreamingTickEntry({ streaming, characterNames = [] }: { streaming: StreamingState; characterNames?: string[] }) {
+/** Streaming page entry - smooth word-by-word display */
+function StreamingPageEntry({ streaming, characterNames = [] }: { streaming: StreamingState; characterNames?: string[] }) {
   // Defensive checks to prevent crashes
-  if (!streaming || !streaming.isStreaming || !streaming.tick) return null;
+  if (!streaming || !streaming.isStreaming || !streaming.page) return null;
 
   // Extract narration continuously
   const cleanNarration = extractNarrationFromStream(streaming.narrator || "");

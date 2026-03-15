@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { CharacterTick } from "@/hooks/useGame";
+import type { CharacterPage } from "@/hooks/useGame";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
 type Props = {
   name: string;
-  data?: CharacterTick;
+  data?: CharacterPage;
   pendingInfluence?: string | null;
   streamingText?: string;
   onClose?: () => void;
@@ -32,7 +32,7 @@ function extractThoughtsFromStream(raw: string): string {
 }
 
 /** Extract all character fields from raw unparsed JSON */
-function extractCharacterData(rawData: CharacterTick | undefined): CharacterTick | undefined {
+function extractCharacterData(rawData: CharacterPage | undefined): CharacterPage | undefined {
   if (!rawData) return undefined;
 
   // If data is already parsed (has inner_thoughts), return as-is
@@ -44,7 +44,7 @@ function extractCharacterData(rawData: CharacterTick | undefined): CharacterTick
   const raw = (rawData as Record<string, unknown>).raw as string | undefined;
   if (!raw || typeof raw !== "string") return rawData;
 
-  const extracted: CharacterTick = { ...rawData };
+  const extracted: CharacterPage = { ...rawData };
 
   try {
     // Try to find and parse JSON from the raw string
@@ -263,7 +263,7 @@ export function CharacterPanel({ name, data: rawData, pendingInfluence, streamin
                 animate={{ opacity: 1 }}
                 className="text-xs text-muted-foreground"
               >
-                Waiting for next tick...
+                Waiting for next page...
               </motion.p>
             )}
           </AnimatePresence>

@@ -40,20 +40,20 @@ class Character(Agent):
         self.relationships: Dict[str, str] = {}
         self.pregnancy: Optional[Dict[str, Any]] = None
 
-    def tick(self, world_context: str, _retry: bool = False) -> Dict[str, Any]:
-        """Run a character tick — returns inner thoughts + action."""
-        result = super().tick(world_context, _retry=_retry)
+    def page(self, world_context: str, _retry: bool = False) -> Dict[str, Any]:
+        """Run a character page — returns inner thoughts + action."""
+        result = super().page(world_context, _retry=_retry)
         self._update_from_result(result)
         return result
 
-    def tick_stream(self, world_context: str, on_delta=None, _retry: bool = False) -> Dict[str, Any]:
-        """Run a character tick with streaming — returns inner thoughts + action."""
-        result = super().tick_stream(world_context, on_delta=on_delta, _retry=_retry)
+    def page_stream(self, world_context: str, on_delta=None, _retry: bool = False) -> Dict[str, Any]:
+        """Run a character page with streaming — returns inner thoughts + action."""
+        result = super().page_stream(world_context, on_delta=on_delta, _retry=_retry)
         self._update_from_result(result)
         return result
 
     def _update_from_result(self, result: Dict[str, Any]) -> None:
-        """Update tracked state from tick response."""
+        """Update tracked state from page response."""
         if isinstance(result, dict) and "raw" not in result:
             self.emotional_state = result.get("emotional_state", self.emotional_state)
 

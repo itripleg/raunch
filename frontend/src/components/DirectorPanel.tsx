@@ -2,17 +2,17 @@ import { motion, AnimatePresence } from "motion/react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import type { TickData } from "@/hooks/useGame";
+import type { PageData } from "@/hooks/useGame";
 
 type Props = {
-  tickData?: TickData | null;
+  pageData?: PageData | null;
   pendingGuidance?: string | null;
   onClose?: () => void;
 };
 
-export function DirectorPanel({ tickData, pendingGuidance, onClose }: Props) {
-  const characters = tickData?.characters ? Object.entries(tickData.characters) : [];
-  const events = tickData?.events ?? [];
+export function DirectorPanel({ pageData, pendingGuidance, onClose }: Props) {
+  const characters = pageData?.characters ? Object.entries(pageData.characters) : [];
+  const events = pageData?.events ?? [];
 
   return (
     <aside className="min-w-[280px] sm:min-w-[320px] h-full border-l border-border/50 bg-card/80 lg:bg-card/30 flex flex-col shrink-0 pt-12 overflow-hidden">
@@ -31,9 +31,9 @@ export function DirectorPanel({ tickData, pendingGuidance, onClose }: Props) {
               <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
             </svg>
             <h3 className="font-semibold text-sm text-amber-400">Scene</h3>
-            {tickData && (
+            {pageData && (
               <span className="text-[10px] font-mono text-muted-foreground/50">
-                #{tickData.tick}
+                #{pageData.page}
               </span>
             )}
           </div>
@@ -56,7 +56,7 @@ export function DirectorPanel({ tickData, pendingGuidance, onClose }: Props) {
       <ScrollArea className="flex-1 overflow-hidden">
         <AnimatePresence mode="wait">
           <motion.div
-            key={tickData?.tick ?? "empty"}
+            key={pageData?.page ?? "empty"}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
@@ -95,7 +95,7 @@ export function DirectorPanel({ tickData, pendingGuidance, onClose }: Props) {
               <Separator className="bg-border/30" />
             )}
 
-            {/* All characters at this tick */}
+            {/* All characters at this page */}
             {characters.length > 0 && (
               <div className="space-y-3">
                 <label className="text-[9px] uppercase tracking-wider text-muted-foreground">
@@ -127,7 +127,7 @@ export function DirectorPanel({ tickData, pendingGuidance, onClose }: Props) {
             )}
 
             {/* Empty state */}
-            {!tickData && (
+            {!pageData && (
               <p className="text-xs text-muted-foreground/60 italic">
                 Waiting for scene data...
               </p>

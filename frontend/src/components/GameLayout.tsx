@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { TickData, StreamingState, TurnState, Player } from "@/hooks/useGame";
+import type { PageData, StreamingState, TurnState, Player } from "@/hooks/useGame";
 import { CharacterPanel } from "./CharacterPanel";
 import { DirectorPanel } from "./DirectorPanel";
-import { TickFeed } from "./TickFeed";
+import { PageFeed } from "./PageFeed";
 import { Sidebar } from "./Sidebar";
 import { ActionBar } from "./ActionBar";
 import { TurnStateUI } from "./TurnStateUI";
@@ -15,14 +15,14 @@ type GameState = {
   characterNames: string[];
   characterDetails: Record<string, Record<string, unknown>>;
   attachedTo: string | null;
-  ticks: TickData[];
+  pages: PageData[];
   history: unknown[];
-  characterHistory: { name: string; ticks: unknown[] } | null;
-  replayTick: Record<string, unknown> | null;
+  characterHistory: { name: string; pages: unknown[] } | null;
+  replayPage: Record<string, unknown> | null;
   status: Record<string, unknown> | null;
   error: string | null;
   paused?: boolean;
-  tickInterval?: number;
+  pageInterval?: number;
   manualMode?: boolean;
   pendingInfluence?: { character: string; text: string } | null;
   directorMode?: boolean;
@@ -45,12 +45,12 @@ type Actions = {
   getStatus: () => void;
   getHistory: (count?: number, offset?: number) => void;
   getCharacterHistory: (name: string, count?: number) => void;
-  replay: (tick: number) => void;
+  replay: (page: number) => void;
   submitAction: (text: string) => void;
   clearError: () => void;
   togglePause?: () => void;
-  setTickInterval?: (seconds: number) => void;
-  triggerTick?: () => void;
+  setPageInterval?: (seconds: number) => void;
+  triggerPage?: () => void;
   toggleDirectorMode?: () => void;
   submitDirectorGuidance?: (text: string) => void;
   ready?: () => void;
@@ -68,27 +68,27 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [autoScroll, _setAutoScroll] = useState(true);
   const [isNearBottom, setIsNearBottom] = useState(true);
-  const [focusedTickNum, setFocusedTickNum] = useState<number | null>(null);
+  const [focusedPageNum, setFocusedPageNum] = useState<number | null>(null);
   const [previewCharacter, setPreviewCharacter] = useState<string | null>(null);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
 
-  // Initialize focused tick to latest when ticks first load
+  // Initialize focused page to latest when pages first load
   useEffect(() => {
-    if (game.ticks.length > 0 && focusedTickNum === null) {
-      setFocusedTickNum(game.ticks[game.ticks.length - 1].tick);
+    if (game.pages.length > 0 && focusedPageNum === null) {
+      setFocusedPageNum(game.pages[game.pages.length - 1].page);
     }
-  }, [game.ticks.length, focusedTickNum]);
+  }, [game.pages.length, focusedPageNum]);
 
-  // Get the character data for the focused tick
-  const focusedTickData = useMemo(() => {
-    if (!focusedTickNum || !game.attachedTo) return null;
-    const tick = game.ticks.find(t => t.tick === focusedTickNum);
-    return tick?.characters[game.attachedTo] ?? null;
-  }, [focusedTickNum, game.ticks, game.attachedTo]);
+  // Get the character data for the focused page
+  const focusedPageData = useMemo(() => {
+    if (!focusedPageNum || !game.attachedTo) return null;
+    const pageItem = game.pages.find(p => p.page === focusedPageNum);
+    return pageItem?.characters[game.attachedTo] ?? null;
+  }, [focusedPageNum, game.pages, game.attachedTo]);
 
-  // Fallback to latest tick if no focus
-  const latestTick = game.ticks[game.ticks.length - 1];
+  // Fallback to latest page if no focus
+  const latestPage = game.pages[game.pages.length - 1];
 
   // Determine which character to display: preview > attached
   const displayedCharacterName = previewCharacter ?? game.attachedTo;
@@ -98,19 +98,19 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
   const hasRightPanelOpen = !!(game.attachedTo || previewCharacter || game.directorMode);
   const wideMode = !(hasSidebarOpen && hasRightPanelOpen);
 
-  // Get the focused tick data
-  const focusedTick = useMemo(() => {
-    if (focusedTickNum) {
-      return game.ticks.find(t => t.tick === focusedTickNum) ?? null;
+  // Get the focused page data
+  const focusedPage = useMemo(() => {
+    if (focusedPageNum) {
+      return game.pages.find(p => p.page === focusedPageNum) ?? null;
     }
-    return latestTick ?? null;
-  }, [focusedTickNum, game.ticks, latestTick]);
+    return latestPage ?? null;
+  }, [focusedPageNum, game.pages, latestPage]);
 
-  // Get character data for the displayed character at the focused tick
+  // Get character data for the displayed character at the focused page
   const displayedCharacterData = useMemo(() => {
     if (!displayedCharacterName) return undefined;
-    return focusedTick?.characters[displayedCharacterName] ?? undefined;
-  }, [displayedCharacterName, focusedTick]);
+    return focusedPage?.characters[displayedCharacterName] ?? undefined;
+  }, [displayedCharacterName, focusedPage]);
 
   // Fetch character list and recent history on mount
   useEffect(() => {
@@ -127,9 +127,9 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
     }
   }, []);
 
-  // Handle tick focus changes from scroll position
-  const handleTickFocus = useCallback((tickNum: number) => {
-    setFocusedTickNum(tickNum);
+  // Handle page focus changes from scroll position
+  const handlePageFocus = useCallback((pageNum: number) => {
+    setFocusedPageNum(pageNum);
   }, []);
 
   // Open character panel on mobile when attaching to a character
@@ -166,7 +166,7 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [game.ticks.length, autoScroll, isNearBottom]);
+  }, [game.pages.length, autoScroll, isNearBottom]);
 
   return (
     <div className="h-screen relative bg-background overflow-hidden">
@@ -198,13 +198,13 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
             />
           )}
 
-          {/* Tick interval selector */}
-          {actions.setTickInterval && (
+          {/* Page interval selector */}
+          {actions.setPageInterval && (
             <select
-              value={game.tickInterval ?? 0}
-              onChange={(e) => actions.setTickInterval?.(parseInt(e.target.value))}
+              value={game.pageInterval ?? 0}
+              onChange={(e) => actions.setPageInterval?.(parseInt(e.target.value))}
               className="bg-muted/50 text-muted-foreground text-xs px-2 py-1 rounded border-none outline-none cursor-pointer hover:bg-muted"
-              title="Tick interval"
+              title="Page interval"
             >
               <option value={0}>Manual</option>
               <option value={10}>10s</option>
@@ -220,9 +220,9 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
 
           {/* Manual: Next button / Auto: Pause/Resume button - same position */}
           {game.manualMode ? (
-            actions.triggerTick && (
+            actions.triggerPage && (
               <button
-                onClick={actions.triggerTick}
+                onClick={actions.triggerPage}
                 disabled={game.streaming?.isStreaming}
                 className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -285,7 +285,7 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
             />
             <div className="absolute right-0 top-full mt-2 px-2 py-1 bg-popover border border-border rounded text-xs text-popover-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
               {game.paused ? "Simulation paused" : game.manualMode ? "Manual mode" : "Auto-advancing"}
-              {!game.manualMode && game.tickInterval && ` · ${game.tickInterval}s intervals`}
+              {!game.manualMode && game.pageInterval && ` · ${game.pageInterval}s intervals`}
             </div>
           </div>
 
@@ -382,19 +382,19 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
           )}
         </AnimatePresence>
 
-        {/* Center: Tick feed */}
+        {/* Center: Page feed */}
         <main className="flex-1 flex flex-col overflow-hidden">
           <div
             ref={feedRef}
             className="flex-1 overflow-y-auto scroll-smooth pt-14"
             onScroll={handleScroll}
           >
-            <TickFeed
-              ticks={game.ticks}
+            <PageFeed
+              pages={game.pages}
               attachedTo={game.attachedTo}
               autoScroll={autoScroll && isNearBottom}
-              focusedTick={focusedTickNum}
-              onTickFocus={handleTickFocus}
+              focusedPage={focusedPageNum}
+              onPageFocus={handlePageFocus}
               containerRef={feedRef}
               streaming={game.streaming}
               onHoverCharacter={handlePreviewCharacter}
@@ -444,7 +444,7 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
             >
               {game.directorMode ? (
                 <DirectorPanel
-                  tickData={focusedTick}
+                  pageData={focusedPage}
                   pendingGuidance={game.pendingDirectorGuidance}
                 />
               ) : (
@@ -494,7 +494,7 @@ export function GameLayout({ game, actions, onAddCharacter }: Props) {
               >
                 {game.directorMode ? (
                   <DirectorPanel
-                    tickData={focusedTick}
+                    pageData={focusedPage}
                     pendingGuidance={game.pendingDirectorGuidance}
                     onClose={() => setCharacterPanelOpen(false)}
                   />

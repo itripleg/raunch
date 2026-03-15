@@ -16,10 +16,10 @@ from .agents.character import Character
 from .server import GameServer
 from .ws_server import WebSocketServer, WS_PORT
 from .display import (
-    render_tick, render_character_list, render_world_state, render_character_history,
+    render_page, render_character_list, render_world_state, render_character_history,
     render_server_startup, render_port_error, render_port_conflict,
     render_server_already_running, check_port_available, check_raunch_server_running,
-    start_tick_loading, stop_tick_loading, update_tick_loading,
+    start_page_loading, stop_page_loading, update_page_loading,
 )
 from .config import CHARACTERS_DIR, CLIENT_HOST, SERVER_PORT, SAVES_DIR
 from .wizard import generate_scenario, random_scenario, save_scenario, load_scenario, list_scenarios
@@ -256,16 +256,16 @@ def start(save_name, world_name, scenario_name, headless, force):
         server.stop()
         return
 
-    # Track tick loading state
-    tick_loading_active = False
-    tick_animation_thread = None
+    # Track page loading state
+    page_loading_active = False
+    page_animation_thread = None
 
-    def _run_loading_animation(tick_num: int):
+    def _run_loading_animation(page_num: int):
         """Background thread to update loading animation."""
-        nonlocal tick_loading_active
-        start_tick_loading(tick_num)
-        while tick_loading_active:
-            update_tick_loading()
+        nonlocal page_loading_active
+        start_page_loading(page_num)
+        while page_loading_active:
+            update_page_loading()
             time.sleep(0.08)
 
     # Track progressive rendering state
@@ -273,36 +273,36 @@ def start(save_name, world_name, scenario_name, headless, force):
     progressive_rendered = {"narrator": False, "characters": set()}
 
     # Wire up streaming callback for real-time text + loading animation
-    def on_stream(tick_num: int, source: str, event_type: str, data: str):
-        nonlocal tick_loading_active, tick_animation_thread, progressive_results, progressive_rendered
+    def on_stream(page_num: int, source: str, event_type: str, data: str):
+        nonlocal page_loading_active, page_animation_thread, progressive_results, progressive_rendered
 
         if event_type == "start" and source == "narrator":
-            # Reset progressive state for new tick
-            progressive_results = {"tick": tick_num, "characters": {}}
+            # Reset progressive state for new page
+            progressive_results = {"page": page_num, "characters": {}}
             progressive_rendered = {"narrator": False, "characters": set()}
             # Start loading animation when narrator begins
-            tick_loading_active = True
-            tick_animation_thread = threading.Thread(
+            page_loading_active = True
+            page_animation_thread = threading.Thread(
                 target=_run_loading_animation,
-                args=(tick_num,),
+                args=(page_num,),
                 daemon=True
             )
-            tick_animation_thread.start()
-            ws_server.broadcast_tick_start(tick_num, orch._last_tick_trigger_reason)
+            page_animation_thread.start()
+            ws_server.broadcast_page_start(page_num, orch._last_page_trigger_reason)
 
         elif event_type == "delta":
-            ws_server.broadcast_stream_delta(tick_num, source, data)
+            ws_server.broadcast_stream_delta(page_num, source, data)
 
         elif event_type == "done":
-            ws_server.broadcast_stream_done(tick_num, source)
+            ws_server.broadcast_stream_done(page_num, source)
 
             # Progressive CLI rendering - show content as it completes
             if source == "narrator" and not progressive_rendered["narrator"]:
                 # Stop loading animation, render narrator immediately
-                if tick_loading_active:
-                    tick_loading_active = False
+                if page_loading_active:
+                    page_loading_active = False
                     time.sleep(0.05)
-                    stop_tick_loading()
+                    stop_page_loading()
 
                 # Get narrator result from orchestrator and render
                 narrator_result = orch.narrator.history[-1]["content"] if orch.narrator.history else ""
@@ -314,7 +314,7 @@ def start(save_name, world_name, scenario_name, headless, force):
                 # Render narrator panel
                 from .display import render_narrator_panel
                 try:
-                    render_narrator_panel(tick_num, narration, orch.world.mood)
+                    render_narrator_panel(page_num, narration, orch.world.mood)
                 except Exception as e:
                     console.print(f"[dim]Narrator: {narration[:100]}...[/dim]")
                 progressive_rendered["narrator"] = True
@@ -342,21 +342,21 @@ def start(save_name, world_name, scenario_name, headless, force):
 
     orch.set_stream_callback(on_stream)
 
-    # Wire up: orchestrator ticks → server broadcasts + local display
-    def on_tick(results):
-        nonlocal tick_loading_active, progressive_rendered
+    # Wire up: orchestrator pages → server broadcasts + local display
+    def on_page(results):
+        nonlocal page_loading_active, progressive_rendered
 
         # Stop loading animation if still running
-        if tick_loading_active:
-            tick_loading_active = False
+        if page_loading_active:
+            page_loading_active = False
             time.sleep(0.1)
-            stop_tick_loading()
+            stop_page_loading()
 
         # Only render if we haven't already rendered progressively
         already_rendered = progressive_rendered.get("narrator", False)
         if not already_rendered:
             try:
-                render_tick(results, attached_to=orch.attached_to)
+                render_page(results, attached_to=orch.attached_to)
             except Exception as e:
                 console.print(f"[red]Display error: {e}[/red]")
         else:
@@ -370,15 +370,15 @@ def start(save_name, world_name, scenario_name, headless, force):
                     pass
 
         try:
-            server.broadcast_tick(results)
+            server.broadcast_page(results)
         except Exception as e:
             console.print(f"[red]TCP broadcast error: {e}[/red]")
         try:
-            ws_server.broadcast_tick(results)
+            ws_server.broadcast_page(results)
         except Exception as e:
             console.print(f"[red]WS broadcast error: {e}[/red]")
 
-    orch.add_tick_callback(on_tick)
+    orch.add_page_callback(on_page)
 
     # ─── ANIMATED STARTUP BANNER ──────────────────────────────────────────
     world = orch.world
@@ -386,7 +386,7 @@ def start(save_name, world_name, scenario_name, headless, force):
         world_name=world.world_name,
         world_id=world.world_id,
         created_at=world.created_at,
-        tick_count=world.tick_count,
+        page_count=world.page_count,
         tcp_port=SERVER_PORT,
         ws_port=WS_PORT,
         animated=not headless,
@@ -408,10 +408,10 @@ def start(save_name, world_name, scenario_name, headless, force):
                 break
 
             if not cmd or cmd == "n":
-                # Empty input or 'n' = trigger next tick in manual mode
+                # Empty input or 'n' = trigger next page in manual mode
                 if orch.is_manual_mode:
-                    if not orch.trigger_tick():
-                        console.print("[yellow]Cannot tick (paused or already running)[/yellow]")
+                    if not orch.trigger_page():
+                        console.print("[yellow]Cannot page (paused or already running)[/yellow]")
                     # Animation handles the "Advancing..." message
                 elif cmd == "n":
                     console.print("[dim]Not in manual mode (use 't 0' to enable)[/dim]")
@@ -443,18 +443,18 @@ def start(save_name, world_name, scenario_name, headless, force):
             elif cmd.startswith("t "):
                 try:
                     seconds = int(cmd[2:].strip())
-                    orch.set_tick_interval(seconds)
+                    orch.set_page_interval(seconds)
                     if orch.is_manual_mode:
-                        console.print("[green]Manual mode enabled (press Enter or 'n' to tick)[/green]")
+                        console.print("[green]Manual mode enabled (press Enter or 'n' to page)[/green]")
                     else:
-                        console.print(f"[green]Tick interval set to {orch.tick_interval}s[/green]")
+                        console.print(f"[green]Page interval set to {orch.page_interval}s[/green]")
                 except ValueError:
                     console.print("[red]Usage: t <seconds> (0=manual, 10+=auto)[/red]")
             elif cmd == "t":
                 if orch.is_manual_mode:
-                    console.print("[cyan]Tick mode: manual (press Enter or 'n' to tick)[/cyan]")
+                    console.print("[cyan]Page mode: manual (press Enter or 'n' to page)[/cyan]")
                 else:
-                    console.print(f"[cyan]Tick interval: {orch.tick_interval}s[/cyan]")
+                    console.print(f"[cyan]Page interval: {orch.page_interval}s[/cyan]")
             elif cmd == "r":
                 # Force token refresh
                 client = get_client()
@@ -519,7 +519,7 @@ def attach(character, host, port):
         console.print(
             Panel(
                 f"[bold]{w.get('world_name', '?')}[/bold] [{w.get('world_id', '?')}]\n"
-                f"Created: {w.get('created_at', '?')} | Tick: {w.get('tick_count', '?')} | Mood: {w.get('mood', '?')}\n"
+                f"Created: {w.get('created_at', '?')} | Page: {w.get('page_count', '?')} | Mood: {w.get('mood', '?')}\n"
                 f"Characters: {', '.join(chars)}",
                 title="Connected",
                 border_style="green",
@@ -558,7 +558,7 @@ def attach(character, host, port):
                 "  [bold]h[/bold]         — Narration history\n"
                 "  [bold]t[/bold]         — Attached character's thought history\n"
                 "  [bold]t <name>[/bold]  — Specific character's thought history\n"
-                "  [bold]r <tick>[/bold]  — Replay a specific tick (full detail)\n"
+                "  [bold]r <page>[/bold]  — Replay a specific page (full detail)\n"
                 "  [bold]s[/bold]         — Server status\n"
                 "  [bold]q[/bold]         — Disconnect",
                 border_style="bright_magenta",
@@ -569,7 +569,7 @@ def attach(character, host, port):
         sock.close()
         return
 
-    # Start background thread to receive ticks
+    # Start background thread to receive pages
     running = True
 
     def receive_loop():
@@ -615,10 +615,10 @@ def attach(character, host, port):
                 send_command({"cmd": "character_history", "character": cmd[2:].strip()})
             elif cmd.startswith("r "):
                 try:
-                    tick_num = int(cmd[2:].strip())
-                    send_command({"cmd": "replay", "tick": tick_num})
+                    page_num = int(cmd[2:].strip())
+                    send_command({"cmd": "replay", "page": page_num})
                 except ValueError:
-                    console.print("[red]Usage: r <tick_number>[/red]")
+                    console.print("[red]Usage: r <page_number>[/red]")
             elif cmd == "s":
                 send_command({"cmd": "status"})
             elif cmd == "d":
@@ -640,9 +640,9 @@ def _handle_server_message(msg):
     """Render a message received from the server."""
     msg_type = msg.get("type", "")
 
-    if msg_type == "tick":
+    if msg_type == "page":
         attached = msg.get("attached_to")
-        render_tick(msg, attached_to=attached)
+        render_page(msg, attached_to=attached)
 
     elif msg_type == "attached":
         console.print(f"[bright_magenta]Attached to {msg['character']}[/bright_magenta]")
@@ -669,7 +669,7 @@ def _handle_server_message(msg):
         console.print(
             Panel(
                 f"[bold]{w.get('world_name', '?')}[/bold] [{w.get('world_id', '?')}]\n"
-                f"Created: {w.get('created_at', '?')} | Tick: {w.get('tick_count', '?')}\n"
+                f"Created: {w.get('created_at', '?')} | Page: {w.get('page_count', '?')}\n"
                 f"Time: {w.get('world_time', '?')} | Mood: {w.get('mood', '?')}\n"
                 f"Characters: {', '.join(msg.get('characters', []))}\n"
                 f"Paused: {msg.get('paused', False)} | Clients connected: {msg.get('clients', 0)}",
@@ -679,34 +679,34 @@ def _handle_server_message(msg):
         )
 
     elif msg_type == "history":
-        ticks = msg.get("ticks", [])
-        if not ticks:
+        pages = msg.get("pages", [])
+        if not pages:
             console.print("[dim]No history yet.[/dim]")
         else:
-            for t in ticks:
-                # Compact view: tick number, time, mood, first line of narration
-                narration = t.get("narration", "")
+            for p in pages:
+                # Compact view: page number, time, mood, first line of narration
+                narration = p.get("narration", "")
                 preview = narration[:120].replace("\n", " ") + ("..." if len(narration) > 120 else "")
-                events = ", ".join(t.get("events", [])[:3])
+                events = ", ".join(p.get("events", [])[:3])
                 console.print(
-                    f"  [bold]Tick {t['tick']}[/bold] [dim]({t.get('world_time', '?')})[/dim]\n"
+                    f"  [bold]Page {p['page']}[/bold] [dim]({p.get('world_time', '?')})[/dim]\n"
                     f"    {preview}\n"
                     f"    [dim]Events: {events}[/dim]"
                 )
-            console.print(f"\n[dim]Use 'r <tick>' to replay a full tick.[/dim]")
+            console.print(f"\n[dim]Use 'r <page>' to replay a full page.[/dim]")
 
     elif msg_type == "character_history":
         char = msg.get("character", "?")
-        ticks = msg.get("ticks", [])
-        render_character_history(char, ticks)
+        pages = msg.get("pages", [])
+        render_character_history(char, pages)
 
     elif msg_type == "replay":
-        # Full tick replay with all character details
-        tick_num = msg.get("tick", "?")
+        # Full page replay with all character details
+        page_num = msg.get("page", "?")
         console.print(
             Panel(
                 msg.get("narration", ""),
-                title=f"REPLAY — Tick {tick_num} ({msg.get('world_time', '?')})",
+                title=f"REPLAY — Page {page_num} ({msg.get('world_time', '?')})",
                 subtitle=f"Mood: {msg.get('mood', '?')}",
                 border_style="bright_blue",
                 padding=(1, 2),
@@ -775,7 +775,7 @@ def status(host, port):
             Panel(
                 f"[bold]{w.get('world_name', '?')}[/bold] [{w.get('world_id', '?')}]\n"
                 f"Created: {w.get('created_at', '?')}\n"
-                f"Tick: {w.get('tick_count', '?')} | Time: {w.get('world_time', '?')}\n"
+                f"Page: {w.get('page_count', '?')} | Time: {w.get('world_time', '?')}\n"
                 f"Mood: {w.get('mood', '?')}\n"
                 f"Characters: {', '.join(chars)}",
                 title=f"Server @ {host}:{port}",
@@ -1113,12 +1113,12 @@ def reset(scenario_name, force):
     with open(save_path) as f:
         save_data = json.load(f)
     world_id = save_data.get("world_id")
-    tick_count = save_data.get("tick_count", 0)
+    page_count = save_data.get("page_count", 0)
 
     if not force:
         console.print(f"[yellow]This will delete:[/yellow]")
         console.print(f"  • Save file: {derived_save_name}.json")
-        console.print(f"  • {tick_count} ticks of history (world_id: {world_id})")
+        console.print(f"  • {page_count} pages of history (world_id: {world_id})")
         try:
             confirm = input("\nType 'yes' to confirm: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
@@ -1138,11 +1138,11 @@ def reset(scenario_name, force):
         db_path = os.path.join(SAVES_DIR, "history.db")
         if os.path.exists(db_path):
             conn = sqlite3.connect(db_path)
-            ticks_deleted = conn.execute("DELETE FROM ticks WHERE world_id = ?", (world_id,)).rowcount
-            chars_deleted = conn.execute("DELETE FROM character_ticks WHERE world_id = ?", (world_id,)).rowcount
+            pages_deleted = conn.execute("DELETE FROM pages WHERE world_id = ?", (world_id,)).rowcount
+            chars_deleted = conn.execute("DELETE FROM character_pages WHERE world_id = ?", (world_id,)).rowcount
             conn.commit()
             conn.close()
-            console.print(f"[green]Deleted {ticks_deleted} ticks, {chars_deleted} character records[/green]")
+            console.print(f"[green]Deleted {pages_deleted} pages, {chars_deleted} character records[/green]")
 
     console.print(f"\n[green]Scenario '{scenario_name}' reset. Run with --scenario to start fresh.[/green]")
 

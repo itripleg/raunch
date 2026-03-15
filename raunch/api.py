@@ -67,7 +67,7 @@ class WorldResponse(BaseModel):
     running: bool
     world_id: Optional[str] = None
     name: Optional[str] = None
-    tick: Optional[int] = None
+    page: Optional[int] = None
     characters: Optional[List[str]] = None
     turn_timeout: int = 60
 
@@ -154,9 +154,9 @@ async def get_world():
         running=True,
         world_id=world.world_id,
         name=world.world_name,
-        tick=world.tick_count,
+        page=world.page_count,
         characters=character_names,
-        turn_timeout=orch.tick_interval if orch.tick_interval > 0 else 60,
+        turn_timeout=orch.page_interval if orch.page_interval > 0 else 60,
     )
 
 
@@ -229,9 +229,9 @@ async def load_world(request: LoadWorldRequest):
         running=True,
         world_id=orch.world.world_id,
         name=orch.world.world_name,
-        tick=orch.world.tick_count,
+        page=orch.world.page_count,
         characters=list(orch.characters.keys()),
-        turn_timeout=orch.tick_interval if orch.tick_interval > 0 else 60,
+        turn_timeout=orch.page_interval if orch.page_interval > 0 else 60,
     )
 
 

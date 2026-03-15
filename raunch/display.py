@@ -302,14 +302,14 @@ def _scene_break(variant: int = 0) -> None:
     console.print()
 
 
-def render_tick(
+def render_page(
     results: Dict[str, Any],
     attached_to: Optional[str] = None,
     typewriter: bool = True,
     quick: bool = False,
 ) -> None:
-    """Render a full tick's output with premium immersive effects."""
-    tick_num = results.get("tick", "?")
+    """Render a full page's output with premium immersive effects."""
+    page_num = results.get("page", "?")
     mood = results.get("mood", "default")
 
     # Get mood-based styling
@@ -353,9 +353,9 @@ def render_tick(
 
         # Decorative title with mood symbol
         if _supports_unicode():
-            title = f"[bold]{mood_symbol} TICK {tick_num} {mood_symbol}[/]"
+            title = f"[bold]{mood_symbol} PAGE {page_num} {mood_symbol}[/]"
         else:
-            title = f"[bold]* TICK {tick_num} *[/]"
+            title = f"[bold]* PAGE {page_num} *[/]"
 
         console.print(
             Panel(
@@ -473,7 +473,7 @@ def render_tick(
         )
 
 
-def render_narrator_panel(tick_num: int, narration: str, mood: str = "default") -> None:
+def render_narrator_panel(page_num: int, narration: str, mood: str = "default") -> None:
     """Render just the narrator panel (for progressive display)."""
     if not narration:
         return
@@ -498,9 +498,9 @@ def render_narrator_panel(tick_num: int, narration: str, mood: str = "default") 
             rich_narration.append(content)
 
     if _supports_unicode():
-        title = f"[bold]{mood_symbol} TICK {tick_num} {mood_symbol}[/]"
+        title = f"[bold]{mood_symbol} PAGE {page_num} {mood_symbol}[/]"
     else:
-        title = f"[bold]* TICK {tick_num} *[/]"
+        title = f"[bold]* PAGE {page_num} *[/]"
 
     console.print(
         Panel(
@@ -615,10 +615,10 @@ def render_events_panel(events: List[str]) -> None:
     )
 
 
-def render_tick_streaming(
+def render_page_streaming(
     source: str,
     text: str,
-    tick_num: int,
+    page_num: int,
     is_narrator: bool = False,
 ) -> None:
     """Render streaming text updates in real-time."""
@@ -627,7 +627,7 @@ def render_tick_streaming(
         sys.stdout.write(f"\r\033[K")  # Clear line
         preview = text[-80:] if len(text) > 80 else text
         colored = _render_intensity_text(preview)
-        sys.stdout.write(f"{DIM}[Tick {tick_num}]{RESET} {colored}")
+        sys.stdout.write(f"{DIM}[Page {page_num}]{RESET} {colored}")
         sys.stdout.flush()
     else:
         # Character streaming
@@ -637,9 +637,9 @@ def render_tick_streaming(
         sys.stdout.flush()
 
 
-def render_character_history(character_name: str, ticks: List[Dict[str, Any]]) -> None:
+def render_character_history(character_name: str, pages: List[Dict[str, Any]]) -> None:
     """Render a character's thought history beautifully."""
-    if not ticks:
+    if not pages:
         console.print(f"[dim]No history for {character_name}.[/dim]")
         return
 
@@ -652,19 +652,19 @@ def render_character_history(character_name: str, ticks: List[Dict[str, Any]]) -
     console.print(f"  [dim]{divider}[/dim]")
     console.print()
 
-    for i, t in enumerate(ticks):
-        tick_num = t.get("tick", "?")
-        emotion = t.get("emotional_state", "")
-        inner = t.get("inner_thoughts", "") or ""
-        action = t.get("action", "") or ""
-        dialogue = t.get("dialogue", "") or ""
+    for i, p in enumerate(pages):
+        page_num = p.get("page", "?")
+        emotion = p.get("emotional_state", "")
+        inner = p.get("inner_thoughts", "") or ""
+        action = p.get("action", "") or ""
+        dialogue = p.get("dialogue", "") or ""
 
         # Skip empty entries (refusals)
         if not inner and not action and not dialogue:
             continue
 
-        # Tick header
-        console.print(f"  [bold bright_white]Tick {tick_num}[/]", end="")
+        # Page header
+        console.print(f"  [bold bright_white]Page {page_num}[/]", end="")
         if emotion:
             console.print(f"  [dim italic]~ {emotion} ~[/]")
         else:
@@ -690,11 +690,11 @@ def render_character_history(character_name: str, ticks: List[Dict[str, Any]]) -
             console.print(f"    [bright_green]\"{dialogue}\"[/]")
 
         # Separator between entries (except last)
-        if i < len(ticks) - 1:
+        if i < len(pages) - 1:
             console.print()
 
     console.print()
-    console.print(f"  [dim]Use 'r <tick>' to replay any tick in full.[/dim]")
+    console.print(f"  [dim]Use 'r <page>' to replay any page in full.[/dim]")
     console.print()
 
 
@@ -813,7 +813,7 @@ def render_server_startup(
     world_name: str,
     world_id: str,
     created_at: str,
-    tick_count: int,
+    page_count: int,
     tcp_port: int,
     ws_port: int,
     animated: bool = True,
@@ -855,7 +855,7 @@ def render_server_startup(
 
     console.print(f"[dim]{dash * 60}[/]")
     console.print(f"  [bold bright_magenta]{heart} {world_name}[/] [dim][{world_id}][/]")
-    console.print(f"  [dim]Created: {created_at} | Tick: {tick_count}[/]")
+    console.print(f"  [dim]Created: {created_at} | Page: {page_count}[/]")
     console.print(f"  [dim]TCP: {tcp_port} | WebSocket: {ws_port} | API: 8000[/]")
     console.print(f"[dim]{dash * 60}[/]")
     console.print()
@@ -864,11 +864,11 @@ def render_server_startup(
     bullet = "-" if not _supports_unicode() else "─"
     console.print(f"  [bold bright_cyan]{star} COMMANDS {star}[/]")
     console.print()
-    console.print(f"  [bold]n[/] [dim]or[/] [bold]Enter[/]  [dim]{bullet}[/]  Next tick")
+    console.print(f"  [bold]n[/] [dim]or[/] [bold]Enter[/]  [dim]{bullet}[/]  Next page")
     console.print(f"  [bold]c[/]             [dim]{bullet}[/]  List characters")
     console.print(f"  [bold]w[/]             [dim]{bullet}[/]  World state")
     console.print(f"  [bold]p[/]             [dim]{bullet}[/]  Pause/resume")
-    console.print(f"  [bold]t N[/]           [dim]{bullet}[/]  Set tick interval (0=manual)")
+    console.print(f"  [bold]t N[/]           [dim]{bullet}[/]  Set page interval (0=manual)")
     console.print(f"  [bold]q[/]             [dim]{bullet}[/]  Quit & save")
     console.print()
     console.print(f"[dim]{dash * 60}[/]")
@@ -876,7 +876,7 @@ def render_server_startup(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TICK LOADING ANIMATION - The star of the show!
+# PAGE LOADING ANIMATION - The star of the show!
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Sexy loading messages
@@ -903,8 +903,8 @@ PULSE_CHARS = ["░", "▒", "▓", "█", "▓", "▒", "░", " "] if _support
 SPINNER_CHARS = ["◐", "◓", "◑", "◒"] if _supports_unicode() else ["|", "/", "-", "\\"]
 
 
-class TickLoadingAnimation:
-    """Manages the tick loading animation state."""
+class PageLoadingAnimation:
+    """Manages the page loading animation state."""
 
     def __init__(self):
         self.running = False
@@ -912,13 +912,13 @@ class TickLoadingAnimation:
         self.message_idx = 0
         self.start_time = 0
 
-    def start(self, tick_num: int) -> None:
-        """Start the loading animation for a tick."""
+    def start(self, page_num: int) -> None:
+        """Start the loading animation for a page."""
         self.running = True
         self.frame = 0
         self.message_idx = random.randint(0, len(CONJURING_MESSAGES) - 1)
         self.start_time = time.time()
-        self.tick_num = tick_num
+        self.page_num = page_num
 
         # Hide cursor
         sys.stdout.write("\033[?25l")
@@ -963,7 +963,7 @@ class TickLoadingAnimation:
 
         # Build the line
         line = f"\r  {_c256(205)}{spinner}{RESET} {_c256(213)}{star}{RESET} "
-        line += f"{_c256(219)}TICK {self.tick_num}{RESET} "
+        line += f"{_c256(219)}PAGE {self.page_num}{RESET} "
         line += f"{_c256(213)}{star}{RESET} "
         line += f"{DIM}[{bar}]{RESET} "
         line += f"{_c256(183)}{message:<24}{RESET} "
@@ -988,35 +988,35 @@ class TickLoadingAnimation:
 
         sys.stdout.write(f"\r  {_c256(46)}{check}{RESET} ")
         sys.stdout.write(f"{_c256(213)}{heart}{RESET} ")
-        sys.stdout.write(f"Tick {self.tick_num} complete ")
+        sys.stdout.write(f"Page {self.page_num} complete ")
         sys.stdout.write(f"{DIM}({elapsed:.1f}s){RESET}")
         sys.stdout.write(" " * 40 + "\n")
         sys.stdout.flush()
 
 
 # Global loading animation instance
-_tick_animation = TickLoadingAnimation()
+_page_animation = PageLoadingAnimation()
 
 
-def start_tick_loading(tick_num: int) -> None:
-    """Start the tick loading animation."""
-    _tick_animation.start(tick_num)
+def start_page_loading(page_num: int) -> None:
+    """Start the page loading animation."""
+    _page_animation.start(page_num)
 
 
-def update_tick_loading() -> None:
-    """Update the tick loading animation (call in a loop)."""
-    _tick_animation.update()
+def update_page_loading() -> None:
+    """Update the page loading animation (call in a loop)."""
+    _page_animation.update()
 
 
-def stop_tick_loading() -> None:
-    """Stop the tick loading animation."""
-    _tick_animation.stop()
+def stop_page_loading() -> None:
+    """Stop the page loading animation."""
+    _page_animation.stop()
 
 
-def render_advancing_message(tick_num: int) -> None:
+def render_advancing_message(page_num: int) -> None:
     """Simple one-shot advancing message (non-animated fallback)."""
     heart = "<3" if not _supports_unicode() else "♥"
-    console.print(f"\n  [bright_magenta]{heart}[/] [dim]Advancing to tick {tick_num}...[/]")
+    console.print(f"\n  [bright_magenta]{heart}[/] [dim]Advancing to page {page_num}...[/]")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1104,7 +1104,7 @@ def render_server_already_running(server_info: Dict[str, Any], requested_scenari
             Panel(
                 f"[bold bright_green]{check} Server already running![/]\n\n"
                 f"[bold]{current_name}[/] [{world.get('world_id', '?')}]\n"
-                f"Tick: {world.get('tick_count', '?')} | Mood: {world.get('mood', '?')}\n"
+                f"Page: {world.get('page_count', '?')} | Mood: {world.get('mood', '?')}\n"
                 f"Characters: {', '.join(chars) if chars else 'None yet'}\n\n"
                 f"[dim]To connect:[/]\n"
                 f"  [bold]raunch attach[/]  {heart} Join as a character\n"
@@ -1153,9 +1153,9 @@ def demo() -> None:
     sep = "===" if not _supports_unicode() else "═══"
     console.print(f"\n[bold bright_magenta]{sep} PREMIUM CLI NARRATION DEMO {sep}[/]\n")
 
-    # Sample tick data
-    sample_tick = {
-        "tick": 1,
+    # Sample page data
+    sample_page = {
+        "page": 1,
         "mood": "passion",
         "narration": (
             "The air crackles with tension as eyes meet across the dimly lit chamber. "
@@ -1182,7 +1182,7 @@ def demo() -> None:
     }
 
     # Render with attached character
-    render_tick(sample_tick, attached_to="Lyra")
+    render_page(sample_page, attached_to="Lyra")
 
     dash = "---" if not _supports_unicode() else "───"
     console.print(f"\n[dim]{dash} Scene break {dash}[/]\n")

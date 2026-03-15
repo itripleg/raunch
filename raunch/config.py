@@ -13,10 +13,10 @@ DEFAULT_MODEL = "claude-sonnet-4-20250514"
 DEFAULT_MAX_TOKENS = 2048
 DEFAULT_TEMPERATURE = 0.9
 
-# World tick
-BASE_TICK_SECONDS = 0  # 0 = manual mode (default), >0 = auto-tick interval
-NARRATOR_TICK_MULTIPLIER = 1  # Narrator runs every tick
-CHARACTER_TICK_MULTIPLIER = 1  # Characters react every tick
+# World page
+BASE_PAGE_SECONDS = 0  # 0 = manual mode (default), >0 = auto-page interval
+NARRATOR_PAGE_MULTIPLIER = 1  # Narrator runs every page
+CHARACTER_PAGE_MULTIPLIER = 1  # Characters react every page
 
 # Server
 SERVER_HOST = "0.0.0.0"  # Bind inside container

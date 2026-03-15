@@ -122,7 +122,7 @@ export function ActionBar({
             animate={{ opacity: 1, height: "auto" }}
             className={`mx-auto mt-2 text-xs text-amber-400/70 italic transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
           >
-            Queued: "{pendingDirectorGuidance}" — takes effect next tick
+            Queued: "{pendingDirectorGuidance}" — takes effect next page
           </motion.div>
         )}
       </motion.div>

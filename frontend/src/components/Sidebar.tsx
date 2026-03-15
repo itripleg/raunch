@@ -1,7 +1,7 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
-type CharacterTick = {
+type CharacterPage = {
   emotional_state?: string;
   action?: string;
   dialogue?: string;
@@ -15,7 +15,7 @@ type Props = {
     characterDetails: Record<string, Record<string, unknown>>;
     attachedTo: string | null;
     directorMode?: boolean;
-    ticks?: { characters: Record<string, CharacterTick> }[];
+    pages?: { characters: Record<string, CharacterPage> }[];
   };
   actions: {
     attach: (name: string) => void;
@@ -57,7 +57,7 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
               <div>Time: {world.world_time as string ?? "?"}</div>
               <div>Mood: {world.mood as string ?? "?"}</div>
               <div className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground/60">
-                Tick: {world.tick_count as number ?? "?"}
+                Page: {world.page_count as number ?? "?"}
               </div>
             </div>
           </div>
@@ -127,9 +127,9 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
           {game.characterNames.map((name) => {
             const info = game.characterDetails[name];
             const isAttached = name === game.attachedTo;
-            // Get live emotional state from latest tick
-            const latestTick = game.ticks?.[game.ticks.length - 1];
-            const liveState = latestTick?.characters?.[name]?.emotional_state;
+            // Get live emotional state from latest page
+            const latestPage = game.pages?.[game.pages.length - 1];
+            const liveState = latestPage?.characters?.[name]?.emotional_state;
 
             return (
               <button
@@ -171,9 +171,9 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
                     <span className="text-[10px] text-primary/60 opacity-0 group-hover:opacity-100 transition-opacity">
                       Click to detach
                     </span>
-                    {typeof world?.tick_count === "number" && (
+                    {typeof world?.page_count === "number" && (
                       <span className="text-[9px] font-mono text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
-                        tick {world.tick_count}
+                        page {world.page_count}
                       </span>
                     )}
                   </div>

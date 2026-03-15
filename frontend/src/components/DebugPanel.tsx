@@ -3,15 +3,15 @@ import { motion, AnimatePresence } from "motion/react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 type DebugStats = {
-  total_ticks: number;
-  total_character_ticks: number;
+  total_pages: number;
+  total_character_pages: number;
   refusals: number;
   successfully_parsed: number;
 };
 
-type CharacterTickDebug = {
+type CharacterPageDebug = {
   id: number;
-  tick: number;
+  page: number;
   character_name: string;
   inner_thoughts: string | null;
   action: string | null;
@@ -25,9 +25,9 @@ type CharacterTickDebug = {
   raw_json?: Record<string, unknown>;
 };
 
-type TickDebug = {
+type PageDebug = {
   id: number;
-  tick: number;
+  page: number;
   narration: string;
   events: string[];
   world_time: string;
@@ -37,8 +37,8 @@ type TickDebug = {
 
 type DebugData = {
   world_id: string;
-  ticks: TickDebug[];
-  character_ticks: CharacterTickDebug[];
+  pages: PageDebug[];
+  character_pages: CharacterPageDebug[];
   stats: DebugStats;
 };
 
@@ -51,7 +51,7 @@ type Props = {
 export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
   const [debugData, setDebugData] = useState<DebugData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "ticks" | "characters">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "pages" | "characters">("overview");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   const fetchDebugData = useCallback(() => {
@@ -149,7 +149,7 @@ export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
 
           {/* Tabs */}
           <div className="flex border-b border-border px-4 bg-muted/10">
-            {(["overview", "ticks", "characters"] as const).map((tab) => (
+            {(["overview", "pages", "characters"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -176,12 +176,12 @@ export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
                   No debug data available
                 </div>
               ) : activeTab === "overview" ? (
-                <OverviewTab stats={debugData.stats} characterTicks={debugData.character_ticks} />
-              ) : activeTab === "ticks" ? (
-                <TicksTab ticks={debugData.ticks} expandedItems={expandedItems} toggleExpand={toggleExpand} />
+                <OverviewTab stats={debugData.stats} characterPages={debugData.character_pages} />
+              ) : activeTab === "pages" ? (
+                <PagesTab pages={debugData.pages} expandedItems={expandedItems} toggleExpand={toggleExpand} />
               ) : (
-                <CharacterTicksTab
-                  characterTicks={debugData.character_ticks}
+                <CharacterPagesTab
+                  characterPages={debugData.character_pages}
                   expandedItems={expandedItems}
                   toggleExpand={toggleExpand}
                 />
@@ -194,22 +194,22 @@ export function DebugPanel({ isOpen, onClose, sendCommand }: Props) {
   );
 }
 
-function OverviewTab({ stats, characterTicks }: { stats: DebugStats; characterTicks: CharacterTickDebug[] }) {
-  const refusalRate = stats.total_character_ticks > 0
-    ? ((stats.refusals / stats.total_character_ticks) * 100).toFixed(1)
+function OverviewTab({ stats, characterPages }: { stats: DebugStats; characterPages: CharacterPageDebug[] }) {
+  const refusalRate = stats.total_character_pages > 0
+    ? ((stats.refusals / stats.total_character_pages) * 100).toFixed(1)
     : "0";
 
   // Group issues by type
-  const refusals = characterTicks.filter((ct) => ct.is_refusal);
-  const parseErrors = characterTicks.filter((ct) => ct.parse_error);
-  const missingData = characterTicks.filter((ct) => !ct.has_extracted_data && !ct.is_refusal);
+  const refusals = characterPages.filter((cp) => cp.is_refusal);
+  const parseErrors = characterPages.filter((cp) => cp.parse_error);
+  const missingData = characterPages.filter((cp) => !cp.has_extracted_data && !cp.is_refusal);
 
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Ticks" value={stats.total_ticks} />
-        <StatCard label="Character Responses" value={stats.total_character_ticks} />
+        <StatCard label="Total Pages" value={stats.total_pages} />
+        <StatCard label="Character Responses" value={stats.total_character_pages} />
         <StatCard
           label="Successfully Parsed"
           value={stats.successfully_parsed}
@@ -233,30 +233,30 @@ function OverviewTab({ stats, characterTicks }: { stats: DebugStats; characterTi
           </div>
         ) : (
           <div className="space-y-3">
-            {refusals.slice(0, 5).map((ct) => (
+            {refusals.slice(0, 5).map((cp) => (
               <IssueCard
-                key={`refusal-${ct.id}`}
+                key={`refusal-${cp.id}`}
                 type="refusal"
-                tick={ct.tick}
-                character={ct.character_name}
-                message={ct.raw_json?.raw as string || "Content refusal"}
+                page={cp.page}
+                character={cp.character_name}
+                message={cp.raw_json?.raw as string || "Content refusal"}
               />
             ))}
-            {parseErrors.slice(0, 3).map((ct) => (
+            {parseErrors.slice(0, 3).map((cp) => (
               <IssueCard
-                key={`parse-${ct.id}`}
+                key={`parse-${cp.id}`}
                 type="parse_error"
-                tick={ct.tick}
-                character={ct.character_name}
-                message={ct.parse_error || "Unknown parse error"}
+                page={cp.page}
+                character={cp.character_name}
+                message={cp.parse_error || "Unknown parse error"}
               />
             ))}
-            {missingData.slice(0, 3).map((ct) => (
+            {missingData.slice(0, 3).map((cp) => (
               <IssueCard
-                key={`missing-${ct.id}`}
+                key={`missing-${cp.id}`}
                 type="missing"
-                tick={ct.tick}
-                character={ct.character_name}
+                page={cp.page}
+                character={cp.character_name}
                 message="No data extracted from response"
               />
             ))}
@@ -305,12 +305,12 @@ function StatCard({
 
 function IssueCard({
   type,
-  tick,
+  page,
   character,
   message,
 }: {
   type: "refusal" | "parse_error" | "missing";
-  tick: number;
+  page: number;
   character: string;
   message: string;
 }) {
@@ -342,7 +342,7 @@ function IssueCard({
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-medium text-foreground">{config.label}</span>
             <span className="text-[10px] text-muted-foreground">
-              Tick {tick} - {character}
+              Page {page} - {character}
             </span>
           </div>
           <p className="text-xs text-muted-foreground truncate">{message.slice(0, 150)}...</p>
@@ -352,19 +352,19 @@ function IssueCard({
   );
 }
 
-function TicksTab({
-  ticks,
+function PagesTab({
+  pages,
   expandedItems,
   toggleExpand,
 }: {
-  ticks: TickDebug[];
+  pages: PageDebug[];
   expandedItems: Set<string>;
   toggleExpand: (key: string) => void;
 }) {
   return (
     <div className="space-y-3">
-      {ticks.map((tick) => {
-        const key = `tick-${tick.id}`;
+      {pages.map((pageItem) => {
+        const key = `page-${pageItem.id}`;
         const isExpanded = expandedItems.has(key);
 
         return (
@@ -374,9 +374,9 @@ function TicksTab({
               className="w-full px-4 py-3 flex items-center justify-between bg-muted/10 hover:bg-muted/20 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <span className="text-sm font-mono font-bold text-primary">#{tick.tick}</span>
-                <span className="text-xs text-muted-foreground">{tick.world_time}</span>
-                <span className="text-xs text-amber-400/70">{tick.mood}</span>
+                <span className="text-sm font-mono font-bold text-primary">#{pageItem.page}</span>
+                <span className="text-xs text-muted-foreground">{pageItem.world_time}</span>
+                <span className="text-xs text-amber-400/70">{pageItem.mood}</span>
               </div>
               <svg
                 width="16"
@@ -404,15 +404,15 @@ function TicksTab({
                       <label className="text-[10px] uppercase tracking-wider text-muted-foreground">
                         Narration
                       </label>
-                      <p className="text-sm text-foreground/80 mt-1">{tick.narration}</p>
+                      <p className="text-sm text-foreground/80 mt-1">{pageItem.narration}</p>
                     </div>
-                    {tick.events.length > 0 && (
+                    {pageItem.events.length > 0 && (
                       <div>
                         <label className="text-[10px] uppercase tracking-wider text-muted-foreground">
                           Events
                         </label>
                         <ul className="mt-1 space-y-1">
-                          {tick.events.map((event, i) => (
+                          {pageItem.events.map((event, i) => (
                             <li key={i} className="text-xs text-muted-foreground">
                               - {event}
                             </li>
@@ -421,7 +421,7 @@ function TicksTab({
                       </div>
                     )}
                     <div className="text-[10px] text-muted-foreground/60">
-                      DB ID: {tick.id} | Created: {tick.created_at}
+                      DB ID: {pageItem.id} | Created: {pageItem.created_at}
                     </div>
                   </div>
                 </motion.div>
@@ -434,30 +434,30 @@ function TicksTab({
   );
 }
 
-function CharacterTicksTab({
-  characterTicks,
+function CharacterPagesTab({
+  characterPages,
   expandedItems,
   toggleExpand,
 }: {
-  characterTicks: CharacterTickDebug[];
+  characterPages: CharacterPageDebug[];
   expandedItems: Set<string>;
   toggleExpand: (key: string) => void;
 }) {
   return (
     <div className="space-y-3">
-      {characterTicks.map((ct) => {
-        const key = `char-${ct.id}`;
+      {characterPages.map((cp) => {
+        const key = `char-${cp.id}`;
         const isExpanded = expandedItems.has(key);
 
         return (
           <div
             key={key}
             className={`border rounded-lg overflow-hidden ${
-              ct.is_refusal
+              cp.is_refusal
                 ? "border-amber-500/30"
-                : ct.parse_error
+                : cp.parse_error
                 ? "border-red-500/30"
-                : !ct.has_extracted_data
+                : !cp.has_extracted_data
                 ? "border-muted-foreground/30"
                 : "border-border"
             }`}
@@ -467,19 +467,19 @@ function CharacterTicksTab({
               className="w-full px-4 py-3 flex items-center justify-between bg-muted/10 hover:bg-muted/20 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <span className="text-sm font-mono font-bold text-primary">#{ct.tick}</span>
-                <span className="text-sm font-medium text-foreground">{ct.character_name}</span>
-                {ct.is_refusal && (
+                <span className="text-sm font-mono font-bold text-primary">#{cp.page}</span>
+                <span className="text-sm font-medium text-foreground">{cp.character_name}</span>
+                {cp.is_refusal && (
                   <span className="px-1.5 py-0.5 text-[10px] bg-amber-500/20 text-amber-400 rounded">
                     REFUSAL
                   </span>
                 )}
-                {ct.parse_error && (
+                {cp.parse_error && (
                   <span className="px-1.5 py-0.5 text-[10px] bg-red-500/20 text-red-400 rounded">
                     PARSE ERROR
                   </span>
                 )}
-                {!ct.has_extracted_data && !ct.is_refusal && (
+                {!cp.has_extracted_data && !cp.is_refusal && (
                   <span className="px-1.5 py-0.5 text-[10px] bg-muted text-muted-foreground rounded">
                     NO DATA
                   </span>
@@ -509,33 +509,33 @@ function CharacterTicksTab({
                   <div className="p-4 space-y-3 border-t border-border bg-card/50">
                     {/* Extracted Fields */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                      <FieldDisplay label="Inner Thoughts" value={ct.inner_thoughts} />
-                      <FieldDisplay label="Action" value={ct.action} />
-                      <FieldDisplay label="Dialogue" value={ct.dialogue} />
-                      <FieldDisplay label="Emotional State" value={ct.emotional_state} />
-                      <FieldDisplay label="Desires Update" value={ct.desires_update} />
+                      <FieldDisplay label="Inner Thoughts" value={cp.inner_thoughts} />
+                      <FieldDisplay label="Action" value={cp.action} />
+                      <FieldDisplay label="Dialogue" value={cp.dialogue} />
+                      <FieldDisplay label="Emotional State" value={cp.emotional_state} />
+                      <FieldDisplay label="Desires Update" value={cp.desires_update} />
                     </div>
 
                     {/* Raw JSON */}
-                    {ct.raw_json && (
+                    {cp.raw_json && (
                       <div>
                         <label className="text-[10px] uppercase tracking-wider text-muted-foreground">
                           Raw JSON
                         </label>
                         <pre className="mt-1 p-3 text-xs bg-muted/30 rounded-lg overflow-x-auto text-muted-foreground font-mono">
-                          {JSON.stringify(ct.raw_json, null, 2)}
+                          {JSON.stringify(cp.raw_json, null, 2)}
                         </pre>
                       </div>
                     )}
 
-                    {ct.parse_error && (
+                    {cp.parse_error && (
                       <div className="p-2 bg-red-500/10 rounded text-xs text-red-400">
-                        Parse Error: {ct.parse_error}
+                        Parse Error: {cp.parse_error}
                       </div>
                     )}
 
                     <div className="text-[10px] text-muted-foreground/60">
-                      DB ID: {ct.id} | Created: {ct.created_at}
+                      DB ID: {cp.id} | Created: {cp.created_at}
                     </div>
                   </div>
                 </motion.div>

@@ -1,4 +1,4 @@
-"""Narrator agent — drives world progression each tick."""
+"""Narrator agent — drives world progression each page."""
 
 from .base import Agent
 from ..prompts import NARRATOR_SYSTEM_PROMPT

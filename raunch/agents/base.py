@@ -98,9 +98,9 @@ class Agent:
             logger.warning(f"[{self.name}] Summary failed, keeping raw: {e}")
             self.summary += f"\n{old_text}"
 
-    def tick(self, world_context: str, _retry: bool = False) -> Dict[str, Any]:
+    def page(self, world_context: str, _retry: bool = False) -> Dict[str, Any]:
         """
-        Run one tick: send world context to the agent, get response.
+        Run one page: send world context to the agent, get response.
         Returns parsed JSON response or raw text fallback.
         """
         messages = self._build_messages(world_context)
@@ -114,7 +114,7 @@ class Agent:
                 # Retry once with correction prompt
                 correction = REFUSAL_CORRECTION.format(name=self.name)
                 corrected_context = f"{world_context}\n\n{correction}"
-                return self.tick(corrected_context, _retry=True)
+                return self.page(corrected_context, _retry=True)
             else:
                 # Already retried, return refusal but DON'T store in history
                 logger.warning(f"[{self.name}] Refusal persisted after retry, not storing in history")
@@ -147,14 +147,14 @@ class Agent:
             logger.debug(f"[{self.name}] Response was not valid JSON, returning raw")
             return {"raw": raw}
 
-    def tick_stream(
+    def page_stream(
         self,
         world_context: str,
         on_delta: Optional[callable] = None,
         _retry: bool = False
     ) -> Dict[str, Any]:
         """
-        Run one tick with streaming. Calls on_delta(chunk) for each text chunk.
+        Run one page with streaming. Calls on_delta(chunk) for each text chunk.
         Returns the parsed JSON response when complete.
         """
         messages = self._build_messages(world_context)
@@ -180,7 +180,7 @@ class Agent:
                 correction = REFUSAL_CORRECTION.format(name=self.name)
                 corrected_context = f"{world_context}\n\n{correction}"
                 # Use non-streaming for retry to avoid double-streaming confusion
-                return self.tick(corrected_context, _retry=True)
+                return self.page(corrected_context, _retry=True)
             else:
                 # Already retried, return refusal but DON'T store in history
                 logger.warning(f"[{self.name}] Refusal persisted after retry, not storing in history")
