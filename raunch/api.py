@@ -182,10 +182,20 @@ app = FastAPI(
 )
 
 # CORS MUST be added as FIRST middleware
-# Include both localhost and 127.0.0.1 variants for development
+# Include localhost for dev + production domains
+CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://raunch.motherhaven.net",
+    "https://raunch.netlify.app",
+]
+# Allow additional origins from env
+if os.environ.get("CORS_ORIGINS"):
+    CORS_ORIGINS.extend(os.environ["CORS_ORIGINS"].split(","))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
