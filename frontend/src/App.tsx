@@ -13,6 +13,7 @@ import { CharacterWizard } from "./components/CharacterWizard";
 import { WizardPage } from "./components/WizardPage";
 
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
+const HAS_PLAYED_KEY = "raunch_has_played";
 
 type AppView = "splash" | "dashboard" | "kanban" | "voting" | "about" | "wizard" | "game";
 
@@ -72,6 +73,24 @@ function hasStoredNickname(): boolean {
 function setStoredNickname(nickname: string): void {
   try {
     localStorage.setItem(NICKNAME_STORAGE_KEY, nickname);
+  } catch {
+    // Silently fail if localStorage is unavailable
+  }
+}
+
+// Helper to check if user has played before
+function hasPlayedBefore(): boolean {
+  try {
+    return localStorage.getItem(HAS_PLAYED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+// Helper to mark user as having played
+function setHasPlayed(): void {
+  try {
+    localStorage.setItem(HAS_PLAYED_KEY, "true");
   } catch {
     // Silently fail if localStorage is unavailable
   }
@@ -155,14 +174,25 @@ function App() {
   // Game sub-view: connecting vs actual game (scenario selection removed for alpha)
   const [gameSubView, setGameSubView] = useState<"connecting" | "playing">("connecting");
 
-  // Handle splash completion
+  // Handle splash completion - skip to game if user has played before
   const handleSplashComplete = useCallback(() => {
-    setView("dashboard");
-  }, []);
+    if (hasPlayedBefore()) {
+      // Skip dashboard, go straight to game
+      if (wsState !== "connected") {
+        actions.connect();
+      }
+      setGameSubView("connecting");
+      setView("game");
+    } else {
+      setView("dashboard");
+    }
+  }, [wsState, actions]);
 
   // Handle navigation from dashboard
   const handleNavigate = useCallback((newView: AppView) => {
     if (newView === "game") {
+      // Mark that user has played (for skip-to-game on future visits)
+      setHasPlayed();
       // Connect WebSocket when entering game
       if (wsState !== "connected") {
         actions.connect();
