@@ -457,7 +457,7 @@ export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter }:
                   pageData={focusedPage}
                   pendingGuidance={game.pendingDirectorGuidance}
                   onDeleteCharacter={handleDeleteCharacter}
-                  characterNames={game.characterNames}
+                  onAddCharacter={onAddCharacter}
                 />
               ) : (
                 <CharacterPanel
@@ -510,7 +510,7 @@ export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter }:
                     pendingGuidance={game.pendingDirectorGuidance}
                     onClose={() => setCharacterPanelOpen(false)}
                     onDeleteCharacter={handleDeleteCharacter}
-                    characterNames={game.characterNames}
+                    onAddCharacter={onAddCharacter}
                   />
                 ) : (
                   <CharacterPanel

@@ -10,10 +10,10 @@ type Props = {
   pendingGuidance?: string | null;
   onClose?: () => void;
   onDeleteCharacter?: (name: string) => void;
-  characterNames?: string[];
+  onAddCharacter?: () => void;
 };
 
-export function DirectorPanel({ pageData, pendingGuidance, onClose, onDeleteCharacter, characterNames = [] }: Props) {
+export function DirectorPanel({ pageData, pendingGuidance, onClose, onDeleteCharacter, onAddCharacter }: Props) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const characters = pageData?.characters ? Object.entries(pageData.characters) : [];
   const events = pageData?.events ?? [];
@@ -113,14 +113,47 @@ export function DirectorPanel({ pageData, pendingGuidance, onClose, onDeleteChar
             {/* All characters at this page */}
             {characters.length > 0 && (
               <div className="space-y-3">
-                <label className="text-[9px] uppercase tracking-wider text-muted-foreground">
-                  Characters
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                    Characters
+                  </label>
+                  {onAddCharacter && (
+                    <button
+                      onClick={onAddCharacter}
+                      className="text-[9px] text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                      title="Add character"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                      Add
+                    </button>
+                  )}
+                </div>
                 {characters.map(([name, data]) => (
-                  <div key={name} className="space-y-1">
+                  <div key={name} className="space-y-1 group">
                     <div className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rounded-full bg-primary/60 shrink-0" />
-                      <span className="text-xs font-medium text-foreground/90">{name}</span>
+                      <span className="text-xs font-medium text-foreground/90 flex-1">{name}</span>
+                      {onDeleteCharacter && (
+                        <button
+                          onClick={() => handleDelete(name)}
+                          className={`opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded ${
+                            confirmDelete === name
+                              ? "opacity-100 text-destructive"
+                              : "text-muted-foreground/50 hover:text-destructive"
+                          }`}
+                          title={confirmDelete === name ? "Click again to confirm" : "Remove character"}
+                        >
+                          {confirmDelete === name ? (
+                            <span className="text-[9px] font-medium">Confirm?</span>
+                          ) : (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M18 6L6 18M6 6l12 12" />
+                            </svg>
+                          )}
+                        </button>
+                      )}
                     </div>
                     {data && (
                       <div className="ml-3.5 space-y-1">
@@ -146,34 +179,6 @@ export function DirectorPanel({ pageData, pendingGuidance, onClose, onDeleteChar
               <p className="text-xs text-muted-foreground/60 italic">
                 Waiting for scene data...
               </p>
-            )}
-
-            {/* Manage Characters section */}
-            {characterNames.length > 0 && onDeleteCharacter && (
-              <>
-                <Separator className="bg-border/30" />
-                <div className="space-y-2">
-                  <label className="text-[9px] uppercase tracking-wider text-muted-foreground">
-                    Manage Cast
-                  </label>
-                  {characterNames.map((name) => (
-                    <div key={name} className="flex items-center justify-between group">
-                      <span className="text-xs text-foreground/80">{name}</span>
-                      <button
-                        onClick={() => handleDelete(name)}
-                        className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
-                          confirmDelete === name
-                            ? "bg-destructive text-destructive-foreground"
-                            : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        }`}
-                        title={confirmDelete === name ? "Click again to confirm" : "Remove character"}
-                      >
-                        {confirmDelete === name ? "Confirm?" : "Remove"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </>
             )}
           </motion.div>
         </AnimatePresence>
