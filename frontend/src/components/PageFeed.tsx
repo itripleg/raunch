@@ -485,6 +485,15 @@ function PageIntermission({
                    pageNum === 7 ? "Seven" : pageNum === 8 ? "Eight" : pageNum === 9 ? "Nine" :
                    pageNum === 10 ? "Ten" : String(pageNum);
 
+  // Auto-scroll to intermission immediately on mount
+  useEffect(() => {
+    // Small delay to ensure DOM is ready
+    const scrollTimer = setTimeout(() => {
+      onScrollNeeded?.();
+    }, 100);
+    return () => clearTimeout(scrollTimer);
+  }, [onScrollNeeded]);
+
   // Animate dots
   useEffect(() => {
     const dotTimer = setInterval(() => {

@@ -130,6 +130,7 @@ type Action =
   // Non-streaming progressive updates
   | { type: "PAGE_GENERATING"; page: number }
   | { type: "NARRATOR_READY"; page: number; narration: string; mood: string; created_at: string }
+  | { type: "CHARACTER_READY"; page: number; character: string; data: Record<string, unknown> }
   // Multiplayer
   | { type: "JOINED"; player_id: string; nickname: string }
   | { type: "PLAYERS"; players: Player[] }
@@ -225,6 +226,20 @@ function reducer(state: State, action: Action): State {
         pendingDirectorGuidance: null,
         pageGenerating: null, // Clear - page content is now arriving
       };
+    }
+    case "CHARACTER_READY": {
+      // Add character to existing page (non-streaming mode)
+      const pageIndex = state.pages.findIndex(p => p.page === action.page);
+      if (pageIndex === -1) return state; // Page not found
+      const updatedPages = [...state.pages];
+      updatedPages[pageIndex] = {
+        ...updatedPages[pageIndex],
+        characters: {
+          ...updatedPages[pageIndex].characters,
+          [action.character]: action.data,
+        },
+      };
+      return { ...state, pages: updatedPages };
     }
     case "ATTACHED":
       return { ...state, attachedTo: action.character };
@@ -520,6 +535,15 @@ export function useGame(wsUrl: string) {
           narration: msg.narration as string,
           mood: (msg.mood as string) || "",
           created_at: (msg.created_at as string) || new Date().toISOString(),
+        });
+        break;
+      case "character_ready":
+        // Non-streaming mode: character finished, add to page
+        dispatch({
+          type: "CHARACTER_READY",
+          page: msg.page as number,
+          character: msg.character as string,
+          data: msg.data as Record<string, unknown>,
         });
         break;
       case "attached":

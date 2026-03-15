@@ -417,6 +417,10 @@ def start(save_name, world_name, scenario_name, headless, force):
                             console.print(f"  [bold]{source}[/] — [italic]\"{dialogue}\"[/]")
                     progressive_rendered["characters"].add(source)
 
+                    # In non-streaming mode, send character to frontend immediately
+                    if not orch.streaming_enabled:
+                        ws_server.broadcast_character_ready(page_num, source, char_data)
+
     orch.set_stream_callback(on_stream)
 
     # Disable streaming for OAuth (doesn't support real streaming)
