@@ -324,3 +324,46 @@ async def add_character(req: AddCharacterRequest):
         name=req.name,
         message=f"Character '{req.name}' added to world at {location}"
     )
+
+
+class DeleteCharacterResponse(BaseModel):
+    """Response after deleting a character."""
+    success: bool
+    name: str
+    message: str
+
+
+@app.delete("/api/v1/characters/{name}", response_model=DeleteCharacterResponse)
+async def delete_character(name: str):
+    """Remove a character from the world (history is preserved)."""
+    orch = get_orchestrator()
+    if orch is None:
+        raise HTTPException(status_code=404, detail="No world is running")
+
+    if name not in orch.characters:
+        raise HTTPException(status_code=404, detail=f"Character '{name}' not found")
+
+    # Remove from orchestrator
+    del orch.characters[name]
+
+    # Remove from location tracking
+    for loc in orch.world.locations.values():
+        if name in loc.get("characters", []):
+            loc["characters"].remove(name)
+
+    # Remove from scenario (so they don't respawn on restart)
+    if orch.world.scenario is not None:
+        chars = orch.world.scenario.get("characters", [])
+        orch.world.scenario["characters"] = [c for c in chars if c.get("name") != name]
+        # Save immediately
+        orch.world.save(orch.world.world_name)
+
+    # Note: History in database is intentionally preserved (character "left the scene")
+
+    logger.info(f"Deleted character: {name}")
+
+    return DeleteCharacterResponse(
+        success=True,
+        name=name,
+        message=f"Character '{name}' has left the scene (history preserved)"
+    )
