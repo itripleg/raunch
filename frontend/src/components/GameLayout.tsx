@@ -28,7 +28,7 @@ type GameState = {
   directorMode?: boolean;
   pendingDirectorGuidance?: string | null;
   streaming?: StreamingState;
-  pageGenerating?: boolean;
+  pageGenerating?: number | null;
   // Multiplayer
   multiplayer?: boolean;
   turnState?: TurnState | null;
@@ -124,13 +124,6 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
       setFocusedPageNum(game.pages[game.pages.length - 1].page);
     }
   }, [game.pages.length, focusedPageNum]);
-
-  // Get the character data for the focused page
-  const _focusedPageData = useMemo(() => {
-    if (!focusedPageNum || !game.attachedTo) return null;
-    const pageItem = game.pages.find(p => p.page === focusedPageNum);
-    return pageItem?.characters[game.attachedTo] ?? null;
-  }, [focusedPageNum, game.pages, game.attachedTo]);
 
   // Fallback to latest page if no focus
   const latestPage = game.pages[game.pages.length - 1];
