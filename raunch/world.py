@@ -151,7 +151,8 @@ class WorldState:
         self.world_id = data.get("world_id", self.world_id)
         self.world_name = data.get("world_name", self.world_name)
         self.created_at = data.get("created_at", self.created_at)
-        self.page_count = data["page_count"]
+        # Backwards compat: accept both page_count and old tick_count
+        self.page_count = data.get("page_count", data.get("tick_count", 0))
         self.world_time = data["world_time"]
         self.mood = data["mood"]
         self.locations = data["locations"]
