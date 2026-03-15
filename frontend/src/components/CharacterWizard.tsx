@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 
 type CharacterData = {
@@ -10,12 +10,42 @@ type CharacterData = {
   backstory: string;
 };
 
+type NPCInfo = {
+  name: string;
+  description?: string;
+  species?: string;
+  personality?: string;
+  appearance?: string;
+  desires?: string;
+  backstory?: string;
+};
+
 type Props = {
   apiUrl: string;
   onCharacterAdded: (char: CharacterData) => void;
   onClose: () => void;
   existingCharacters: string[];
+  npcs?: NPCInfo[];
 };
+
+// Match NPC by name (case-insensitive, first name match)
+function findMatchingNPC(name: string, npcs: NPCInfo[]): NPCInfo | null {
+  if (!name.trim() || !npcs.length) return null;
+
+  const searchName = name.trim().toLowerCase();
+
+  for (const npc of npcs) {
+    const npcName = npc.name.toLowerCase();
+    // Exact match (case-insensitive)
+    if (npcName === searchName) return npc;
+    // First name match (e.g., "Jake" matches "Jake Morrison")
+    if (npcName.startsWith(searchName + " ")) return npc;
+    // User typed full name, NPC has first name only
+    if (searchName.startsWith(npcName + " ")) return npc;
+  }
+
+  return null;
+}
 
 const SPECIES_SUGGESTIONS = [
   "Human",
@@ -52,10 +82,33 @@ const PERSONALITY_SUGGESTIONS = [
   "Submissive and eager",
 ];
 
-export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCharacters }: Props) {
+export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCharacters, npcs: propNpcs = [] }: Props) {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showNPCMatch, setShowNPCMatch] = useState(false);
+  const [matchedNPC, setMatchedNPC] = useState<NPCInfo | null>(null);
+  const [npcs, setNpcs] = useState<NPCInfo[]>(propNpcs);
+
+  // Fetch NPCs from API on mount
+  useEffect(() => {
+    async function fetchNPCs() {
+      try {
+        const res = await fetch(`${apiUrl}/api/v1/world`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.npcs && Array.isArray(data.npcs)) {
+            setNpcs(data.npcs);
+          }
+        }
+      } catch {
+        // Silently fail - NPCs are optional
+      }
+    }
+    if (propNpcs.length === 0) {
+      fetchNPCs();
+    }
+  }, [apiUrl, propNpcs]);
 
   const [char, setChar] = useState<CharacterData>({
     name: "",
@@ -66,9 +119,34 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
     backstory: "",
   });
 
+  // Check for NPC match when name changes
+  const currentMatch = useMemo(() => {
+    return findMatchingNPC(char.name, npcs);
+  }, [char.name, npcs]);
+
   const updateField = useCallback((field: keyof CharacterData, value: string) => {
     setChar(prev => ({ ...prev, [field]: value }));
     setError(null);
+    // Reset match prompt when name changes
+    if (field === "name") {
+      setShowNPCMatch(false);
+      setMatchedNPC(null);
+    }
+  }, []);
+
+  // Apply NPC data to character
+  const applyNPCData = useCallback((npc: NPCInfo) => {
+    setChar(prev => ({
+      ...prev,
+      name: npc.name,
+      species: npc.species || prev.species,
+      personality: npc.personality || npc.description || prev.personality,
+      appearance: npc.appearance || prev.appearance,
+      desires: npc.desires || prev.desires,
+      backstory: npc.backstory || prev.backstory,
+    }));
+    setShowNPCMatch(false);
+    setMatchedNPC(null);
   }, []);
 
   const canProceed = useCallback(() => {
@@ -88,10 +166,16 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
       setError("A character with this name already exists");
       return;
     }
+    // Check for NPC match when leaving name step
+    if (step === 0 && currentMatch && !matchedNPC) {
+      setMatchedNPC(currentMatch);
+      setShowNPCMatch(true);
+      return;
+    }
     if (step < 5) {
       setStep(step + 1);
     }
-  }, [step, char.name, existingCharacters]);
+  }, [step, char.name, existingCharacters, currentMatch, matchedNPC]);
 
   const handleSubmit = useCallback(async () => {
     setLoading(true);
@@ -269,6 +353,45 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
             {error}
           </motion.p>
         )}
+
+        {/* NPC Match Prompt */}
+        <AnimatePresence>
+          {showNPCMatch && matchedNPC && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-4 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg"
+            >
+              <p className="text-sm text-purple-300 mb-3">
+                Found an NPC named <span className="font-semibold">"{matchedNPC.name}"</span> in the scenario.
+                Use their description?
+              </p>
+              {(matchedNPC.description || matchedNPC.personality) && (
+                <p className="text-xs text-muted-foreground mb-3 italic line-clamp-2">
+                  "{matchedNPC.description || matchedNPC.personality}"
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => applyNPCData(matchedNPC)}
+                  className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs rounded-lg transition-colors"
+                >
+                  Yes, use NPC data
+                </button>
+                <button
+                  onClick={() => {
+                    setShowNPCMatch(false);
+                    setStep(1);
+                  }}
+                  className="px-3 py-1.5 text-muted-foreground hover:text-foreground text-xs transition-colors"
+                >
+                  No, create fresh
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Actions */}
         <div className="flex justify-between mt-6">

@@ -61,6 +61,18 @@ class LoadWorldRequest(BaseModel):
     scenario: str
 
 
+class NPCInfo(BaseModel):
+    """NPC info for promoting to character."""
+
+    name: str
+    description: Optional[str] = None
+    species: Optional[str] = None
+    personality: Optional[str] = None
+    appearance: Optional[str] = None
+    desires: Optional[str] = None
+    backstory: Optional[str] = None
+
+
 class WorldResponse(BaseModel):
     """Response schema for world state."""
 
@@ -69,6 +81,7 @@ class WorldResponse(BaseModel):
     name: Optional[str] = None
     page: Optional[int] = None
     characters: Optional[List[str]] = None
+    npcs: Optional[List[NPCInfo]] = None
     turn_timeout: int = 60
 
 
@@ -150,12 +163,27 @@ async def get_world():
     world = orch.world
     character_names = list(orch.characters.keys())
 
+    # Get NPCs from scenario (available to promote to full characters)
+    npcs = []
+    if world.scenario:
+        for npc in world.scenario.get("npcs", []):
+            npcs.append(NPCInfo(
+                name=npc.get("name", ""),
+                description=npc.get("description"),
+                species=npc.get("species"),
+                personality=npc.get("personality"),
+                appearance=npc.get("appearance"),
+                desires=npc.get("desires"),
+                backstory=npc.get("backstory"),
+            ))
+
     return WorldResponse(
         running=True,
         world_id=world.world_id,
         name=world.world_name,
         page=world.page_count,
         characters=character_names,
+        npcs=npcs if npcs else None,
         turn_timeout=orch.page_interval if orch.page_interval > 0 else 60,
     )
 
