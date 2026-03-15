@@ -187,8 +187,9 @@ def start(save_name, world_name, scenario_name, headless, force):
                     orch.save_name = derived_save_name
                     orch._initial_save_done = True
                     console.print(f"[green]Continuing scenario from save: {derived_save_name}[/green]")
-                    # Recreate characters from scenario (agent state is lost, but world state preserved)
-                    _apply_scenario_characters(orch, scenario)
+                    # Recreate characters from SAVED scenario (includes dynamically added characters)
+                    # Use orch.world.scenario which was loaded from save, not the original scenario file
+                    _apply_scenario_characters(orch, orch.world.scenario or scenario)
                 else:
                     # Fresh start
                     _apply_scenario(orch, scenario)

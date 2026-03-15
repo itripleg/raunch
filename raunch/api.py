@@ -302,6 +302,21 @@ async def add_character(req: AddCharacterRequest):
     location = req.location or list(orch.world.locations.keys())[0] if orch.world.locations else "unknown"
     orch.add_character(char, location=location)
 
+    # Persist character to scenario so it survives restart
+    if orch.world.scenario is not None:
+        if "characters" not in orch.world.scenario:
+            orch.world.scenario["characters"] = []
+        orch.world.scenario["characters"].append({
+            "name": req.name,
+            "species": req.species,
+            "personality": req.personality,
+            "appearance": req.appearance,
+            "desires": req.desires,
+            "backstory": req.backstory,
+        })
+        # Save immediately so character persists
+        orch.world.save(orch.world.world_name)
+
     logger.info(f"Added character: {req.name} ({req.species}) at {location}")
 
     return AddCharacterResponse(
