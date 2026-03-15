@@ -1,6 +1,7 @@
 """FastAPI REST API for raunch multiplayer endpoints."""
 
 import logging
+import os
 from typing import List, Optional, TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException
