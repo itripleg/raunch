@@ -207,6 +207,21 @@ def init_db() -> None:
             role         TEXT DEFAULT 'reader',
             PRIMARY KEY (book_id, librarian_id)
         );
+
+        CREATE TABLE IF NOT EXISTS scenarios (
+            id          TEXT PRIMARY KEY,
+            owner_id    TEXT REFERENCES librarians(id),
+            name        TEXT NOT NULL,
+            description TEXT,
+            setting     TEXT,
+            data        TEXT NOT NULL,
+            public      INTEGER DEFAULT 0,
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_scenarios_owner ON scenarios(owner_id);
+        CREATE INDEX IF NOT EXISTS idx_scenarios_public ON scenarios(public);
+        CREATE INDEX IF NOT EXISTS idx_scenarios_name ON scenarios(name);
     """)
     conn.commit()
 
@@ -1242,3 +1257,225 @@ def grant_book_access(book_id: str, librarian_id: str, role: str = "reader") -> 
         (book_id, librarian_id, role)
     )
     conn.commit()
+
+
+# =============================================================================
+# Scenario Functions
+# =============================================================================
+
+def create_scenario(owner_id: str, name: str, description: Optional[str],
+                    setting: Optional[str], data: Dict[str, Any], public: bool = False) -> Dict[str, Any]:
+    """Create a new scenario and return its data.
+
+    Args:
+        owner_id: ID of the librarian who owns this scenario.
+        name: Display name for the scenario.
+        description: Optional description/premise for the scenario.
+        setting: Optional setting description.
+        data: Full scenario data as a dict (will be JSON-encoded).
+        public: If True, scenario is visible to all users (default False).
+
+    Returns:
+        Dict with scenario data including id, owner_id, name, description, setting, data, public, created_at.
+    """
+    conn = _get_conn()
+    scenario_id = str(uuid.uuid4())[:8]
+
+    conn.execute(
+        """INSERT INTO scenarios (id, owner_id, name, description, setting, data, public)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (scenario_id, owner_id, name, description, setting, json.dumps(data), 1 if public else 0)
+    )
+    conn.commit()
+
+    return get_scenario(scenario_id)
+
+
+def get_scenario(scenario_id: str) -> Optional[Dict[str, Any]]:
+    """Get a scenario by ID.
+
+    Args:
+        scenario_id: The scenario ID to fetch.
+
+    Returns:
+        Dict with scenario data, or None if not found.
+    """
+    conn = _get_conn()
+    row = conn.execute(
+        """SELECT id, owner_id, name, description, setting, data, public, created_at
+           FROM scenarios WHERE id = ?""",
+        (scenario_id,)
+    ).fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "id": row["id"],
+        "owner_id": row["owner_id"],
+        "name": row["name"],
+        "description": row["description"],
+        "setting": row["setting"],
+        "data": json.loads(row["data"]) if row["data"] else {},
+        "public": bool(row["public"]),
+        "created_at": row["created_at"],
+    }
+
+
+def get_scenario_by_name(name: str) -> Optional[Dict[str, Any]]:
+    """Get a scenario by name (for backwards compatibility with file-based scenarios).
+
+    Searches for public scenarios only. Case-insensitive match.
+
+    Args:
+        name: The scenario name to search for.
+
+    Returns:
+        Dict with scenario data, or None if not found.
+    """
+    conn = _get_conn()
+    row = conn.execute(
+        """SELECT id, owner_id, name, description, setting, data, public, created_at
+           FROM scenarios WHERE UPPER(name) = UPPER(?) AND public = 1
+           ORDER BY created_at DESC, ROWID DESC LIMIT 1""",
+        (name,)
+    ).fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "id": row["id"],
+        "owner_id": row["owner_id"],
+        "name": row["name"],
+        "description": row["description"],
+        "setting": row["setting"],
+        "data": json.loads(row["data"]) if row["data"] else {},
+        "public": bool(row["public"]),
+        "created_at": row["created_at"],
+    }
+
+
+def list_scenarios_for_librarian(librarian_id: str) -> List[Dict[str, Any]]:
+    """List all scenarios owned by a librarian (both public and private).
+
+    Args:
+        librarian_id: The librarian ID to fetch scenarios for.
+
+    Returns:
+        List of scenario dicts, ordered by most recently created first.
+    """
+    conn = _get_conn()
+    rows = conn.execute(
+        """SELECT id, owner_id, name, description, setting, data, public, created_at
+           FROM scenarios WHERE owner_id = ?
+           ORDER BY created_at DESC, ROWID DESC""",
+        (librarian_id,)
+    ).fetchall()
+
+    return [
+        {
+            "id": row["id"],
+            "owner_id": row["owner_id"],
+            "name": row["name"],
+            "description": row["description"],
+            "setting": row["setting"],
+            "data": json.loads(row["data"]) if row["data"] else {},
+            "public": bool(row["public"]),
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+def list_public_scenarios() -> List[Dict[str, Any]]:
+    """List all public scenarios in the database.
+
+    Returns:
+        List of public scenario dicts, ordered by most recently created first.
+    """
+    conn = _get_conn()
+    rows = conn.execute(
+        """SELECT id, owner_id, name, description, setting, data, public, created_at
+           FROM scenarios WHERE public = 1
+           ORDER BY created_at DESC, ROWID DESC"""
+    ).fetchall()
+
+    return [
+        {
+            "id": row["id"],
+            "owner_id": row["owner_id"],
+            "name": row["name"],
+            "description": row["description"],
+            "setting": row["setting"],
+            "data": json.loads(row["data"]) if row["data"] else {},
+            "public": bool(row["public"]),
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+def update_scenario(scenario_id: str, name: Optional[str] = None,
+                    description: Optional[str] = None, setting: Optional[str] = None,
+                    data: Optional[Dict[str, Any]] = None, public: Optional[bool] = None) -> bool:
+    """Update a scenario's fields.
+
+    Args:
+        scenario_id: The scenario ID to update.
+        name: New name (optional).
+        description: New description (optional).
+        setting: New setting (optional).
+        data: New data dict (optional, will be JSON-encoded).
+        public: New public flag (optional).
+
+    Returns:
+        True if the scenario was found and updated, False otherwise.
+    """
+    conn = _get_conn()
+
+    updates = []
+    params = []
+
+    if name is not None:
+        updates.append("name = ?")
+        params.append(name)
+    if description is not None:
+        updates.append("description = ?")
+        params.append(description)
+    if setting is not None:
+        updates.append("setting = ?")
+        params.append(setting)
+    if data is not None:
+        updates.append("data = ?")
+        params.append(json.dumps(data))
+    if public is not None:
+        updates.append("public = ?")
+        params.append(1 if public else 0)
+
+    if not updates:
+        return False
+
+    params.append(scenario_id)
+    cursor = conn.execute(
+        f"UPDATE scenarios SET {', '.join(updates)} WHERE id = ?",
+        params
+    )
+    conn.commit()
+
+    return cursor.rowcount > 0
+
+
+def delete_scenario(scenario_id: str) -> bool:
+    """Delete a scenario.
+
+    Args:
+        scenario_id: The scenario ID to delete.
+
+    Returns:
+        True if the scenario was found and deleted, False otherwise.
+    """
+    conn = _get_conn()
+    cursor = conn.execute("DELETE FROM scenarios WHERE id = ?", (scenario_id,))
+    conn.commit()
+    return cursor.rowcount > 0
