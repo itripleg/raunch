@@ -22,7 +22,7 @@ type Props = {
 
 export function AdminSettings({ isOpen, onClose, onOpenDebug, apiUrl = "http://localhost:8000" }: Props) {
   const { user, logout } = useKindeAuth();
-  const isAdmin = user?.email === ADMIN_EMAIL;
+  const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
   const [tokens, setTokens] = useState<TokenInfo[]>([]);
   const [loading, setLoading] = useState(false);

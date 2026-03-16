@@ -251,8 +251,12 @@ async def websocket_endpoint(websocket: WebSocket, book_id: str):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "ok"}
+    """Health check endpoint with server identification."""
+    return {
+        "status": "ok",
+        "server": "raunch",
+        "version": "1.0.0",
+    }
 
 
 @app.get("/api/v1/scenarios", response_model=List[ScenarioResponse])
@@ -774,7 +778,7 @@ async def get_message():
 @app.put("/api/v1/alpha/message")
 async def update_message(req: AlphaMessageUpdate):
     """Update the hero/dev message (admin only)."""
-    if req.admin_email != ADMIN_EMAIL:
+    if req.admin_email.lower() != ADMIN_EMAIL.lower():
         raise HTTPException(status_code=403, detail="Admin access required")
     msg = set_alpha_message(req.content)
     return AlphaMessage(content=msg["content"], updated_at=msg["updated_at"])
@@ -826,7 +830,7 @@ async def create_feedback(req: FeedbackItemCreate):
 @app.put("/api/v1/alpha/feedback/{item_id}", response_model=FeedbackItem)
 async def update_feedback(item_id: int, req: FeedbackItemUpdate):
     """Update a feedback item (admin)."""
-    if req.admin_email != ADMIN_EMAIL:
+    if req.admin_email.lower() != ADMIN_EMAIL.lower():
         raise HTTPException(status_code=403, detail="Admin access required")
     item = update_feedback_item(item_id, req.status, req.outcome, req.outcome_notes)
     if item is None:
@@ -842,7 +846,7 @@ class AdminDeleteRequest(BaseModel):
 @app.delete("/api/v1/alpha/feedback/{item_id}")
 async def remove_feedback(item_id: int, req: AdminDeleteRequest):
     """Delete a feedback item (admin)."""
-    if req.admin_email != ADMIN_EMAIL:
+    if req.admin_email.lower() != ADMIN_EMAIL.lower():
         raise HTTPException(status_code=403, detail="Admin access required")
     success = delete_feedback_item(item_id)
     if not success:
@@ -919,7 +923,7 @@ async def list_polls(voter_id: Optional[str] = None):
 @app.post("/api/v1/alpha/polls", response_model=Poll)
 async def create_new_poll(req: PollCreate):
     """Create a new poll (admin)."""
-    if req.admin_email != ADMIN_EMAIL:
+    if req.admin_email.lower() != ADMIN_EMAIL.lower():
         raise HTTPException(status_code=403, detail="Admin access required")
     poll = create_poll(
         req.question, req.poll_type, req.max_selections,
@@ -946,7 +950,7 @@ async def add_option_to_poll(poll_id: int, req: PollOptionCreate):
 @app.delete("/api/v1/alpha/polls/{poll_id}")
 async def remove_poll(poll_id: int, req: AdminDeleteRequest):
     """Delete a poll (admin)."""
-    if req.admin_email != ADMIN_EMAIL:
+    if req.admin_email.lower() != ADMIN_EMAIL.lower():
         raise HTTPException(status_code=403, detail="Admin access required")
     success = delete_poll(poll_id)
     if not success:
