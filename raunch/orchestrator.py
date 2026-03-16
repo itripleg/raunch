@@ -5,7 +5,7 @@ import logging
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, Optional, Callable, List
 
 from .agents import Narrator, Character
@@ -455,67 +455,38 @@ class Orchestrator:
             results["narration"] = f"[Narrator error: {e}]"
             results["events"] = []
 
-        # 2. Each character reacts
+        # 2. Each character reacts (in parallel)
         # Take a snapshot to avoid "dictionary changed size during iteration" errors
         narration_text = results["narration"]
-        for name, char in list(self.characters.items()):
-            # Check for pending influence (whispered suggestion)
-            influence = self.get_pending_influence(name)
+        char_items = list(self.characters.items())
 
-            # Skip player character if waiting for input (legacy mode)
-            if name == self.player_character:
-                if self._player_input:
-                    # Use player's action
-                    char_input = (
-                        f"{world_snapshot}\n\n"
-                        f"[NARRATOR]: {narration_text}\n\n"
-                        f"You ({name}) decide to: {self._player_input}\n\n"
-                        f"Describe your inner thoughts and how you carry out this action."
-                    )
-                    self._player_input = None
-                    self._player_event.clear()
-                else:
-                    # Waiting for player — skip this character's page
-                    results["characters"][name] = {
-                        "inner_thoughts": "[Awaiting player input...]",
-                        "action": None,
-                        "waiting_for_player": True,
-                    }
-                    continue
-            elif influence:
-                # Character has an influence whispered to them
-                char_input = (
-                    f"{world_snapshot}\n\n"
-                    f"[NARRATOR]: {narration_text}\n\n"
-                    f"[INNER VOICE - a sudden urge, desire, or thought wells up within you]: {influence}\n\n"
-                    f"This thought feels compelling. Let it guide your actions and feelings this moment.\n\n"
-                    f"What do you do? What are you thinking and feeling?"
-                )
-            else:
-                char_input = (
-                    f"{world_snapshot}\n\n"
-                    f"[NARRATOR]: {narration_text}\n\n"
-                    f"What do you do? What are you thinking and feeling?"
-                )
+        # Use ThreadPoolExecutor for parallel character processing
+        # Set max_workers based on character count (min 1, max 10)
+        max_workers = min(max(1, len(char_items)), 10)
 
-            try:
-                if self.streaming_enabled and self._stream_callback:
-                    # Don't send "start" for characters - only narrator gets page_start
-                    # This preserves the narrator content in the frontend streaming state
-                    char_result = char.page_stream(
-                        char_input,
-                        on_delta=lambda chunk, n=name: self._stream_callback(page_num, n, "delta", chunk)
-                    )
-                    self._stream_callback(page_num, name, "done", "")
-                else:
-                    # Non-streaming mode - send done event for CLI progressive rendering
-                    char_result = char.page(char_input)
-                    if self._stream_callback:
-                        self._stream_callback(page_num, name, "done", "")
-                results["characters"][name] = char_result
-            except Exception as e:
-                logger.error(f"Character {name} page failed: {e}")
-                results["characters"][name] = {"inner_thoughts": f"[Error: {e}]", "action": None}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all character processing tasks
+            futures = {
+                executor.submit(
+                    self._process_single_character,
+                    name,
+                    char,
+                    narration_text,
+                    world_snapshot,
+                    page_num
+                ): name
+                for name, char in char_items
+            }
+
+            # Collect results as they complete
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    char_name, char_result = future.result()
+                    results["characters"][char_name] = char_result
+                except Exception as e:
+                    logger.error(f"Character {name} processing failed: {e}")
+                    results["characters"][name] = {"inner_thoughts": f"[Error: {e}]", "action": None}
 
         # 3. Persist page to database (skip if error page)
         narration = results.get("narration", "")
