@@ -138,6 +138,20 @@ def _ensure_orchestrator(book) -> bool:
 
     orch.set_stream_callback(stream_callback)
 
+    # Set up page callback to broadcast completed pages
+    def page_callback(results: dict):
+        if main_loop is None:
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(
+                _broadcast_page(book.book_id, results),
+                main_loop
+            )
+        except Exception as e:
+            logger.debug(f"Page callback error: {e}")
+
+    orch.add_page_callback(page_callback)
+
     book.set_orchestrator(orch)
 
     # Start the orchestrator
@@ -167,6 +181,45 @@ async def _broadcast_stream(book_id: str, page: int, source: str, event: str, co
             "page": page,
             "source": source,
         })
+
+
+async def _broadcast_page(book_id: str, results: dict):
+    """Broadcast completed page to all clients."""
+    from datetime import datetime
+
+    # Handle error results
+    if "error" in results:
+        await ws_manager.broadcast(book_id, {
+            "type": "error",
+            "message": results["error"],
+        })
+        return
+
+    # Handle waiting for player
+    if results.get("waiting_for_player"):
+        return
+
+    # Build page message
+    page_msg = {
+        "type": "page",
+        "page": results.get("page"),
+        "narration": results.get("narration", ""),
+        "events": results.get("events", []),
+        "characters": {},
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    # Add character data
+    for cname, cdata in results.get("characters", {}).items():
+        if isinstance(cdata, dict):
+            page_msg["characters"][cname] = {
+                "action": cdata.get("action"),
+                "dialogue": cdata.get("dialogue"),
+                "emotional_state": cdata.get("emotional_state"),
+                "inner_thoughts": cdata.get("inner_thoughts"),
+            }
+
+    await ws_manager.broadcast(book_id, page_msg)
 
 
 async def handle_websocket(websocket: WebSocket, book_id: str):
@@ -284,14 +337,24 @@ async def handle_command(client: WSClient, book, data: Dict[str, Any]) -> None:
             await client.send_error("not_joined", "Join first")
             return
 
-        character = data.get("character")
+        character = data.get("character", "").strip()
         if not character:
             await client.send_error("invalid_command", "Character name required")
             return
 
-        if orch and character not in orch.characters:
+        # Fuzzy match: case-insensitive prefix matching
+        matched_name = None
+        if orch:
+            for name in orch.characters:
+                if name.lower().startswith(character.lower()):
+                    matched_name = name
+                    break
+
+        if not matched_name:
             await client.send_error("not_found", f"Character '{character}' not found")
             return
+
+        character = matched_name  # Use the actual name
 
         existing = book.get_reader_by_character(character)
         if existing and existing.reader_id != client.reader.reader_id:
