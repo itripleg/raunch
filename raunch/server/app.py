@@ -1,0 +1,29 @@
+"""FastAPI application factory."""
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from .routes import health
+
+
+def create_app() -> FastAPI:
+    """Create and configure the FastAPI application."""
+    app = FastAPI(
+        title="Living Library API",
+        description="Multi-book interactive fiction server",
+        version="1.0.0",
+    )
+
+    # CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Configure properly for production
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Routes
+    app.include_router(health.router)
+
+    return app
