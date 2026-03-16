@@ -1026,12 +1026,15 @@ def _connect_interactive_loop(client: RemoteClient) -> None:
     console.print(
         Panel(
             "[bold]Commands:[/bold]\n"
-            "  [bold]c[/bold], [bold]characters[/bold]  List characters\n"
-            "  [bold]a[/bold] <name>        Attach to character\n"
-            "  [bold]d[/bold]               Detach\n"
-            "  [bold]w[/bold] <text>        Whisper to attached character\n"
-            "  [bold]>[/bold] <text>        Submit action\n"
-            "  [bold]q[/bold]               Quit",
+            "  [bold]n[/bold], [bold]next[/bold], Enter  Trigger next page\n"
+            "  [bold]p[/bold], [bold]pause[/bold]        Pause/resume\n"
+            "  [bold]t[/bold] <sec>          Set page interval (0=manual)\n"
+            "  [bold]c[/bold], [bold]characters[/bold]   List characters\n"
+            "  [bold]a[/bold] <name>         Attach to character\n"
+            "  [bold]d[/bold]                Detach\n"
+            "  [bold]w[/bold] <text>         Whisper to attached character\n"
+            "  [bold]>[/bold] <text>         Submit action\n"
+            "  [bold]q[/bold]                Quit",
             title="Remote Session",
             border_style="cyan",
         )
@@ -1046,14 +1049,53 @@ def _connect_interactive_loop(client: RemoteClient) -> None:
                 break
 
             if not cmd:
+                # Empty = next page
+                try:
+                    client.trigger_page()
+                    console.print("[dim]Page triggered...[/dim]")
+                except Exception as e:
+                    console.print(f"[red]{e}[/red]")
                 continue
 
             parts = cmd.split(None, 1)
             cmd_name = parts[0].lower()
             cmd_arg = parts[1] if len(parts) > 1 else ""
 
-            if cmd_name in ('q', 'quit', 'exit'):
+            if cmd_name in ('n', 'next'):
+                # Trigger next page
+                try:
+                    client.trigger_page()
+                    console.print("[dim]Page triggered...[/dim]")
+                except Exception as e:
+                    console.print(f"[red]{e}[/red]")
+                continue
+            elif cmd_name in ('q', 'quit', 'exit'):
                 break
+            elif cmd_name in ('p', 'pause'):
+                # Toggle pause
+                try:
+                    book = client.get_book()
+                    if book and book.paused:
+                        client.resume()
+                        console.print("[green]Resumed[/green]")
+                    else:
+                        client.pause()
+                        console.print("[yellow]Paused[/yellow]")
+                except Exception as e:
+                    console.print(f"[red]{e}[/red]")
+            elif cmd_name in ('t', 'timer'):
+                # Set page interval
+                try:
+                    seconds = int(cmd_arg) if cmd_arg else 0
+                    client.set_page_interval(seconds)
+                    if seconds == 0:
+                        console.print("[dim]Manual mode[/dim]")
+                    else:
+                        console.print(f"[dim]Page every {seconds}s[/dim]")
+                except ValueError:
+                    console.print("[red]Usage: t <seconds>[/red]")
+                except Exception as e:
+                    console.print(f"[red]{e}[/red]")
             elif cmd_name in ('c', 'chars', 'characters'):
                 chars = client.list_characters()
                 for c in chars:

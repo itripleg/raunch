@@ -118,15 +118,23 @@ def _ensure_orchestrator(book) -> bool:
         )
         orch.add_character(char, location=location)
 
-    # Set up streaming callback
+    # Set up streaming callback - capture the event loop for thread-safe calls
+    import asyncio
+    try:
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = None
+
     def stream_callback(page: int, source: str, event: str, content: str):
-        import asyncio
+        if main_loop is None:
+            return
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(_broadcast_stream(book.book_id, page, source, event, content))
+            asyncio.run_coroutine_threadsafe(
+                _broadcast_stream(book.book_id, page, source, event, content),
+                main_loop
+            )
         except Exception as e:
-            logger.error(f"Stream callback error: {e}")
+            logger.debug(f"Stream callback error: {e}")
 
     orch.set_stream_callback(stream_callback)
 
