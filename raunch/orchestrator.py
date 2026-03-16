@@ -5,6 +5,7 @@ import logging
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, Optional, Callable, List
 
 from .agents import Narrator, Character
@@ -72,6 +73,49 @@ def _clean_narration(narration: str) -> str:
     narration = re.sub(r'\n{3,}', '\n\n', narration)
 
     return narration.strip()
+
+
+def _process_character(
+    name: str,
+    char: Any,
+    char_input: str,
+    page_num: int,
+    stream_callback: Optional[Callable] = None,
+    streaming_enabled: bool = True
+) -> Dict[str, Any]:
+    """Process a single character's response in a thread-safe manner.
+
+    This helper function encapsulates character processing logic for parallel execution.
+    Handles both streaming and non-streaming modes, with internal exception handling.
+
+    Args:
+        name: Character name
+        char: Character instance
+        char_input: Input prompt for the character
+        page_num: Current page number
+        stream_callback: Optional callback for streaming updates
+        streaming_enabled: Whether streaming is enabled
+
+    Returns:
+        Character result dictionary with inner_thoughts and action
+    """
+    try:
+        if streaming_enabled and stream_callback:
+            # Streaming mode
+            char_result = char.page_stream(
+                char_input,
+                on_delta=lambda chunk: stream_callback(page_num, name, "delta", chunk)
+            )
+            stream_callback(page_num, name, "done", "")
+        else:
+            # Non-streaming mode
+            char_result = char.page(char_input)
+            if stream_callback:
+                stream_callback(page_num, name, "done", "")
+        return char_result
+    except Exception as e:
+        logger.error(f"Character {name} page failed: {e}")
+        return {"inner_thoughts": f"[Error: {e}]", "action": None}
 
 
 class Orchestrator:
