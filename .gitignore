@@ -9,12 +9,19 @@ build/
 # Saves and DB (local data, not code)
 saves/*.json
 saves/*.db
+saves/*.db-shm
+saves/*.db-wal
 
 # Character templates and scenarios are user data
 characters/*.json
 scenarios/*.json
-# But allow test scenarios for integration testing
+# But allow test scenarios and milk_money for demos
 !scenarios/test_*.json
+!scenarios/milk_money.json
+
+# Old data (pre-migration backup)
+saves_old/
+scenarios_old/
 
 # IDE
 .vscode/

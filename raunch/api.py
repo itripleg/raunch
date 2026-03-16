@@ -3,7 +3,7 @@
 import logging
 from typing import List, Optional, TYPE_CHECKING
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -38,6 +38,10 @@ from .db import (
     delete_poll,
 )
 from .agents.character import Character
+
+# Living Library routes
+from .server.routes import librarians, books, readers, characters as ll_characters, scenarios, pages
+from .server.ws import handle_websocket as ll_handle_websocket
 
 if TYPE_CHECKING:
     from .orchestrator import Orchestrator
@@ -185,11 +189,25 @@ app = FastAPI(
 # Include both localhost and 127.0.0.1 variants for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Living Library routes (multi-book API)
+app.include_router(librarians.router)
+app.include_router(books.router)
+app.include_router(readers.router)
+app.include_router(ll_characters.router)
+app.include_router(scenarios.router)
+app.include_router(pages.router)
+
+
+# Living Library WebSocket endpoint
+@app.websocket("/ws/{book_id}")
+async def websocket_endpoint(websocket: WebSocket, book_id: str):
+    await ll_handle_websocket(websocket, book_id)
 
 
 @app.get("/health")
