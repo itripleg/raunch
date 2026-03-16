@@ -195,6 +195,13 @@ def init_db() -> None:
 
         CREATE INDEX IF NOT EXISTS idx_books_owner ON books(owner_id);
         CREATE INDEX IF NOT EXISTS idx_books_bookmark ON books(bookmark);
+
+        CREATE TABLE IF NOT EXISTS book_access (
+            book_id      TEXT REFERENCES books(id) ON DELETE CASCADE,
+            librarian_id TEXT REFERENCES librarians(id),
+            role         TEXT DEFAULT 'reader',
+            PRIMARY KEY (book_id, librarian_id)
+        );
     """)
     conn.commit()
 

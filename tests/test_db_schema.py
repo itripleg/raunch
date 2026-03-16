@@ -64,3 +64,23 @@ def test_books_table_exists(temp_db):
     assert "created_at" in columns
     assert "last_active" in columns
     assert "page_count" in columns
+
+
+def test_book_access_table_exists(temp_db):
+    """Book access table should be created with correct schema."""
+    from raunch import db
+    db.init_db()
+
+    conn = sqlite3.connect(temp_db)
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='book_access'"
+    )
+    assert cursor.fetchone() is not None
+
+    # Check columns
+    cursor = conn.execute("PRAGMA table_info(book_access)")
+    columns = {row[1]: row[2] for row in cursor.fetchall()}
+    conn.close()
+    assert "book_id" in columns
+    assert "librarian_id" in columns
+    assert "role" in columns
