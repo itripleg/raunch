@@ -18,6 +18,7 @@ type Props = {
   isAdmin: boolean;
   onOpenSettings: () => void;
   apiUrl: string;
+  userEmail?: string;
 };
 
 type HeroMessage = {
@@ -25,7 +26,7 @@ type HeroMessage = {
   updated_at: string;
 };
 
-export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: Props) {
+export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, userEmail }: Props) {
   const [heroMessage, setHeroMessage] = useState<HeroMessage | null>(null);
   const [isEditingHero, setIsEditingHero] = useState(false);
   const [editContent, setEditContent] = useState("");
@@ -53,12 +54,14 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl }: 
       const res = await fetch(`${apiUrl}/api/v1/alpha/message`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: editContent }),
+        body: JSON.stringify({ content: editContent, admin_email: userEmail }),
       });
       if (res.ok) {
         const data = await res.json();
         setHeroMessage(data);
         setIsEditingHero(false);
+      } else if (res.status === 403) {
+        setSaveError("Admin access required");
       } else {
         setSaveError("Failed to save");
       }

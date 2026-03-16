@@ -728,6 +728,7 @@ async def grab_character(name: str):
 
 # Simple admin code - in production, use environment variable
 ADMIN_CODE = "raunch-alpha-dev"
+ADMIN_EMAIL = "joshua.bell.828@gmail.com"
 
 
 class AlphaMessage(BaseModel):
@@ -739,6 +740,7 @@ class AlphaMessage(BaseModel):
 class AlphaMessageUpdate(BaseModel):
     """Request to update the hero message."""
     content: str
+    admin_email: str
 
 
 class AdminVerifyRequest(BaseModel):
@@ -771,7 +773,9 @@ async def get_message():
 
 @app.put("/api/v1/alpha/message")
 async def update_message(req: AlphaMessageUpdate):
-    """Update the hero/dev message (admin only - no auth check for alpha)."""
+    """Update the hero/dev message (admin only)."""
+    if req.admin_email != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin access required")
     msg = set_alpha_message(req.content)
     return AlphaMessage(content=msg["content"], updated_at=msg["updated_at"])
 

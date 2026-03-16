@@ -438,6 +438,7 @@ function App() {
               isAdmin={isAuthenticated}
               onOpenSettings={() => setShowSettings(true)}
               apiUrl={apiUrl}
+              userEmail={user?.email}
             />
           </motion.div>
         )}
