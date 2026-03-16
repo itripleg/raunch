@@ -306,7 +306,6 @@ export function DebugPanel({ isOpen, onClose, sendCommand, apiUrl = "http://loca
                 </div>
               ) : activeTab === "api" ? (
                 <ApiTab
-                  apiUrl={apiUrl}
                   scenarios={scenarios}
                   selectedScenario={selectedScenario}
                   setSelectedScenario={setSelectedScenario}
@@ -705,7 +704,6 @@ function FieldDisplay({ label, value }: { label: string; value: string | null })
 }
 
 function ApiTab({
-  apiUrl,
   scenarios,
   selectedScenario,
   setSelectedScenario,
@@ -713,7 +711,6 @@ function ApiTab({
   apiResults,
   sendCommand,
 }: {
-  apiUrl: string;
   scenarios: string[];
   selectedScenario: string;
   setSelectedScenario: (s: string) => void;
@@ -974,7 +971,7 @@ function ApiResultCard({ result }: { result: ApiResult }) {
             className="overflow-hidden"
           >
             <pre className="p-3 text-[10px] bg-black/20 text-muted-foreground font-mono overflow-x-auto border-t border-border/50">
-              {JSON.stringify(result.data, null, 2)}
+              {JSON.stringify(result.data as object, null, 2)}
             </pre>
           </motion.div>
         )}
