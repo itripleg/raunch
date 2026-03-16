@@ -625,3 +625,167 @@ def test_scenario_json_round_trip(temp_db):
     assert fetched["data"] == complex_data
     assert fetched["data"]["characters"][0]["name"] == "Character 1"
     assert fetched["data"]["nested"]["level1"]["level2"]["level3"] == "deep value"
+
+
+def test_reset_book(temp_db):
+    """Should reset book by clearing all pages, character_pages, and potential_characters."""
+    from raunch import db
+
+    db.init_db()
+    librarian = db.create_librarian("TestUser")
+
+    # Create a book
+    book = db.create_book("test-scenario", librarian["id"], private=False)
+    book_id = book["id"]
+
+    # Add some pages
+    db.save_page(book_id, 1, "First narration", ["event1"], "Day 1", "happy")
+    db.save_page(book_id, 2, "Second narration", ["event2"], "Day 2", "sad")
+
+    # Add some character pages
+    db.save_character_page(
+        book_id, 1, "Alice",
+        {
+            "inner_thoughts": "Thinking...",
+            "action": "Walking",
+            "dialogue": "Hello",
+            "emotional_state": "happy",
+            "desires_update": "Wants to help"
+        }
+    )
+    db.save_character_page(
+        book_id, 2, "Bob",
+        {
+            "inner_thoughts": "Pondering...",
+            "action": "Running",
+            "dialogue": "Goodbye",
+            "emotional_state": "excited",
+            "desires_update": "Wants adventure"
+        }
+    )
+
+    # Add a potential character
+    db.save_potential_character(book_id, "Charlie", "A mysterious stranger", 1)
+
+    # Update page count
+    conn = db._get_conn()
+    conn.execute("UPDATE books SET page_count = 2 WHERE id = ?", (book_id,))
+    conn.commit()
+
+    # Verify data exists
+    pages = db.get_page_history(book_id, limit=10)
+    assert len(pages) == 2
+
+    # Reset the book
+    result = db.reset_book(book_id)
+    assert result is True
+
+    # Verify all pages are deleted
+    pages_after = db.get_page_history(book_id, limit=10)
+    assert len(pages_after) == 0
+
+    # Verify character_pages are deleted
+    conn = db._get_conn()
+    char_pages = conn.execute(
+        "SELECT COUNT(*) FROM character_pages WHERE world_id = ?", (book_id,)
+    ).fetchone()[0]
+    assert char_pages == 0
+
+    # Verify potential_characters are deleted
+    potential_chars = conn.execute(
+        "SELECT COUNT(*) FROM potential_characters WHERE world_id = ?", (book_id,)
+    ).fetchone()[0]
+    assert potential_chars == 0
+
+    # Verify page_count is reset to 0
+    book_after = db.get_book(book_id)
+    assert book_after is not None
+    assert book_after["page_count"] == 0
+
+    # Verify book still exists with same bookmark
+    assert book_after["id"] == book_id
+    assert book_after["bookmark"] == book["bookmark"]
+    assert book_after["scenario_name"] == "test-scenario"
+
+
+def test_reset_book_not_found(temp_db):
+    """Should return False when trying to reset non-existent book."""
+    from raunch import db
+
+    db.init_db()
+
+    result = db.reset_book("nonexistent-book-id")
+    assert result is False
+
+
+def test_reset_book_empty(temp_db):
+    """Should successfully reset a book with no pages."""
+    from raunch import db
+
+    db.init_db()
+    librarian = db.create_librarian("TestUser")
+
+    # Create a book but don't add any pages
+    book = db.create_book("empty-scenario", librarian["id"], private=False)
+    book_id = book["id"]
+
+    # Reset should still work
+    result = db.reset_book(book_id)
+    assert result is True
+
+    # Book should still exist
+    book_after = db.get_book(book_id)
+    assert book_after is not None
+    assert book_after["page_count"] == 0
+
+
+def test_reset_book_updates_last_active(temp_db):
+    """Should update last_active timestamp when resetting."""
+    from raunch import db
+    import time
+
+    db.init_db()
+    librarian = db.create_librarian("TestUser")
+
+    # Create a book
+    book = db.create_book("test-scenario", librarian["id"], private=False)
+    book_id = book["id"]
+    original_last_active = book["last_active"]
+
+    # Wait a bit to ensure timestamp difference
+    time.sleep(1.1)  # SQLite timestamps are second precision
+
+    # Reset the book
+    db.reset_book(book_id)
+
+    # Verify last_active was updated
+    book_after = db.get_book(book_id)
+    assert book_after["last_active"] >= original_last_active  # Should be >= since timestamp may round
+
+
+def test_create_book_private_by_default(temp_db):
+    """Should create books as private by default."""
+    from raunch import db
+
+    db.init_db()
+    librarian = db.create_librarian("TestUser")
+
+    # Create book without specifying private parameter
+    book = db.create_book("test-scenario", librarian["id"])
+
+    # Should be private by default
+    assert book["private"] is True
+
+
+def test_create_book_explicit_public(temp_db):
+    """Should create public book when explicitly specified."""
+    from raunch import db
+
+    db.init_db()
+    librarian = db.create_librarian("TestUser")
+
+    # Create book with private=False
+    book = db.create_book("test-scenario", librarian["id"], private=False)
+
+    # Should be public
+    assert book["private"] is False

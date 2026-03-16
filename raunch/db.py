@@ -1128,7 +1128,7 @@ def _get_unique_bookmark() -> str:
     raise RuntimeError("Failed to generate unique bookmark")
 
 
-def create_book(scenario_name: str, owner_id: str, private: bool = False) -> Dict[str, Any]:
+def create_book(scenario_name: str, owner_id: str, private: bool = True) -> Dict[str, Any]:
     """Create a new book and return its data."""
     conn = _get_conn()
     book_id = str(uuid.uuid4())[:8]
@@ -1246,6 +1246,44 @@ def delete_book(book_id: str) -> bool:
     result = conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
     conn.commit()
     return result.rowcount > 0
+
+
+def reset_book(book_id: str) -> bool:
+    """Reset a book to reuse its scenario - deletes all pages and characters, resets page count.
+
+    Args:
+        book_id: The book ID to reset
+
+    Returns:
+        True if book was found and reset, False if book doesn't exist
+    """
+    conn = _get_conn()
+
+    # Check if book exists
+    book_exists = conn.execute(
+        "SELECT 1 FROM books WHERE id = ?", (book_id,)
+    ).fetchone()
+
+    if not book_exists:
+        return False
+
+    # Delete all pages for this book
+    conn.execute("DELETE FROM pages WHERE world_id = ?", (book_id,))
+
+    # Delete all character pages for this book
+    conn.execute("DELETE FROM character_pages WHERE world_id = ?", (book_id,))
+
+    # Delete all potential characters for this book
+    conn.execute("DELETE FROM potential_characters WHERE world_id = ?", (book_id,))
+
+    # Reset page count to 0
+    conn.execute(
+        "UPDATE books SET page_count = 0, last_active = CURRENT_TIMESTAMP WHERE id = ?",
+        (book_id,)
+    )
+
+    conn.commit()
+    return True
 
 
 def grant_book_access(book_id: str, librarian_id: str, role: str = "reader") -> None:
