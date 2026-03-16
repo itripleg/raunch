@@ -875,10 +875,8 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
   // Register page element refs
   const setPageRef = useCallback((pageNum: number, el: HTMLElement | null) => {
     if (el) {
-      console.log("[PageFeed] Setting ref for page:", pageNum);
       pageRefs.current.set(pageNum, el);
     } else {
-      console.log("[PageFeed] Removing ref for page:", pageNum);
       pageRefs.current.delete(pageNum);
     }
   }, []);
@@ -925,15 +923,6 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
       container.removeEventListener("scroll", handleScroll);
     };
   }, [containerRef, onPageFocus, pages.length]);
-
-  // Debug: check for duplicate page numbers
-  useEffect(() => {
-    const pageNums = pages.map(p => p.page);
-    const duplicates = pageNums.filter((num, idx) => pageNums.indexOf(num) !== idx);
-    if (duplicates.length > 0) {
-      console.error("[PageFeed] DUPLICATE PAGE NUMBERS:", duplicates, "All pages:", pageNums);
-    }
-  }, [pages]);
 
   // Scroll to last page on initial load
   const hasScrolledOnLoad = useRef(false);

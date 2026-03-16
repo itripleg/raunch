@@ -222,6 +222,21 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_scenarios_owner ON scenarios(owner_id);
         CREATE INDEX IF NOT EXISTS idx_scenarios_public ON scenarios(public);
         CREATE INDEX IF NOT EXISTS idx_scenarios_name ON scenarios(name);
+
+        -- OAuth token management
+        CREATE TABLE IF NOT EXISTS oauth_tokens (
+            name TEXT PRIMARY KEY,
+            token TEXT NOT NULL,
+            status TEXT DEFAULT 'unknown',
+            reset_time TEXT,
+            checked_at TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS oauth_config (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
     """)
     conn.commit()
 

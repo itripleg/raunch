@@ -182,11 +182,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === "M") {
         e.preventDefault();
-        setMockMode(m => {
-          const newMode = !m;
-          console.log(`[Debug] Mock mode ${newMode ? "ENABLED" : "DISABLED"} - Next button will ${newMode ? "inject mock pages" : "call AI"}`);
-          return newMode;
-        });
+        setMockMode(m => !m);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -198,10 +194,8 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
     if (!mockMode || game.manualMode || game.paused || !actions.injectMockPage) return;
 
     const interval = (game.pageInterval || 10) * 1000; // Use page interval or default 10s
-    console.log(`[Mock Auto] Starting auto-inject every ${interval/1000}s`);
 
     const timer = setInterval(() => {
-      console.log("[Mock Auto] Injecting mock page");
       setWaitingForPage(true);
       setTimeout(() => {
         actions.injectMockPage?.();

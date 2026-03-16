@@ -180,7 +180,6 @@ function reducer(state: State, action: Action): State {
       return { ...initial, world: action.world, characterNames: action.characters, multiplayer: action.multiplayer };
     case "PAGE": {
       // Clear pending influence/director and streaming when page arrives
-      console.log("[PAGE] Adding page:", action.data.page, "existing pages:", state.pages.map(p => p.page));
       const existingIndex = state.pages.findIndex(p => p.page === action.data.page);
       if (existingIndex !== -1) {
         // Update existing partial page with full data (characters, etc.)
@@ -223,7 +222,6 @@ function reducer(state: State, action: Action): State {
     case "NARRATOR_READY": {
       // Add partial page with just narration (non-streaming mode)
       // This allows typewriter to start before characters are done
-      console.log("[NARRATOR_READY] Page:", action.page, "current pages.length:", state.pages.length);
       // Check if page already exists (avoid duplicates)
       const existingNarrIdx = state.pages.findIndex(p => p.page === action.page);
       if (existingNarrIdx !== -1) {
@@ -293,8 +291,6 @@ function reducer(state: State, action: Action): State {
       // Convert history pages to PageData, merging with existing live pages
       // History has full character data from DB; live pages may have partial data
       // (only attached character's inner_thoughts). We need to merge, not replace.
-      console.log("[HISTORY] Before - state.pages:", state.pages.map(p => p.page));
-      console.log("[HISTORY] Incoming history:", action.pages.map((p: { page: number }) => p.page));
       const existingPageMap = new Map(state.pages.map(p => [p.page, p]));
 
       const historyAsPages: PageData[] = action.pages.map(h => {
@@ -352,7 +348,6 @@ function reducer(state: State, action: Action): State {
         return true;
       });
 
-      console.log("[HISTORY] After merge & dedupe:", deduped.map(p => p.page));
       return { ...state, pages: deduped, history: action.pages };
     }
     case "CHARACTER_HISTORY":
