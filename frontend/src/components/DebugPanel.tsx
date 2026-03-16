@@ -962,7 +962,7 @@ function ApiResultCard({ result }: { result: ApiResult }) {
         </div>
       </button>
       <AnimatePresence>
-        {expanded && result.data && (
+        {expanded && result.data !== undefined && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
