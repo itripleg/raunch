@@ -50,6 +50,7 @@ type Props = {
   apiUrl: string;
   librarianId: string | null;
   onBack: () => void;
+  onSaved?: () => void;
 };
 
 // Floating particle component for magical ambience
@@ -238,7 +239,7 @@ function CharacterCard({
   );
 }
 
-export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
+export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
   const [options, setOptions] = useState<WizardOptions | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -417,6 +418,8 @@ export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
       }
       const data = await res.json();
       setResult({ ...scenario, saved_to: data.id });
+      // Navigate to scenario selector so user can see their saved scenario
+      onSaved?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Invalid JSON");
     } finally {

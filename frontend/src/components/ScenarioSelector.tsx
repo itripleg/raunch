@@ -21,9 +21,10 @@ type Props = {
   isLoading?: boolean;
   onBack?: () => void;
   onOpenWizard?: () => void;
+  initialTab?: "my" | "public";
 };
 
-export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLoading, onBack, onOpenWizard }: Props) {
+export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLoading, onBack, onOpenWizard, initialTab }: Props) {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +32,7 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"my" | "public">("public");
+  const [activeTab, setActiveTab] = useState<"my" | "public">(initialTab ?? "public");
 
   // Helper to get unique identifier for a scenario
   const getScenarioId = (scenario: Scenario) => scenario.file || scenario.id || "";
@@ -47,11 +48,43 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
       // Fetch public scenarios
       const response = await fetch(`${apiUrl}/api/v1/scenarios`);
       if (!response.ok) throw new Error("Failed to fetch scenarios");
-      const data = await response.json();
-      setScenarios(data);
+      const data: Scenario[] = await response.json();
+
+      // Also fetch user's own private scenarios if logged in
+      let allScenarios = [...data];
+      if (librarianId) {
+        try {
+          const mineResponse = await fetch(`${apiUrl}/api/v1/scenarios/mine`, {
+            headers: { "X-Librarian-ID": librarianId },
+          });
+          if (mineResponse.ok) {
+            const mine = await mineResponse.json();
+            // mine returns ScenarioResponse shape — map to Scenario and deduplicate
+            const existingIds = new Set(data.map((s) => s.id).filter(Boolean));
+            for (const s of mine) {
+              if (!existingIds.has(s.id)) {
+                allScenarios.push({
+                  id: s.id,
+                  name: s.name,
+                  setting: s.setting,
+                  characters: s.data?.characters?.length ?? 0,
+                  themes: s.data?.themes ?? [],
+                  source: "db" as const,
+                  public: s.public,
+                  owner_id: s.owner_id,
+                });
+              }
+            }
+          }
+        } catch {
+          // Non-fatal — private scenarios just won't show
+        }
+      }
+
+      setScenarios(allScenarios);
 
       // Auto-select first non-test scenario
-      const visible = data.filter((s: Scenario) => {
+      const visible = allScenarios.filter((s: Scenario) => {
         const id = s.file || s.id || "";
         return !id.startsWith("test_");
       });
@@ -65,6 +98,7 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
       setLoading(false);
     }
   };
+
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -265,7 +299,7 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="w-full max-h-80 overflow-y-auto mb-6"
+          className="w-full h-80 overflow-y-auto mb-6"
         >
           <AnimatePresence mode="wait">
             {loading ? (

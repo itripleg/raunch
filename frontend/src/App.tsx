@@ -19,7 +19,7 @@ import { DebugPanel } from "./components/DebugPanel";
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
 const HAS_PLAYED_KEY = "raunch_has_played";
 
-type AppView = "splash" | "dashboard" | "kanban" | "voting" | "about" | "wizard" | "scenario" | "game";
+type AppView = "presplash" | "splash" | "dashboard" | "kanban" | "voting" | "about" | "wizard" | "scenario" | "game";
 
 // Smart URL detection for local vs remote/production
 function getApiUrl(): string {
@@ -158,7 +158,7 @@ function App() {
   const { wsState, game, actions } = useGame(apiUrl, library.currentBook?.book_id);
 
   // View state (new alpha dashboard flow)
-  const [view, setView] = useState<AppView>("splash");
+  const [view, setView] = useState<AppView>("presplash");
   const [showSettings, setShowSettings] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
@@ -168,6 +168,8 @@ function App() {
 
   // Scenario selection loading state
   const [scenarioLoading, setScenarioLoading] = useState(false);
+  // Which tab to open in ScenarioSelector (reset after use)
+  const [scenarioInitialTab, setScenarioInitialTab] = useState<"my" | "public">("public");
 
 
   // Character wizard state
@@ -175,6 +177,23 @@ function App() {
 
   // Game sub-view: connecting vs actual game (scenario selection removed for alpha)
   const [gameSubView, setGameSubView] = useState<"connecting" | "playing">("connecting");
+
+  // Handle presplash (pre-auth splash) completion
+  const handlePresplashComplete = useCallback(() => {
+    // After presplash, go to login if not authenticated, else normal splash flow
+    if (!isAuthenticated) {
+      setView("splash"); // use "splash" as a sentinel meaning "show login"
+    } else if (hasPlayedBefore()) {
+      if (library.currentBook) {
+        setGameSubView("connecting");
+        setView("game");
+      } else {
+        setView("scenario");
+      }
+    } else {
+      setView("dashboard");
+    }
+  }, [isAuthenticated, library.currentBook]);
 
   // Handle splash completion - skip to game if user has played before
   const handleSplashComplete = useCallback(() => {
@@ -315,6 +334,17 @@ function App() {
     }
   }, [wsState, actions]);
 
+  // Handle init_failed — stale book ID in localStorage (e.g. server restarted and wiped the book)
+  useEffect(() => {
+    if (game.error && (game.error.includes("init_failed") || game.error.includes("Failed to initialize"))) {
+      console.warn("[App] init_failed detected — clearing stale book and redirecting to scenario selector");
+      actions.disconnect();
+      library.setCurrentBook(null);
+      actions.clearError();
+      setView("scenario");
+    }
+  }, [game.error, actions, library]);
+
   // Send join command after nickname confirmed (both solo and multiplayer)
   useEffect(() => {
     if (wsState === "connected" && nicknameConfirmed) {
@@ -345,7 +375,25 @@ function App() {
   };
 
 
-  // Show loading while auth is initializing
+  // Show presplash unconditionally (before auth)
+  if (view === "presplash") {
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="presplash"
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <SplashScreen
+            onComplete={handlePresplashComplete}
+            showIntro={true}
+          />
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  // Show loading while auth is initializing (after presplash)
   if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -373,7 +421,7 @@ function App() {
     );
   }
 
-  // Show login screen if not authenticated
+  // Show login screen if not authenticated (after presplash)
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -415,12 +463,14 @@ function App() {
         {view === "splash" && (
           <motion.div
             key="splash"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5 }}
           >
             <SplashScreen
               onComplete={handleSplashComplete}
-              showIntro={!hasPlayedBefore()}
+              showIntro={false}
             />
           </motion.div>
         )}
@@ -505,6 +555,10 @@ function App() {
               onBack={handleBackToDashboard}
               apiUrl={apiUrl}
               librarianId={library.librarianId}
+              onSaved={() => {
+                setScenarioInitialTab("my");
+                setView("scenario");
+              }}
             />
           </motion.div>
         )}
@@ -524,6 +578,7 @@ function App() {
               isLoading={scenarioLoading}
               onBack={handleBackToDashboard}
               onOpenWizard={() => setView("wizard")}
+              initialTab={scenarioInitialTab}
             />
           </motion.div>
         )}

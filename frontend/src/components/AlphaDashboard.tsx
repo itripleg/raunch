@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import {
   MessageSquare,
@@ -6,12 +6,12 @@ import {
   BookOpen,
   Vote,
   Wand2,
-  Lock,
   Settings,
   ChevronRight,
+  Compass,
 } from "lucide-react";
 
-type View = "dashboard" | "kanban" | "voting" | "about" | "wizard" | "game";
+type View = "dashboard" | "kanban" | "voting" | "about" | "wizard" | "scenario" | "game";
 
 type Props = {
   onNavigate: (view: View) => void;
@@ -24,6 +24,19 @@ type Props = {
 type HeroMessage = {
   content: string;
   updated_at: string;
+};
+
+type Card = {
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  borderColor: string;
+  hoverGlow: string;
+  onClick: () => void;
+  featured?: boolean;
+  disabled?: boolean;
 };
 
 export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, userEmail }: Props) {
@@ -82,7 +95,7 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, us
     return `Updated ${date.toLocaleDateString()}`;
   };
 
-  const cards = [
+  const cards: Card[] = [
     {
       id: "game",
       title: "Play Raunch",
@@ -93,6 +106,26 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, us
       hoverGlow: "hover:shadow-[0_0_60px_oklch(0.6_0.25_300_/_0.3)]",
       onClick: () => onNavigate("game"),
       featured: true,
+    },
+    {
+      id: "wizard",
+      title: "Smut Wizard",
+      subtitle: "Generate scenarios",
+      icon: Wand2,
+      color: "from-fuchsia-500/20 to-fuchsia-500/5",
+      borderColor: "border-fuchsia-500/30",
+      hoverGlow: "hover:shadow-[0_0_40px_oklch(0.65_0.25_320_/_0.15)]",
+      onClick: () => onNavigate("wizard"),
+    },
+    {
+      id: "scenario",
+      title: "New Story",
+      subtitle: "Choose a scenario",
+      icon: Compass,
+      color: "from-sky-500/20 to-sky-500/5",
+      borderColor: "border-sky-500/30",
+      hoverGlow: "hover:shadow-[0_0_40px_oklch(0.65_0.2_220_/_0.15)]",
+      onClick: () => onNavigate("scenario"),
     },
     {
       id: "kanban",
@@ -124,28 +157,8 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, us
       hoverGlow: "hover:shadow-[0_0_40px_oklch(0.7_0.18_60_/_0.15)]",
       onClick: () => onNavigate("voting"),
     },
-    {
-      id: "wizard",
-      title: "Smut Wizard",
-      subtitle: "Generate scenarios",
-      icon: Wand2,
-      color: "from-fuchsia-500/20 to-fuchsia-500/5",
-      borderColor: "border-fuchsia-500/30",
-      hoverGlow: "hover:shadow-[0_0_40px_oklch(0.65_0.25_320_/_0.15)]",
-      onClick: () => onNavigate("wizard"),
-    },
-    {
-      id: "storage",
-      title: "Smut Storage",
-      subtitle: "Coming soon",
-      icon: Lock,
-      color: "from-muted/30 to-muted/10",
-      borderColor: "border-border",
-      hoverGlow: "",
-      disabled: true,
-      onClick: () => {},
-    },
   ];
+
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
