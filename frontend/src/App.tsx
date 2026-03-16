@@ -687,6 +687,7 @@ function App() {
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
         onOpenDebug={() => setShowDebugPanel(true)}
+        apiUrl={apiUrl}
       />
 
       {/* Debug panel - available from any view */}
