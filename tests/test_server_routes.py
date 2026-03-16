@@ -287,3 +287,85 @@ def test_update_settings(client_with_db):
     )
     assert response.status_code == 200
     assert response.json()["updated"] == True
+
+
+def test_reset_book_owner_only(client_with_db):
+    """Should reset a book (owner only)."""
+    # Create owner
+    lib_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Owner"}
+    )
+    owner_id = lib_resp.json()["librarian_id"]
+
+    # Create book
+    create_resp = client_with_db.post(
+        "/api/v1/books",
+        json={"scenario": "milk_money"},
+        headers={"X-Librarian-ID": owner_id}
+    )
+    book_id = create_resp.json()["book_id"]
+
+    # Reset as owner (should succeed)
+    response = client_with_db.post(
+        f"/api/v1/books/{book_id}/reset",
+        headers={"X-Librarian-ID": owner_id}
+    )
+    assert response.status_code == 200
+    assert response.json()["reset"] == True
+
+
+def test_reset_book_not_owner(client_with_db):
+    """Non-owner should not be able to reset a book."""
+    # Create owner
+    lib_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Owner"}
+    )
+    owner_id = lib_resp.json()["librarian_id"]
+
+    # Create book
+    create_resp = client_with_db.post(
+        "/api/v1/books",
+        json={"scenario": "milk_money"},
+        headers={"X-Librarian-ID": owner_id}
+    )
+    book_id = create_resp.json()["book_id"]
+    bookmark = create_resp.json()["bookmark"]
+
+    # Create another librarian
+    lib2_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "NotOwner"}
+    )
+    not_owner_id = lib2_resp.json()["librarian_id"]
+
+    # Join book as non-owner
+    client_with_db.post(
+        "/api/v1/books/join",
+        json={"bookmark": bookmark},
+        headers={"X-Librarian-ID": not_owner_id}
+    )
+
+    # Try to reset as non-owner (should fail)
+    response = client_with_db.post(
+        f"/api/v1/books/{book_id}/reset",
+        headers={"X-Librarian-ID": not_owner_id}
+    )
+    assert response.status_code == 403
+    assert "owner" in response.json()["detail"].lower()
+
+
+def test_reset_book_not_found(client_with_db):
+    """Should return 404 for non-existent book."""
+    lib_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Owner"}
+    )
+    owner_id = lib_resp.json()["librarian_id"]
+
+    response = client_with_db.post(
+        "/api/v1/books/nonexistent/reset",
+        headers={"X-Librarian-ID": owner_id}
+    )
+    assert response.status_code == 404

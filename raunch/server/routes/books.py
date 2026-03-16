@@ -222,6 +222,34 @@ async def update_settings(
     return {"updated": True}
 
 
+@router.post("/{book_id}/reset")
+async def reset_book(
+    book_id: str,
+    librarian_id: str = Depends(get_librarian_id),
+):
+    """Reset a book to reuse its scenario (owner only)."""
+    library = get_library()
+    book = library.get_book(book_id)
+
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    if book.owner_id != librarian_id:
+        raise HTTPException(status_code=403, detail="Only the owner can reset this book")
+
+    # Stop the orchestrator if running
+    if book.orchestrator:
+        book.orchestrator.stop()
+
+    # Clear all pages and characters from database
+    success = db.reset_book(book_id)
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to reset book")
+
+    return {"reset": True}
+
+
 # Backwards compatibility: /api/v1/world returns first active book's world state
 class WorldResponse(BaseModel):
     running: bool
