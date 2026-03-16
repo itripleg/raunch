@@ -1272,13 +1272,12 @@ async def process_ws_command(client: WSClient, msg: Dict[str, Any]):
 
     elif cmd == "debug":
         if not orch:
-            await client.send({"type": "debug", "stats": {}, "pages": []})
+            await client.send({"type": "debug", "world_id": "", "stats": {}, "pages": [], "character_pages": []})
             return
         limit = msg.get("limit", 50)
         include_raw = msg.get("include_raw", False)
-        stats = db.get_debug_stats(orch.world.world_id)
-        pages = db.get_debug_character_pages(orch.world.world_id, limit=limit, include_raw=include_raw)
-        await client.send({"type": "debug", "stats": stats, "pages": pages})
+        debug_data = db.get_debug_data(orch.world.world_id, limit=limit, include_raw=include_raw)
+        await client.send({"type": "debug", **debug_data})
 
     else:
         await client.send({"type": "error", "message": f"Unknown command: {cmd}"})
