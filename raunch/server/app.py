@@ -29,4 +29,9 @@ def create_app() -> FastAPI:
     app.include_router(librarians.router)
     app.include_router(books.router)
 
+    # WebSocket endpoint
+    @app.websocket("/ws/{book_id}")
+    async def websocket_endpoint(websocket: WebSocket, book_id: str):
+        await handle_websocket(websocket, book_id)
+
     return app

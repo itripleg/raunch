@@ -86,7 +86,13 @@ class Library:
             return self.books[book_id]
 
         # Try loading from database
-        book_data = db.get_book(book_id)
+        try:
+            book_data = db.get_book(book_id)
+        except Exception as e:
+            # Handle database errors (e.g., thread-local connection issues)
+            logger.warning(f"Failed to load book {book_id} from database: {e}")
+            return None
+
         if book_data is None:
             return None
 
