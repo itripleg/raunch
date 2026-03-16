@@ -181,6 +181,20 @@ def init_db() -> None:
             nickname    TEXT NOT NULL,
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS books (
+            id            TEXT PRIMARY KEY,
+            bookmark      TEXT UNIQUE NOT NULL,
+            scenario_name TEXT NOT NULL,
+            owner_id      TEXT REFERENCES librarians(id),
+            private       INTEGER DEFAULT 0,
+            created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_active   TIMESTAMP,
+            page_count    INTEGER DEFAULT 0
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_books_owner ON books(owner_id);
+        CREATE INDEX IF NOT EXISTS idx_books_bookmark ON books(bookmark);
     """)
     conn.commit()
 
