@@ -168,9 +168,9 @@ export function AdminSettings({ isOpen, onClose, onOpenDebug, apiUrl = "http://l
                   {user && (
                     <div className="pl-8 space-y-1">
                       {user.email && <p className="text-xs text-muted-foreground">{user.email}</p>}
-                      {(user.given_name || user.family_name) && (
+                      {(user.givenName || user.familyName) && (
                         <p className="text-xs text-foreground/70">
-                          {[user.given_name, user.family_name].filter(Boolean).join(" ")}
+                          {[user.givenName, user.familyName].filter(Boolean).join(" ")}
                         </p>
                       )}
                     </div>

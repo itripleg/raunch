@@ -231,7 +231,7 @@ export function useLibrary(apiUrl: string, accessToken?: string | null, kindeUse
 
       // No existing librarian found, create a new one (linked to Kinde if available)
       try {
-        const newId = await createLibrarian(kindeUserId);
+        await createLibrarian(kindeUserId);
         // createLibrarian already stores and sets the ID
       } catch (err) {
         console.error("Failed to auto-create librarian:", err);

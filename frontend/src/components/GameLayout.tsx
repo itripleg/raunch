@@ -70,7 +70,8 @@ type Props = {
   onOpenDebug?: () => void;
 };
 
-export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteCharacter, onResetBook, onStopWorld, onBackToDashboard: _onBackToDashboard, onOpenDebug }: Props) {
+export function GameLayout({ game, actions, apiUrl: _apiUrl, onAddCharacter, onDeleteCharacter, onResetBook, onStopWorld, onBackToDashboard: _onBackToDashboard, onOpenDebug }: Props) {
+  void _apiUrl; // Reserved for future use
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [autoScroll, _setAutoScroll] = useState(true);

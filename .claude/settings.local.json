@@ -56,7 +56,12 @@
       "Bash(python3:*)",
       "Bash(wmic process:*)",
       "Bash(pip install:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(find:*)",
+      "Bash(cmd.exe /c \"taskkill /F /PID 11244 & taskkill /F /PID 32740\")",
+      "Bash(powershell.exe -Command \"Get-NetTCPConnection -LocalPort 8000 | Select-Object OwningProcess | Get-Unique\")",
+      "Bash(powershell.exe:*)",
+      "Bash(cmd.exe /c \"taskkill /F /PID 16400 & taskkill /F /PID 24496\")"
     ]
   }
 }

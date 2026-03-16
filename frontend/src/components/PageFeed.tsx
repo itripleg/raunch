@@ -851,7 +851,8 @@ type Props = {
   nextPageNum?: number;
 };
 
-export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, onPageFocus, containerRef, streaming, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
+export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, focusedPage, onPageFocus, containerRef, streaming, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
+  void _autoScroll; // Reserved for future use
   const endRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
 

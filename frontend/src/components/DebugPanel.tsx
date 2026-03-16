@@ -739,7 +739,7 @@ function ApiTab({
   apiResults,
   sendCommand,
   bookId,
-  authInfo,
+  authInfo: _authInfo,
 }: {
   scenarios: string[];
   selectedScenario: string;
@@ -750,6 +750,7 @@ function ApiTab({
   bookId?: string;
   authInfo?: AuthInfo;
 }) {
+  void _authInfo; // Reserved for future use
   const [pageIntervalInput, setPageIntervalInput] = useState("30");
 
   return (

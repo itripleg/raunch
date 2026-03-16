@@ -705,7 +705,7 @@ function App() {
         authInfo={{
           isAuthenticated,
           userEmail: user?.email ?? undefined,
-          userName: user?.given_name ? `${user.given_name} ${user.family_name ?? ""}`.trim() : undefined,
+          userName: user?.givenName ? `${user.givenName} ${user.familyName ?? ""}`.trim() : undefined,
           accessToken,
           librarianId: library.librarianId,
         }}
