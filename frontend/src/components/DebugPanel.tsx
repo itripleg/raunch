@@ -65,6 +65,14 @@ type NPCData = {
   trueCharacters: string[];
 };
 
+type ApiResult = {
+  endpoint: string;
+  status: "loading" | "success" | "error";
+  data?: unknown;
+  error?: string;
+  timestamp: Date;
+};
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
@@ -76,8 +84,11 @@ export function DebugPanel({ isOpen, onClose, sendCommand, apiUrl = "http://loca
   const [debugData, setDebugData] = useState<DebugData | null>(null);
   const [npcData, setNpcData] = useState<NPCData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "pages" | "characters" | "npcs">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "pages" | "characters" | "npcs" | "api">("overview");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [apiResults, setApiResults] = useState<ApiResult[]>([]);
+  const [scenarios, setScenarios] = useState<string[]>([]);
+  const [selectedScenario, setSelectedScenario] = useState<string>("milk_money");
 
   const fetchDebugData = useCallback(() => {
     console.log("[DebugPanel] Fetching debug data...");
@@ -113,6 +124,68 @@ export function DebugPanel({ isOpen, onClose, sendCommand, apiUrl = "http://loca
       console.error("[DebugPanel] Failed to fetch NPC data:", err);
     }
   }, [apiUrl]);
+
+  // API testing functions
+  const addApiResult = (result: ApiResult) => {
+    setApiResults((prev) => [result, ...prev].slice(0, 20)); // Keep last 20 results
+  };
+
+  const testApi = useCallback(
+    async (
+      endpoint: string,
+      method: "GET" | "POST" = "GET",
+      body?: Record<string, unknown>
+    ) => {
+      const result: ApiResult = {
+        endpoint: `${method} ${endpoint}`,
+        status: "loading",
+        timestamp: new Date(),
+      };
+      addApiResult(result);
+
+      try {
+        const options: RequestInit = { method };
+        if (body) {
+          options.headers = { "Content-Type": "application/json" };
+          options.body = JSON.stringify(body);
+        }
+        const res = await fetch(`${apiUrl}${endpoint}`, options);
+        const data = await res.json();
+        addApiResult({
+          ...result,
+          status: res.ok ? "success" : "error",
+          data,
+          error: res.ok ? undefined : `HTTP ${res.status}`,
+        });
+      } catch (err) {
+        addApiResult({
+          ...result,
+          status: "error",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [apiUrl]
+  );
+
+  const fetchScenarios = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/v1/scenarios`);
+      if (res.ok) {
+        const data = await res.json();
+        setScenarios(data.map((s: { name: string }) => s.name));
+      }
+    } catch (err) {
+      console.error("[DebugPanel] Failed to fetch scenarios:", err);
+    }
+  }, [apiUrl]);
+
+  // Fetch scenarios on mount
+  useEffect(() => {
+    if (isOpen) {
+      fetchScenarios();
+    }
+  }, [isOpen, fetchScenarios]);
 
   // Log when data arrives
   useEffect(() => {
@@ -209,7 +282,7 @@ export function DebugPanel({ isOpen, onClose, sendCommand, apiUrl = "http://loca
 
           {/* Tabs */}
           <div className="flex border-b border-border px-4 bg-muted/10">
-            {(["overview", "pages", "characters", "npcs"] as const).map((tab) => (
+            {(["overview", "pages", "characters", "npcs", "api"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -231,6 +304,16 @@ export function DebugPanel({ isOpen, onClose, sendCommand, apiUrl = "http://loca
                 <div className="flex items-center justify-center py-12">
                   <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
                 </div>
+              ) : activeTab === "api" ? (
+                <ApiTab
+                  apiUrl={apiUrl}
+                  scenarios={scenarios}
+                  selectedScenario={selectedScenario}
+                  setSelectedScenario={setSelectedScenario}
+                  testApi={testApi}
+                  apiResults={apiResults}
+                  sendCommand={sendCommand}
+                />
               ) : !debugData ? (
                 <div className="text-center py-12 text-muted-foreground">
                   No debug data available
@@ -617,6 +700,285 @@ function FieldDisplay({ label, value }: { label: string; value: string | null })
       <p className={`text-xs mt-0.5 ${value ? "text-foreground/80" : "text-muted-foreground/50 italic"}`}>
         {value || "null"}
       </p>
+    </div>
+  );
+}
+
+function ApiTab({
+  apiUrl,
+  scenarios,
+  selectedScenario,
+  setSelectedScenario,
+  testApi,
+  apiResults,
+  sendCommand,
+}: {
+  apiUrl: string;
+  scenarios: string[];
+  selectedScenario: string;
+  setSelectedScenario: (s: string) => void;
+  testApi: (endpoint: string, method?: "GET" | "POST", body?: Record<string, unknown>) => Promise<void>;
+  apiResults: ApiResult[];
+  sendCommand: (cmd: string, data?: Record<string, unknown>) => void;
+}) {
+  const [pageIntervalInput, setPageIntervalInput] = useState("30");
+
+  return (
+    <div className="space-y-6">
+      {/* REST API Commands */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-blue-400" />
+          REST API Endpoints
+        </h3>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+          <ApiButton
+            label="Health Check"
+            description="GET /health"
+            onClick={() => testApi("/health")}
+          />
+          <ApiButton
+            label="Get Scenarios"
+            description="GET /api/v1/scenarios"
+            onClick={() => testApi("/api/v1/scenarios")}
+          />
+          <ApiButton
+            label="Get World Status"
+            description="GET /api/v1/world"
+            onClick={() => testApi("/api/v1/world")}
+          />
+        </div>
+
+        {/* Load World */}
+        <div className="mt-4 p-3 border border-border rounded-lg bg-muted/10">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs text-muted-foreground">Load World:</span>
+            <select
+              value={selectedScenario}
+              onChange={(e) => setSelectedScenario(e.target.value)}
+              className="px-2 py-1 text-xs bg-background border border-border rounded"
+            >
+              {scenarios.length === 0 ? (
+                <option value="milk_money">milk_money</option>
+              ) : (
+                scenarios.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))
+              )}
+            </select>
+            <button
+              onClick={() => testApi("/api/v1/world/load", "POST", { scenario: selectedScenario })}
+              className="px-3 py-1 text-xs bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded transition-colors"
+            >
+              Start World
+            </button>
+            <button
+              onClick={() => testApi("/api/v1/world/stop", "POST")}
+              className="px-3 py-1 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded transition-colors"
+            >
+              Stop World
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* WebSocket Commands */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-purple-400" />
+          WebSocket Commands
+          <span className="text-[10px] text-muted-foreground font-normal">(via sendCommand)</span>
+        </h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <WsButton
+            label="Trigger Page"
+            cmd="page"
+            onClick={() => sendCommand("page")}
+          />
+          <WsButton
+            label="Toggle Pause"
+            cmd="toggle_pause"
+            onClick={() => sendCommand("toggle_pause")}
+          />
+          <WsButton
+            label="Get Status"
+            cmd="status"
+            onClick={() => sendCommand("status")}
+          />
+          <WsButton
+            label="Get History"
+            cmd="history"
+            onClick={() => sendCommand("history", { count: 20 })}
+          />
+          <WsButton
+            label="List Characters"
+            cmd="list"
+            onClick={() => sendCommand("list")}
+          />
+          <WsButton
+            label="Get World"
+            cmd="world"
+            onClick={() => sendCommand("world")}
+          />
+          <WsButton
+            label="Get Page Interval"
+            cmd="get_page_interval"
+            onClick={() => sendCommand("get_page_interval")}
+          />
+          <WsButton
+            label="Debug Info"
+            cmd="debug"
+            onClick={() => sendCommand("debug", { limit: 50, include_raw: true })}
+          />
+        </div>
+
+        {/* Set Page Interval */}
+        <div className="mt-4 p-3 border border-border rounded-lg bg-muted/10">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">Set Page Interval:</span>
+            <input
+              type="number"
+              value={pageIntervalInput}
+              onChange={(e) => setPageIntervalInput(e.target.value)}
+              className="w-20 px-2 py-1 text-xs bg-background border border-border rounded"
+              placeholder="seconds"
+            />
+            <button
+              onClick={() => sendCommand("set_page_interval", { seconds: parseInt(pageIntervalInput) || 30 })}
+              className="px-3 py-1 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded transition-colors"
+            >
+              Set
+            </button>
+            <span className="text-[10px] text-muted-foreground">(0 = manual mode)</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Results Log */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-400" />
+          Results Log
+          {apiResults.length > 0 && (
+            <span className="text-[10px] text-muted-foreground font-normal">({apiResults.length} entries)</span>
+          )}
+        </h3>
+        {apiResults.length === 0 ? (
+          <div className="text-xs text-muted-foreground/50 italic p-4 border border-border rounded-lg bg-muted/10">
+            No API calls yet. Click a button above to test.
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {apiResults.map((result, i) => (
+              <ApiResultCard key={`${result.timestamp.getTime()}-${i}`} result={result} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ApiButton({
+  label,
+  description,
+  onClick,
+}: {
+  label: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="p-3 text-left border border-border rounded-lg bg-muted/10 hover:bg-muted/20 transition-colors"
+    >
+      <span className="text-sm font-medium text-foreground block">{label}</span>
+      <span className="text-[10px] text-muted-foreground font-mono">{description}</span>
+    </button>
+  );
+}
+
+function WsButton({
+  label,
+  cmd,
+  onClick,
+}: {
+  label: string;
+  cmd: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="p-2 text-left border border-purple-500/20 rounded-lg bg-purple-500/5 hover:bg-purple-500/10 transition-colors"
+    >
+      <span className="text-xs font-medium text-foreground block">{label}</span>
+      <span className="text-[10px] text-purple-400/70 font-mono">{cmd}</span>
+    </button>
+  );
+}
+
+function ApiResultCard({ result }: { result: ApiResult }) {
+  const [expanded, setExpanded] = useState(false);
+  const statusColors = {
+    loading: "border-blue-500/30 bg-blue-500/5",
+    success: "border-green-500/30 bg-green-500/5",
+    error: "border-red-500/30 bg-red-500/5",
+  };
+  const statusIcons = {
+    loading: "⏳",
+    success: "✅",
+    error: "❌",
+  };
+
+  return (
+    <div className={`border rounded-lg overflow-hidden ${statusColors[result.status]}`}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/5 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm">{statusIcons[result.status]}</span>
+          <span className="text-xs font-mono text-foreground">{result.endpoint}</span>
+          {result.error && (
+            <span className="text-[10px] text-red-400">{result.error}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground">
+            {result.timestamp.toLocaleTimeString()}
+          </span>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className={`transform transition-transform text-muted-foreground ${expanded ? "rotate-180" : ""}`}
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </div>
+      </button>
+      <AnimatePresence>
+        {expanded && result.data && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <pre className="p-3 text-[10px] bg-black/20 text-muted-foreground font-mono overflow-x-auto border-t border-border/50">
+              {JSON.stringify(result.data, null, 2)}
+            </pre>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
