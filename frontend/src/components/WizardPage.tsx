@@ -654,7 +654,7 @@ export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              {options?.pairings.map((p) => (
+              {options?.pairings?.map((p) => (
                 <SelectableChip
                   key={p}
                   label={p}
