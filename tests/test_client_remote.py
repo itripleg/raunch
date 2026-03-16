@@ -190,3 +190,106 @@ def test_remote_client_list_characters(server):
     # Without orchestrator, returns empty list
     characters = client.list_characters()
     assert isinstance(characters, list)
+
+
+# --- WebSocket Tests (Task 5) ---
+
+
+def test_remote_client_connect_ws(server):
+    """RemoteClient should connect WebSocket to book."""
+    client = _create_client(server)
+    client.open_book("test_scenario")
+
+    # Connect WebSocket
+    client.connect_ws()
+
+    assert client._ws is not None
+    assert client._ws_running is True
+
+    client.disconnect()
+
+
+def test_remote_client_websocket_join(server):
+    """RemoteClient should join book via WebSocket."""
+    client = _create_client(server)
+    book_id, _ = client.open_book("test_scenario")
+
+    # Connect WebSocket and join as reader
+    client.connect_ws()
+    reader = client.join_as_reader("TestReader")
+
+    assert reader.reader_id is not None
+    assert reader.nickname == "TestReader"
+    assert client.reader_id is not None
+
+    client.disconnect()
+
+
+def test_remote_client_websocket_action(server):
+    """RemoteClient should send action via WebSocket."""
+    client = _create_client(server)
+    client.open_book("test_scenario")
+    client.connect_ws()
+    client.join_as_reader("TestReader")
+
+    # Without being attached, action should raise
+    with pytest.raises(Exception):
+        client.action("test action")
+
+    client.disconnect()
+
+
+def test_remote_client_websocket_whisper(server):
+    """RemoteClient should send whisper via WebSocket."""
+    client = _create_client(server)
+    client.open_book("test_scenario")
+    client.connect_ws()
+    client.join_as_reader("TestReader")
+
+    # Without being attached, whisper should raise
+    with pytest.raises(Exception):
+        client.whisper("test whisper")
+
+    client.disconnect()
+
+
+def test_remote_client_websocket_director(server):
+    """RemoteClient should send director guidance via WebSocket."""
+    client = _create_client(server)
+    client.open_book("test_scenario")
+    client.connect_ws()
+    client.join_as_reader("TestReader")
+
+    # Director doesn't require attachment
+    client.director("test director guidance")
+
+    client.disconnect()
+
+
+def test_remote_client_websocket_detach(server):
+    """RemoteClient should detach via WebSocket."""
+    client = _create_client(server)
+    client.open_book("test_scenario")
+    client.connect_ws()
+    client.join_as_reader("TestReader")
+
+    # Detach (even if not attached, should work)
+    client.detach()
+    assert client._attached_to is None
+
+    client.disconnect()
+
+
+def test_remote_client_disconnect(server):
+    """RemoteClient should disconnect cleanly."""
+    client = _create_client(server)
+    client.open_book("test_scenario")
+    client.connect_ws()
+    client.join_as_reader("TestReader")
+
+    client.disconnect()
+
+    assert client._ws is None
+    assert client._ws_running is False
+    assert client.book_id is None
+    assert client.reader_id is None

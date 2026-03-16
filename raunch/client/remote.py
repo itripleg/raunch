@@ -3,20 +3,19 @@
 
 import json
 import logging
-import os
+import queue
 import threading
 from pathlib import Path
-from typing import Optional, List, Tuple, Callable, Any, Dict
+from typing import Optional, List, Tuple, Any, Dict
 
 import httpx
 
-from .base import BookClient, PageCallback
+from .base import PageCallback
 from .models import (
     Page,
     BookInfo,
     CharacterInfo,
     ReaderInfo,
-    LibrarianInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,6 +77,8 @@ class RemoteClient:
         self._ws = None
         self._ws_thread: Optional[threading.Thread] = None
         self._ws_running = False
+        self._ws_response_queue: queue.Queue = queue.Queue()
+        self._ws_lock = threading.Lock()
 
         # Load or create librarian
         self._librarian_id = librarian_id
@@ -250,31 +251,162 @@ class RemoteClient:
             for name in book.characters
         ]
 
-    # --- STUBS (WebSocket methods - Task 5) ---
+    # --- WEBSOCKET METHODS ---
+
+    def connect_ws(self) -> None:
+        """Connect WebSocket to current book."""
+        if not self._book_id:
+            raise ValueError("Not connected to a book")
+
+        from websockets.sync.client import connect as ws_connect
+
+        ws_url = self.server_url.replace("http://", "ws://").replace("https://", "wss://")
+        ws_url = f"{ws_url}/ws/{self._book_id}"
+
+        self._ws = ws_connect(ws_url)
+        self._ws_running = True
+        self._ws_response_queue = queue.Queue()
+
+        # Start receive thread
+        self._ws_thread = threading.Thread(target=self._ws_receive_loop, daemon=True)
+        self._ws_thread.start()
+
+    def _ws_receive_loop(self) -> None:
+        """Background thread to receive WebSocket messages."""
+        while self._ws_running and self._ws:
+            try:
+                message = self._ws.recv(timeout=1.0)
+                data = json.loads(message)
+                self._handle_ws_message(data)
+            except TimeoutError:
+                # Normal timeout, continue loop
+                continue
+            except Exception as e:
+                if self._ws_running:
+                    logger.debug(f"WebSocket receive error: {e}")
+                break
+
+    def _handle_ws_message(self, data: Dict[str, Any]) -> None:
+        """Handle incoming WebSocket message."""
+        msg_type = data.get("type")
+
+        if msg_type == "page":
+            # Async page events go to callbacks
+            page = Page.from_dict(data)
+            for callback in self._page_callbacks:
+                try:
+                    callback(page)
+                except Exception as e:
+                    logger.error(f"Page callback error: {e}")
+
+        elif msg_type == "reader_joined":
+            # Broadcast event, not a response to our command
+            pass
+
+        elif msg_type == "reader_left":
+            # Broadcast event, not a response to our command
+            pass
+
+        else:
+            # All other messages are responses to commands
+            # Put in queue for _ws_send_and_wait
+            self._ws_response_queue.put(data)
+
+    def _ws_send(self, data: Dict[str, Any]) -> None:
+        """Send message via WebSocket (fire and forget)."""
+        if not self._ws:
+            raise ValueError("WebSocket not connected")
+        with self._ws_lock:
+            self._ws.send(json.dumps(data))
+
+    def _ws_send_and_wait(self, data: Dict[str, Any], timeout: float = 5.0) -> Dict[str, Any]:
+        """Send message and wait for response from queue."""
+        if not self._ws:
+            raise ValueError("WebSocket not connected")
+
+        # Clear any stale messages from queue
+        while not self._ws_response_queue.empty():
+            try:
+                self._ws_response_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        # Send the message
+        with self._ws_lock:
+            self._ws.send(json.dumps(data))
+
+        # Wait for response from background thread via queue
+        try:
+            response_data = self._ws_response_queue.get(timeout=timeout)
+
+            # Handle error responses
+            if response_data.get("type") == "error":
+                raise Exception(response_data.get("message", "Unknown server error"))
+
+            return response_data
+        except queue.Empty:
+            raise TimeoutError("WebSocket response timeout")
 
     def join_as_reader(self, nickname: str) -> ReaderInfo:
-        """Join the current book as a reader (requires WebSocket)."""
-        raise NotImplementedError("WebSocket connection required - use connect_ws()")
+        """Join the current book as a reader."""
+        if not self._ws:
+            raise ValueError("WebSocket not connected - use connect_ws() first")
+
+        response = self._ws_send_and_wait({
+            "cmd": "join",
+            "nickname": nickname,
+        })
+
+        self._reader_id = response.get("reader_id")
+        return ReaderInfo(
+            reader_id=response.get("reader_id", ""),
+            nickname=response.get("nickname", nickname),
+        )
 
     def attach(self, character: str) -> None:
-        """Attach to a character's POV (requires WebSocket)."""
-        raise NotImplementedError("WebSocket connection required - use connect_ws()")
+        """Attach to a character's POV."""
+        if not self._ws:
+            raise ValueError("WebSocket not connected - use connect_ws() first")
+
+        response = self._ws_send_and_wait({
+            "cmd": "attach",
+            "character": character,
+        })
+
+        self._attached_to = character
 
     def detach(self) -> None:
-        """Detach from current character (requires WebSocket)."""
-        raise NotImplementedError("WebSocket connection required - use connect_ws()")
+        """Detach from current character."""
+        if not self._ws:
+            raise ValueError("WebSocket not connected - use connect_ws() first")
+
+        # detach sends a response, so wait for it
+        response = self._ws_send_and_wait({"cmd": "detach"})
+        self._attached_to = None
 
     def action(self, text: str) -> None:
-        """Submit an action (requires WebSocket)."""
-        raise NotImplementedError("WebSocket connection required - use connect_ws()")
+        """Submit an action for the attached character."""
+        if not self._ws:
+            raise ValueError("WebSocket not connected - use connect_ws() first")
+
+        response = self._ws_send_and_wait({"cmd": "action", "text": text})
+        # If we get here without exception, action was accepted
 
     def whisper(self, text: str) -> None:
-        """Send a whisper (requires WebSocket)."""
-        raise NotImplementedError("WebSocket connection required - use connect_ws()")
+        """Send a whisper to the attached character."""
+        if not self._ws:
+            raise ValueError("WebSocket not connected - use connect_ws() first")
+
+        response = self._ws_send_and_wait({"cmd": "whisper", "text": text})
+        # If we get here without exception, whisper was accepted
 
     def director(self, text: str) -> None:
-        """Send director guidance (requires WebSocket)."""
-        raise NotImplementedError("WebSocket connection required - use connect_ws()")
+        """Send director guidance."""
+        if not self._ws:
+            raise ValueError("WebSocket not connected - use connect_ws() first")
+
+        response = self._ws_send_and_wait({"cmd": "director", "text": text})
+        # If we get here without exception, director guidance was accepted
 
     def grab(self, npc_name: str) -> CharacterInfo:
         """Promote NPC to character."""
@@ -289,8 +421,15 @@ class RemoteClient:
         """Disconnect from the current book."""
         self._ws_running = False
         if self._ws:
-            # Will be implemented in Task 5
-            pass
+            try:
+                self._ws.close()
+            except Exception:
+                pass
+            self._ws = None
+
+        # Wait for receive thread to finish
+        if self._ws_thread and self._ws_thread.is_alive():
+            self._ws_thread.join(timeout=1.0)
 
         self._book_id = None
         self._reader_id = None
