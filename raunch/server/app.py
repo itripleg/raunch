@@ -1,9 +1,10 @@
 """FastAPI application factory."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routes import health
+from .routes import health, librarians
+from .ws import handle_websocket
 
 
 def create_app() -> FastAPI:
@@ -25,5 +26,11 @@ def create_app() -> FastAPI:
 
     # Routes
     app.include_router(health.router)
+    app.include_router(librarians.router)
+
+    # WebSocket endpoint
+    @app.websocket("/ws/{book_id}")
+    async def websocket_endpoint(websocket: WebSocket, book_id: str):
+        await handle_websocket(websocket, book_id)
 
     return app
