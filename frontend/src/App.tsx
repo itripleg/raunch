@@ -28,24 +28,24 @@ function getServerUrls(): { wsUrl: string; apiUrl: string } {
   const envApiUrl = import.meta.env.VITE_API_URL;
 
   if (envWsUrl && envApiUrl) {
-    return { wsUrl: envWsUrl, apiUrl: envApiUrl };
+    // If WS URL doesn't have /ws path, append it (for same-origin deployment)
+    const wsUrl = envWsUrl.endsWith("/ws") ? envWsUrl : `${envWsUrl}/ws`;
+    return { wsUrl, apiUrl: envApiUrl };
   }
 
   if (isLocal) {
-    // Local development - use hardcoded ports
+    // Local development - use hardcoded ports (separate WS server)
     return {
       wsUrl: `ws://${hostname}:7667`,
       apiUrl: `http://${hostname}:8000`
     };
   }
 
-  // Remote/tunneled - assume same host, different ports via path or subdomain
-  // For cloudflare tunnels, we need separate tunnel URLs passed via env
-  // Fallback: try same host with standard ports (won't work for most tunnels)
+  // Remote/production - same origin with /ws path for WebSocket
   const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
   return {
-    wsUrl: envWsUrl || `${wsProtocol}//${hostname}:7667`,
-    apiUrl: envApiUrl || `${protocol}//${hostname}:8000`
+    wsUrl: `${wsProtocol}//${hostname}/ws`,
+    apiUrl: `${protocol}//${hostname}`
   };
 }
 
