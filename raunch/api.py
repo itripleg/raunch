@@ -95,11 +95,15 @@ class CharacterSummary(BaseModel):
 class ScenarioResponse(BaseModel):
     """Response schema for scenario data."""
 
-    file: str
+    file: Optional[str] = None  # For file-based scenarios
+    id: Optional[str] = None  # For DB scenarios
     name: str
     setting: Optional[str] = None
     characters: int = 0
     themes: List[str] = []
+    source: str = "file"  # "file" or "db"
+    public: Optional[bool] = None
+    owner_id: Optional[str] = None
 
 
 class LoadWorldRequest(BaseModel):
