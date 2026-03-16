@@ -10,11 +10,14 @@ from .models import (
     ReaderInfo,
     LibrarianInfo,
 )
+from .remote import RemoteClient
 
 __all__ = [
     # Protocol
     "BookClient",
     "PageCallback",
+    # Implementations
+    "RemoteClient",
     # Models
     "Page",
     "BookInfo",
