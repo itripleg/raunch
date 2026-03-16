@@ -46,6 +46,20 @@ from .server.ws import handle_websocket as ll_handle_websocket
 if TYPE_CHECKING:
     from .orchestrator import Orchestrator
 
+import os
+
+from .oauth import router as oauth_router
+from .auth_db import (
+    list_tokens as db_list_tokens,
+    get_token as db_get_token,
+    save_token as db_save_token,
+    delete_token as db_delete_token,
+    update_token_status,
+    get_active_token_name,
+    set_active_token_name,
+)
+from .llm import reload_client
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -178,6 +192,28 @@ class GrabResponse(BaseModel):
     message: str
 
 
+class TokenInfo(BaseModel):
+    """OAuth token info (without actual token value for security)."""
+    name: str
+    preview: str
+    status: str
+    reset_time: Optional[str] = None
+    active: bool = False
+
+
+class TokenCreate(BaseModel):
+    """Request to create a token."""
+    name: str
+    token: str
+
+
+class TokenActivateResponse(BaseModel):
+    """Response after activating a token."""
+    success: bool
+    name: str
+    message: str
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Raunch API",
@@ -202,6 +238,9 @@ app.include_router(readers.router)
 app.include_router(ll_characters.router)
 app.include_router(scenarios.router)
 app.include_router(pages.router)
+
+# OAuth routes
+app.include_router(oauth_router)
 
 
 # Living Library WebSocket endpoint
@@ -894,3 +933,120 @@ async def remove_poll(poll_id: int):
     if not success:
         raise HTTPException(status_code=404, detail="Poll not found")
     return {"success": True}
+
+
+# =============================================================================
+# OAuth Token Management Endpoints
+# =============================================================================
+
+@app.get("/api/v1/auth/tokens", response_model=List[TokenInfo])
+async def list_auth_tokens():
+    """List all stored OAuth tokens."""
+    tokens = db_list_tokens()
+    active_name = get_active_token_name()
+
+    return [
+        TokenInfo(
+            name=t["name"],
+            preview=f"{t['token'][:15]}...{t['token'][-4:]}" if len(t["token"]) > 19 else "***",
+            status=t["status"] or "unknown",
+            reset_time=t["reset_time"],
+            active=t["name"] == active_name,
+        )
+        for t in tokens
+    ]
+
+
+@app.post("/api/v1/auth/tokens", response_model=TokenInfo)
+async def create_auth_token(req: TokenCreate):
+    """Save a new OAuth token."""
+    if not req.token.startswith("sk-ant-"):
+        raise HTTPException(status_code=400, detail="Invalid token format")
+
+    db_save_token(req.name, req.token)
+    active_name = get_active_token_name()
+
+    return TokenInfo(
+        name=req.name,
+        preview=f"{req.token[:15]}...{req.token[-4:]}",
+        status="unknown",
+        active=req.name == active_name,
+    )
+
+
+@app.post("/api/v1/auth/tokens/{name}/activate", response_model=TokenActivateResponse)
+async def activate_auth_token(name: str):
+    """Activate a stored token."""
+    token_data = db_get_token(name)
+    if not token_data:
+        raise HTTPException(status_code=404, detail=f"Token '{name}' not found")
+
+    set_active_token_name(name)
+    reload_client()
+
+    return TokenActivateResponse(
+        success=True,
+        name=name,
+        message=f"Token '{name}' activated",
+    )
+
+
+@app.delete("/api/v1/auth/tokens/{name}")
+async def delete_auth_token(name: str):
+    """Delete a stored token."""
+    success = db_delete_token(name)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Token '{name}' not found")
+
+    # If deleted token was active, clear active
+    if get_active_token_name() == name:
+        set_active_token_name(None)
+
+    return {"success": True, "message": f"Token '{name}' deleted"}
+
+
+@app.post("/api/v1/auth/tokens/{name}/check")
+async def check_auth_token(name: str):
+    """Check if a token is usable or rate-limited."""
+    token_data = db_get_token(name)
+    if not token_data:
+        raise HTTPException(status_code=404, detail=f"Token '{name}' not found")
+
+    # Save current env token
+    original_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+
+    try:
+        # Temporarily set this token
+        os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = token_data["token"]
+
+        # Try a minimal LLM call
+        from .llm import LLMClient
+        client = LLMClient()
+        response = client.chat(
+            system="Reply with only 'ok'.",
+            messages=[{"role": "user", "content": "Say ok"}],
+            max_tokens=10,
+        )
+
+        # Check for rate limit in response
+        if "hit your limit" in response.lower() or "resets" in response.lower():
+            update_token_status(name, "rate_limited")
+            return {"name": name, "status": "rate_limited", "message": response}
+        else:
+            update_token_status(name, "usable")
+            return {"name": name, "status": "usable", "message": "Token is working"}
+
+    except Exception as e:
+        error_str = str(e).lower()
+        if "401" in error_str or "unauthorized" in error_str:
+            update_token_status(name, "invalid")
+            return {"name": name, "status": "invalid", "message": "Token is invalid"}
+        else:
+            update_token_status(name, "error")
+            return {"name": name, "status": "error", "message": str(e)}
+    finally:
+        # Restore original token
+        if original_token:
+            os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = original_token
+        elif "CLAUDE_CODE_OAUTH_TOKEN" in os.environ:
+            del os.environ["CLAUDE_CODE_OAUTH_TOKEN"]
