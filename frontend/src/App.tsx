@@ -483,6 +483,7 @@ function App() {
           >
             <ScenarioSelector
               apiUrl={apiUrl}
+              librarianId={library.librarianId}
               onScenarioSelected={handleScenarioSelected}
               isLoading={scenarioLoading}
               onBack={handleBackToDashboard}

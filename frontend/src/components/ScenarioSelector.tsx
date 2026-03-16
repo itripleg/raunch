@@ -3,21 +3,26 @@ import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, Trash2, Plus, Sparkles } from "lucide-react";
 
 type Scenario = {
-  file: string;
+  file?: string;  // For file-based scenarios
+  id?: string;    // For DB scenarios
   name: string;
   setting?: string;
   characters: number;
   themes: string[];
+  source: "file" | "db";
+  public?: boolean;
+  owner_id?: string;
 };
 
 type Props = {
   apiUrl: string;
+  librarianId: string | null;
   onScenarioSelected: (scenario: string) => void;
   isLoading?: boolean;
   onBack?: () => void;
 };
 
-export function ScenarioSelector({ apiUrl, onScenarioSelected, isLoading, onBack }: Props) {
+export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLoading, onBack }: Props) {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,23 +30,33 @@ export function ScenarioSelector({ apiUrl, onScenarioSelected, isLoading, onBack
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"my" | "public">("public");
+
+  // Helper to get unique identifier for a scenario
+  const getScenarioId = (scenario: Scenario) => scenario.file || scenario.id || "";
 
   useEffect(() => {
     fetchScenarios();
-  }, [apiUrl]);
+  }, [apiUrl, librarianId]);
 
   const fetchScenarios = async () => {
     setLoading(true);
     setError(null);
     try {
+      // Fetch public scenarios
       const response = await fetch(`${apiUrl}/api/v1/scenarios`);
       if (!response.ok) throw new Error("Failed to fetch scenarios");
       const data = await response.json();
       setScenarios(data);
+
       // Auto-select first non-test scenario
-      const visible = data.filter((s: Scenario) => !s.file.startsWith("test_"));
+      const visible = data.filter((s: Scenario) => {
+        const id = s.file || s.id || "";
+        return !id.startsWith("test_");
+      });
       if (visible.length > 0 && !selectedScenario) {
-        setSelectedScenario(visible[0].file);
+        const firstId = visible[0].file || visible[0].id || "";
+        setSelectedScenario(firstId);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load scenarios");
@@ -54,13 +69,41 @@ export function ScenarioSelector({ apiUrl, onScenarioSelected, isLoading, onBack
     setGenerating(true);
     setError(null);
     try {
-      const response = await fetch(`${apiUrl}/api/v1/wizard/generate`, {
+      // First generate the scenario
+      const wizardResponse = await fetch(`${apiUrl}/api/v1/wizard/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ save: true, num_characters: 3 }),
+        body: JSON.stringify({ save: false, num_characters: 3 }),
       });
-      if (!response.ok) throw new Error("Failed to generate scenario");
+      if (!wizardResponse.ok) throw new Error("Failed to generate scenario");
+      const scenarioData = await wizardResponse.json();
+
+      // Save to database as user scenario
+      if (librarianId) {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "X-Librarian-ID": librarianId,
+        };
+        const saveResponse = await fetch(`${apiUrl}/api/v1/scenarios`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            name: scenarioData.scenario_name,
+            description: scenarioData.premise,
+            setting: scenarioData.setting,
+            data: scenarioData,
+            public: false,
+          }),
+        });
+        if (!saveResponse.ok) {
+          const errorData = await saveResponse.json().catch(() => ({}));
+          throw new Error(errorData.detail || "Failed to save scenario");
+        }
+      }
+
       await fetchScenarios();
+      // Switch to "My Scenarios" tab
+      setActiveTab("my");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate scenario");
     } finally {
@@ -68,20 +111,24 @@ export function ScenarioSelector({ apiUrl, onScenarioSelected, isLoading, onBack
     }
   };
 
-  const handleDelete = async (file: string) => {
-    setDeleting(file);
+  const handleDelete = async (scenarioId: string) => {
+    setDeleting(scenarioId);
     setError(null);
     try {
-      const name = file.replace(".json", "");
-      const response = await fetch(`${apiUrl}/api/v1/scenarios/${encodeURIComponent(name)}`, {
+      const headers: Record<string, string> = {};
+      if (librarianId) {
+        headers["X-Librarian-ID"] = librarianId;
+      }
+      const response = await fetch(`${apiUrl}/api/v1/scenarios/${encodeURIComponent(scenarioId)}`, {
         method: "DELETE",
+        headers,
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.detail || "Failed to delete scenario");
       }
       // Clear selection if we deleted the selected scenario
-      if (selectedScenario === file) {
+      if (selectedScenario === scenarioId) {
         setSelectedScenario(null);
       }
       await fetchScenarios();
@@ -98,9 +145,18 @@ export function ScenarioSelector({ apiUrl, onScenarioSelected, isLoading, onBack
     onScenarioSelected(selectedScenario);
   };
 
-  // Filter out test scenarios from display
-  const visibleScenarios = scenarios.filter((s) => !s.file.startsWith("test_"));
-  const selectedData = scenarios.find((s) => s.file === selectedScenario);
+  // Filter scenarios by tab and visibility
+  const myScenarios = scenarios.filter((s) => {
+    const id = getScenarioId(s);
+    return !id.startsWith("test_") && s.source === "db" && s.owner_id === librarianId;
+  });
+  const publicScenarios = scenarios.filter((s) => {
+    const id = getScenarioId(s);
+    return !id.startsWith("test_") && (s.source === "file" || (s.source === "db" && s.public));
+  });
+
+  const visibleScenarios = activeTab === "my" ? myScenarios : publicScenarios;
+  const selectedData = scenarios.find((s) => getScenarioId(s) === selectedScenario);
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-background">
@@ -135,6 +191,35 @@ export function ScenarioSelector({ apiUrl, onScenarioSelected, isLoading, onBack
         >
           <h2 className="text-3xl font-bold tracking-tight text-foreground/90">scenarios</h2>
           <p className="text-muted-foreground/60 text-base mt-2">select or create a scenario</p>
+        </motion.div>
+
+        {/* Tabs */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.15 }}
+          className="w-full flex gap-2 mb-4"
+        >
+          <button
+            onClick={() => setActiveTab("public")}
+            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "public"
+                ? "bg-primary/10 text-primary border border-primary/30"
+                : "bg-card/30 text-muted-foreground/70 border border-border/30 hover:border-border/50"
+            }`}
+          >
+            Public Scenarios
+          </button>
+          <button
+            onClick={() => setActiveTab("my")}
+            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "my"
+                ? "bg-primary/10 text-primary border border-primary/30"
+                : "bg-card/30 text-muted-foreground/70 border border-border/30 hover:border-border/50"
+            }`}
+          >
+            My Scenarios
+          </button>
         </motion.div>
 
         {/* Create Button */}
@@ -191,24 +276,25 @@ export function ScenarioSelector({ apiUrl, onScenarioSelected, isLoading, onBack
             ) : (
               <motion.div key="list" className="space-y-2">
                 {visibleScenarios.map((scenario, index) => {
-                  const isDeleting = deleting === scenario.file;
-                  const isConfirming = confirmDelete === scenario.file;
+                  const scenarioId = getScenarioId(scenario);
+                  const isDeleting = deleting === scenarioId;
+                  const isConfirming = confirmDelete === scenarioId;
 
                   return (
                     <motion.div
-                      key={scenario.file}
+                      key={scenarioId}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.05 }}
                       className={`relative group flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
-                        selectedScenario === scenario.file
+                        selectedScenario === scenarioId
                           ? "border-primary/40 bg-primary/[0.05]"
                           : "border-border/30 bg-card/30 hover:border-border/50"
                       }`}
                     >
                       {/* Main content - clickable */}
                       <button
-                        onClick={() => setSelectedScenario(scenario.file)}
+                        onClick={() => setSelectedScenario(scenarioId)}
                         className="flex-1 text-left min-w-0"
                       >
                         <p className="text-base font-medium text-foreground/90 truncate">
@@ -226,33 +312,35 @@ export function ScenarioSelector({ apiUrl, onScenarioSelected, isLoading, onBack
                         {scenario.characters}
                       </span>
 
-                      {/* Delete button */}
-                      <div className="flex-shrink-0">
-                        {isConfirming ? (
-                          <div className="flex gap-1">
+                      {/* Delete button - only show for user's own DB scenarios */}
+                      {scenario.source === "db" && scenario.owner_id === librarianId && (
+                        <div className="flex-shrink-0">
+                          {isConfirming ? (
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => handleDelete(scenarioId)}
+                                disabled={isDeleting}
+                                className="px-2 py-1 text-xs bg-destructive/20 text-destructive rounded hover:bg-destructive/30 disabled:opacity-50"
+                              >
+                                {isDeleting ? "..." : "yes"}
+                              </button>
+                              <button
+                                onClick={() => setConfirmDelete(null)}
+                                className="px-2 py-1 text-xs bg-muted/50 text-muted-foreground rounded hover:bg-muted"
+                              >
+                                no
+                              </button>
+                            </div>
+                          ) : (
                             <button
-                              onClick={() => handleDelete(scenario.file)}
-                              disabled={isDeleting}
-                              className="px-2 py-1 text-xs bg-destructive/20 text-destructive rounded hover:bg-destructive/30 disabled:opacity-50"
+                              onClick={() => setConfirmDelete(scenarioId)}
+                              className="p-1.5 text-muted-foreground/30 hover:text-destructive/70 transition-colors opacity-0 group-hover:opacity-100"
                             >
-                              {isDeleting ? "..." : "yes"}
+                              <Trash2 className="w-4 h-4" />
                             </button>
-                            <button
-                              onClick={() => setConfirmDelete(null)}
-                              className="px-2 py-1 text-xs bg-muted/50 text-muted-foreground rounded hover:bg-muted"
-                            >
-                              no
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setConfirmDelete(scenario.file)}
-                            className="p-1.5 text-muted-foreground/30 hover:text-destructive/70 transition-colors opacity-0 group-hover:opacity-100"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      )}
                     </motion.div>
                   );
                 })}
