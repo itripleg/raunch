@@ -110,7 +110,7 @@ export function CharacterWizard({ apiUrl, bookId, onCharacterAdded, onClose, exi
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [npcs, setNpcs] = useState<NPCInfo[]>(propNpcs);
-  const [remembered, setRemembered] = useState<RememberedCharacter[]>([]);
+  const [remembered, _setRemembered] = useState<RememberedCharacter[]>([]);
 
   // Fetch characters from the book on mount
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, Component, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 import { useGame } from "./hooks/useGame";
 import { useLibrary } from "./hooks/useLibrary";
 import { SplashScreen } from "./components/SplashScreen";
@@ -142,7 +143,25 @@ class ErrorBoundary extends Component<
 
 function App() {
   const [apiUrl] = useState(DEFAULT_API_URL);
-  const library = useLibrary(apiUrl);
+
+  // Kinde authentication
+  const { isAuthenticated, isLoading: authLoading, login, register, getToken } = useKindeAuth();
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  // Fetch access token when authenticated
+  useEffect(() => {
+    if (isAuthenticated && getToken) {
+      getToken().then((token: string | undefined) => {
+        setAccessToken(token || null);
+      }).catch((err: Error) => {
+        console.error("Failed to get token:", err);
+      });
+    } else {
+      setAccessToken(null);
+    }
+  }, [isAuthenticated, getToken]);
+
+  const library = useLibrary(apiUrl, accessToken);
   const { wsState, game, actions } = useGame(apiUrl, library.currentBook?.book_id);
 
   // View state (new alpha dashboard flow)
@@ -300,6 +319,69 @@ function App() {
     setNicknameConfirmed(true);
   };
 
+
+  // Show loading while auth is initializing
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="flex gap-1.5 justify-center">
+            {[0, 1, 2].map((i) => (
+              <motion.div
+                key={i}
+                className="w-2 h-2 rounded-full bg-primary/50"
+                animate={{
+                  opacity: [0.2, 0.8, 0.2],
+                  scale: [0.9, 1.1, 0.9],
+                }}
+                transition={{
+                  duration: 1.2,
+                  repeat: Infinity,
+                  delay: i * 0.2,
+                }}
+              />
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login screen if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-8 p-8 max-w-md">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">Welcome to Raunch</h1>
+            <p className="text-muted-foreground">
+              Sign in to start your adventure
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <button
+              onClick={() => login()}
+              className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => register()}
+              className="w-full px-6 py-3 bg-secondary text-secondary-foreground rounded-lg font-medium hover:bg-secondary/80 transition-colors"
+            >
+              Create Account
+            </button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            By signing in, you confirm you are 18+ years old
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Render based on view state
   return (

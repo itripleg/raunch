@@ -28,6 +28,7 @@ type GameState = {
   directorMode?: boolean;
   pendingDirectorGuidance?: string | null;
   streaming?: StreamingState;
+  pageGenerating?: number | null;
   // Multiplayer
   multiplayer?: boolean;
   turnState?: TurnState | null;
@@ -67,7 +68,7 @@ type Props = {
   onBackToDashboard?: () => void;
 };
 
-export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteCharacter, onStopWorld, onBackToDashboard }: Props) {
+export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteCharacter, onStopWorld, onBackToDashboard: _onBackToDashboard }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [autoScroll, _setAutoScroll] = useState(true);
@@ -123,13 +124,6 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
       setFocusedPageNum(game.pages[game.pages.length - 1].page);
     }
   }, [game.pages.length, focusedPageNum]);
-
-  // Get the character data for the focused page
-  const focusedPageData = useMemo(() => {
-    if (!focusedPageNum || !game.attachedTo) return null;
-    const pageItem = game.pages.find(p => p.page === focusedPageNum);
-    return pageItem?.characters[game.attachedTo] ?? null;
-  }, [focusedPageNum, game.pages, game.attachedTo]);
 
   // Fallback to latest page if no focus
   const latestPage = game.pages[game.pages.length - 1];
@@ -633,6 +627,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
         isOpen={debugPanelOpen}
         onClose={() => setDebugPanelOpen(false)}
         sendCommand={actions.sendCommand ?? (() => {})}
+        bookId={game.world?.world_id as string | undefined}
         apiUrl={apiUrl}
       />
     </div>

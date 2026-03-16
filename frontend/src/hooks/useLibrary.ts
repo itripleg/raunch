@@ -68,7 +68,7 @@ function clearStoredLibrarianId(apiUrl: string): void {
   }
 }
 
-export function useLibrary(apiUrl: string): UseLibraryReturn {
+export function useLibrary(apiUrl: string, accessToken?: string | null): UseLibraryReturn {
   const [librarianId, setLibrarianId] = useState<string | null>(() => getStoredLibrarianId(apiUrl));
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,11 +94,18 @@ export function useLibrary(apiUrl: string): UseLibraryReturn {
       // Generate a random nickname for the librarian
       const nickname = `Librarian-${Math.random().toString(36).substring(2, 8)}`;
 
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // Add auth token if available
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      }
+
       const response = await fetch(`${apiUrl}/api/v1/librarians`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({ nickname }),
       });
 
@@ -117,7 +124,7 @@ export function useLibrary(apiUrl: string): UseLibraryReturn {
     } finally {
       creatingLibrarianRef.current = false;
     }
-  }, [apiUrl]);
+  }, [apiUrl, accessToken]);
 
   // Handle 401 errors by creating a new librarian and retrying
   const fetchWithRetry = useCallback(async (
@@ -135,6 +142,11 @@ export function useLibrary(apiUrl: string): UseLibraryReturn {
       "Content-Type": "application/json",
       ...(options.headers as Record<string, string> || {}),
     };
+
+    // Add auth token if available
+    if (accessToken) {
+      headers["Authorization"] = `Bearer ${accessToken}`;
+    }
 
     if (currentLibrarianId) {
       headers["X-Librarian-ID"] = currentLibrarianId;
@@ -158,7 +170,7 @@ export function useLibrary(apiUrl: string): UseLibraryReturn {
     }
 
     return response;
-  }, [apiUrl, librarianId, createLibrarian]);
+  }, [apiUrl, librarianId, createLibrarian, accessToken]);
 
   // Auto-create librarian on mount if none exists
   useEffect(() => {

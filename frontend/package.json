@@ -10,13 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "motion": "^11.15.0",
     "@base-ui/react": "^1.2.0",
     "@fontsource-variable/dm-sans": "^5.2.8",
     "@fontsource-variable/geist": "^5.2.8",
+    "@kinde-oss/kinde-auth-react": "^5.11.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.577.0",
+    "motion": "^11.15.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "shadcn": "^4.0.2",
