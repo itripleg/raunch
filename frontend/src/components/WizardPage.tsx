@@ -317,10 +317,10 @@ export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
       .then((r) => r.json())
       .then((data: WizardOptions) => {
         setOptions({
-          settings: shuffle(data.settings),
-          pairings: shuffle(data.pairings),
-          kinks: shuffle(data.kinks),
-          vibes: shuffle(data.vibes),
+          settings: shuffle(data.settings || []),
+          pairings: shuffle(data.pairings || []),
+          kinks: shuffle(data.kinks || []),
+          vibes: shuffle(data.vibes || []),
         });
       })
       .catch((e) => setError(`Failed to load options: ${e.message}`))
