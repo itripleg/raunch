@@ -174,6 +174,13 @@ def init_db() -> None:
             voter_id    TEXT NOT NULL,
             UNIQUE(poll_id, option_id, voter_id)
         );
+
+        -- Living Library tables
+        CREATE TABLE IF NOT EXISTS librarians (
+            id          TEXT PRIMARY KEY,
+            nickname    TEXT NOT NULL,
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     conn.commit()
 
