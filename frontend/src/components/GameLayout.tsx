@@ -64,12 +64,13 @@ type Props = {
   apiUrl: string;
   onAddCharacter?: () => void;
   onDeleteCharacter?: (name: string) => Promise<void>;
+  onResetBook?: () => void;
   onStopWorld?: () => void;
   onBackToDashboard?: () => void;
   onOpenDebug?: () => void;
 };
 
-export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteCharacter, onStopWorld, onBackToDashboard: _onBackToDashboard, onOpenDebug }: Props) {
+export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteCharacter, onResetBook, onStopWorld, onBackToDashboard: _onBackToDashboard, onOpenDebug }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [autoScroll, _setAutoScroll] = useState(true);
@@ -268,10 +269,19 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
               <path d="M3 12h18M3 6h18M3 18h18" />
             </svg>
           </button>
-          <h1 className="text-sm font-bold tracking-wider text-primary">RAUNCH</h1>
-          <span className="text-xs text-muted-foreground hidden sm:inline">
-            {(game.world as Record<string, unknown>)?.world_name as string ?? ""}
-          </span>
+          {/* Breadcrumb navigation */}
+          <nav className="flex items-center gap-1 text-sm">
+            <button
+              onClick={onStopWorld}
+              className="text-muted-foreground hover:text-primary transition-colors"
+            >
+              Menu
+            </button>
+            <span className="text-muted-foreground/40">/</span>
+            <span className="font-medium text-foreground/90 truncate max-w-[120px] sm:max-w-[200px]">
+              {(game.world as Record<string, unknown>)?.world_name as string ?? "World"}
+            </span>
+          </nav>
         </div>
 
         <div className="flex items-center gap-3">
@@ -467,7 +477,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
                 onCharacterAttached={handleCharacterAttached}
                 onAddCharacter={onAddCharacter}
                 onDeleteCharacter={handleDeleteCharacter}
-                onStopWorld={onStopWorld}
+                onResetBook={onResetBook}
               />
             </motion.div>
           )}
@@ -500,7 +510,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
                   onClose={() => setSidebarOpen(false)}
                   onCharacterAttached={handleCharacterAttached}
                   onDeleteCharacter={handleDeleteCharacter}
-                  onStopWorld={onStopWorld}
+                  onResetBook={onResetBook}
                 />
               </motion.div>
             </div>

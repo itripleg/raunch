@@ -240,6 +240,38 @@ function App() {
     }
   }, [apiUrl, library.currentBook, actions]);
 
+  // Handle book reset
+  const handleResetBook = useCallback(async () => {
+    if (!library.currentBook) {
+      throw new Error("No active book");
+    }
+    if (!library.librarianId) {
+      throw new Error("No librarian ID");
+    }
+    try {
+      const response = await fetch(`${apiUrl}/api/v1/books/${library.currentBook.book_id}/reset`, {
+        method: "POST",
+        headers: {
+          "X-Librarian-ID": library.librarianId,
+        },
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || "Failed to reset book");
+      }
+      // Disconnect and reconnect to clear local state
+      actions.disconnect();
+      // Give websocket time to disconnect
+      setTimeout(() => {
+        // Reconnect - this will fetch fresh world and character data
+        actions.connect();
+      }, 500);
+    } catch (err) {
+      console.error("Failed to reset book:", err);
+      throw err;
+    }
+  }, [apiUrl, library.currentBook, library.librarianId, actions]);
+
   // Handle scenario selection
   const handleScenarioSelected = useCallback(async (scenario: string) => {
     setScenarioLoading(true);
@@ -626,6 +658,7 @@ function App() {
                     setShowCharacterWizard(true);
                   }}
                   onDeleteCharacter={handleDeleteCharacter}
+                  onResetBook={handleResetBook}
                   onStopWorld={handleStopWorld}
                   onBackToDashboard={handleBackToDashboard}
                   onOpenDebug={() => setShowDebugPanel(true)}

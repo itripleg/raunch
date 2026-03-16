@@ -30,13 +30,13 @@ type Props = {
   onCharacterAttached?: () => void;
   onAddCharacter?: () => void;
   onDeleteCharacter?: (name: string) => void;
-  onStopWorld?: () => void;
+  onResetBook?: () => void;
 };
 
-export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddCharacter, onDeleteCharacter, onStopWorld }: Props) {
+export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddCharacter, onDeleteCharacter, onResetBook }: Props) {
   const world = game.world as Record<string, unknown> | null;
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [confirmStop, setConfirmStop] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const handleDelete = (name: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Don't toggle attachment
@@ -47,6 +47,17 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
       setConfirmDelete(name);
       // Auto-cancel after 3 seconds
       setTimeout(() => setConfirmDelete(null), 3000);
+    }
+  };
+
+  const handleReset = () => {
+    if (confirmReset) {
+      onResetBook?.();
+      setConfirmReset(false);
+    } else {
+      setConfirmReset(true);
+      // Auto-cancel after 3 seconds
+      setTimeout(() => setConfirmReset(false), 3000);
     }
   };
 
@@ -78,28 +89,25 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
         ) : (
           <p className="text-sm text-muted-foreground/50 italic">Loading...</p>
         )}
-        {/* Return to menu button */}
-        {onStopWorld && (
+      </div>
+
+      <Separator className="bg-border/30" />
+
+      {/* Reset Book button */}
+      {onResetBook && (
+        <div className="p-4 pb-3">
           <button
-            onClick={() => {
-              if (confirmStop) {
-                onStopWorld();
-                setConfirmStop(false);
-              } else {
-                setConfirmStop(true);
-                setTimeout(() => setConfirmStop(false), 3000);
-              }
-            }}
-            className={`mt-3 text-[10px] transition-all ${
-              confirmStop
-                ? "text-destructive font-medium"
-                : "text-pink-400/70 hover:text-pink-400"
+            onClick={handleReset}
+            className={`w-full text-left px-3 py-2 rounded-lg transition-all text-xs ${
+              confirmReset
+                ? "bg-destructive/20 text-destructive border border-destructive/50 font-medium"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50 border border-transparent"
             }`}
           >
-            {confirmStop ? "Click again to confirm" : "Return to menu"}
+            {confirmReset ? "Click again to confirm reset" : "Reset Book"}
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       <Separator className="bg-border/30" />
 
