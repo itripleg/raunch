@@ -11,6 +11,7 @@ from .models import (
     LibrarianInfo,
 )
 from .remote import RemoteClient
+from .local import LocalClient
 
 __all__ = [
     # Protocol
@@ -18,6 +19,7 @@ __all__ = [
     "PageCallback",
     # Implementations
     "RemoteClient",
+    "LocalClient",
     # Models
     "Page",
     "BookInfo",
