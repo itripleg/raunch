@@ -1,5 +1,5 @@
 """API route modules."""
 
-from . import health, librarians, books
+from . import health, librarians, books, readers, characters, scenarios, pages
 
-__all__ = ["health", "librarians", "books"]
+__all__ = ["health", "librarians", "books", "readers", "characters", "scenarios", "pages"]

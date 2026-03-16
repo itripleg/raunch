@@ -3,7 +3,7 @@
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routes import health, librarians, books, readers, characters
+from .routes import health, librarians, books, readers, characters, scenarios, pages
 from .ws import handle_websocket
 
 
@@ -30,6 +30,8 @@ def create_app() -> FastAPI:
     app.include_router(books.router)
     app.include_router(readers.router)
     app.include_router(characters.router)
+    app.include_router(scenarios.router)
+    app.include_router(pages.router)
 
     # WebSocket endpoint
     @app.websocket("/ws/{book_id}")
