@@ -18,6 +18,7 @@ from .wizard import (
     VIBES,
 )
 from .db import (
+    init_db,
     get_remembered_characters,
     get_potential_characters as db_get_potential_characters,
     get_potential_character,
@@ -224,6 +225,9 @@ app = FastAPI(
     description="REST API for raunch multiplayer game",
     version="1.0.0",
 )
+
+# Initialize database tables
+init_db()
 
 # CORS MUST be added as FIRST middleware
 # Include both localhost and 127.0.0.1 variants for development
