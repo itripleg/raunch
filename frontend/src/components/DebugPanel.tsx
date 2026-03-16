@@ -77,10 +77,11 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   sendCommand: (cmd: string, data?: Record<string, unknown>) => void;
-  apiUrl?: string;
+  bookId?: string;
+  apiUrl: string;
 };
 
-export function DebugPanel({ isOpen, onClose, sendCommand, apiUrl = "http://localhost:8000" }: Props) {
+export function DebugPanel({ isOpen, onClose, sendCommand, bookId, apiUrl }: Props) {
   const [debugData, setDebugData] = useState<DebugData | null>(null);
   const [npcData, setNpcData] = useState<NPCData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -133,7 +134,7 @@ export function DebugPanel({ isOpen, onClose, sendCommand, apiUrl = "http://loca
   const testApi = useCallback(
     async (
       endpoint: string,
-      method: "GET" | "POST" = "GET",
+      method: "GET" | "POST" | "DELETE" = "GET",
       body?: Record<string, unknown>
     ) => {
       const result: ApiResult = {
@@ -144,9 +145,13 @@ export function DebugPanel({ isOpen, onClose, sendCommand, apiUrl = "http://loca
       addApiResult(result);
 
       try {
-        const options: RequestInit = { method };
+        const librarianId = localStorage.getItem("librarianId") || "";
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "X-Librarian-ID": librarianId,
+        };
+        const options: RequestInit = { method, headers };
         if (body) {
-          options.headers = { "Content-Type": "application/json" };
           options.body = JSON.stringify(body);
         }
         const res = await fetch(`${apiUrl}${endpoint}`, options);
@@ -312,6 +317,7 @@ export function DebugPanel({ isOpen, onClose, sendCommand, apiUrl = "http://loca
                   testApi={testApi}
                   apiResults={apiResults}
                   sendCommand={sendCommand}
+                  bookId={bookId}
                 />
               ) : !debugData ? (
                 <div className="text-center py-12 text-muted-foreground">
@@ -710,13 +716,15 @@ function ApiTab({
   testApi,
   apiResults,
   sendCommand,
+  bookId,
 }: {
   scenarios: string[];
   selectedScenario: string;
   setSelectedScenario: (s: string) => void;
-  testApi: (endpoint: string, method?: "GET" | "POST", body?: Record<string, unknown>) => Promise<void>;
+  testApi: (endpoint: string, method?: "GET" | "POST" | "DELETE", body?: Record<string, unknown>) => Promise<void>;
   apiResults: ApiResult[];
   sendCommand: (cmd: string, data?: Record<string, unknown>) => void;
+  bookId?: string;
 }) {
   const [pageIntervalInput, setPageIntervalInput] = useState("30");
 
@@ -730,26 +738,68 @@ function ApiTab({
         </h3>
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
           <ApiButton
-            label="Health Check"
-            description="GET /health"
-            onClick={() => testApi("/health")}
-          />
-          <ApiButton
             label="Get Scenarios"
             description="GET /api/v1/scenarios"
             onClick={() => testApi("/api/v1/scenarios")}
           />
           <ApiButton
-            label="Get World Status"
-            description="GET /api/v1/world"
-            onClick={() => testApi("/api/v1/world")}
+            label="Wizard Options"
+            description="GET /api/v1/wizard/options"
+            onClick={() => testApi("/api/v1/wizard/options")}
+          />
+          <ApiButton
+            label="List Books"
+            description="GET /api/v1/books"
+            onClick={() => testApi("/api/v1/books")}
           />
         </div>
 
-        {/* Load World */}
+        {/* Book-specific endpoints */}
+        {bookId && (
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Current Book:</span>
+              <span className="text-xs font-mono text-primary">{bookId}</span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+              <ApiButton
+                label="Get Book"
+                description={`GET /api/v1/books/${bookId}`}
+                onClick={() => testApi(`/api/v1/books/${bookId}`)}
+              />
+              <ApiButton
+                label="List Characters"
+                description={`GET /api/v1/books/${bookId}/characters`}
+                onClick={() => testApi(`/api/v1/books/${bookId}/characters`)}
+              />
+              <ApiButton
+                label="Get Pages"
+                description={`GET /api/v1/books/${bookId}/pages`}
+                onClick={() => testApi(`/api/v1/books/${bookId}/pages`)}
+              />
+              <ApiButton
+                label="Pause Book"
+                description={`POST /api/v1/books/${bookId}/pause`}
+                onClick={() => testApi(`/api/v1/books/${bookId}/pause`, "POST")}
+              />
+              <ApiButton
+                label="Resume Book"
+                description={`POST /api/v1/books/${bookId}/resume`}
+                onClick={() => testApi(`/api/v1/books/${bookId}/resume`, "POST")}
+              />
+              <ApiButton
+                label="Trigger Page"
+                description={`POST /api/v1/books/${bookId}/page`}
+                onClick={() => testApi(`/api/v1/books/${bookId}/page`, "POST")}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Create/Close Book */}
         <div className="mt-4 p-3 border border-border rounded-lg bg-muted/10">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs text-muted-foreground">Load World:</span>
+            <span className="text-xs text-muted-foreground">Create Book:</span>
             <select
               value={selectedScenario}
               onChange={(e) => setSelectedScenario(e.target.value)}
@@ -766,17 +816,19 @@ function ApiTab({
               )}
             </select>
             <button
-              onClick={() => testApi("/api/v1/world/load", "POST", { scenario: selectedScenario })}
+              onClick={() => testApi("/api/v1/books", "POST", { scenario: selectedScenario })}
               className="px-3 py-1 text-xs bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded transition-colors"
             >
-              Start World
+              Create Book
             </button>
-            <button
-              onClick={() => testApi("/api/v1/world/stop", "POST")}
-              className="px-3 py-1 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded transition-colors"
-            >
-              Stop World
-            </button>
+            {bookId && (
+              <button
+                onClick={() => testApi(`/api/v1/books/${bookId}`, "DELETE")}
+                className="px-3 py-1 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded transition-colors"
+              >
+                Close Book
+              </button>
+            )}
           </div>
         </div>
       </div>

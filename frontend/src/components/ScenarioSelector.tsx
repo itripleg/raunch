@@ -12,15 +12,15 @@ type Scenario = {
 
 type Props = {
   apiUrl: string;
-  onScenarioLoaded: () => void;
+  onScenarioSelected: (scenario: string) => void;
+  isLoading?: boolean;
   onBack?: () => void;
 };
 
-export function ScenarioSelector({ apiUrl, onScenarioLoaded, onBack }: Props) {
+export function ScenarioSelector({ apiUrl, onScenarioSelected, isLoading, onBack }: Props) {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingWorld, setLoadingWorld] = useState(false);
   const [rolling, setRolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,28 +69,9 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded, onBack }: Props) {
     }
   };
 
-  const handleLoadScenario = async () => {
+  const handlePlayScenario = () => {
     if (!selectedScenario) return;
-
-    setLoadingWorld(true);
-    setError(null);
-    try {
-      const response = await fetch(`${apiUrl}/api/v1/world/load`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ scenario: selectedScenario }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || "Failed to load scenario");
-      }
-      onScenarioLoaded();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load scenario");
-      setLoadingWorld(false);
-    }
+    onScenarioSelected(selectedScenario);
   };
 
   const selectedScenarioData = scenarios.find((s) => s.file === selectedScenario);
@@ -295,13 +276,13 @@ export function ScenarioSelector({ apiUrl, onScenarioLoaded, onBack }: Props) {
 
           {/* Start Button */}
           <motion.button
-            onClick={handleLoadScenario}
-            disabled={!selectedScenario || loadingWorld}
+            onClick={handlePlayScenario}
+            disabled={!selectedScenario || isLoading}
             className="flex-1 px-8 py-3 text-base text-primary/80 hover:text-primary border border-primary/20 hover:border-primary/40 rounded-full transition-all duration-500 hover:shadow-[0_0_30px_oklch(0.65_0.22_340_/_0.12)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
-            whileHover={{ scale: !selectedScenario || loadingWorld ? 1 : 1.02 }}
-            whileTap={{ scale: !selectedScenario || loadingWorld ? 1 : 0.98 }}
+            whileHover={{ scale: !selectedScenario || isLoading ? 1 : 1.02 }}
+            whileTap={{ scale: !selectedScenario || isLoading ? 1 : 0.98 }}
           >
-            {loadingWorld ? "loading..." : "start"}
+            {isLoading ? "loading..." : "start"}
           </motion.button>
         </motion.div>
 

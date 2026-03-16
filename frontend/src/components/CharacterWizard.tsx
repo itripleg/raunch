@@ -8,6 +8,7 @@ type CharacterData = {
   appearance: string;
   desires: string;
   backstory: string;
+  kinks: string;
 };
 
 type NPCInfo = {
@@ -32,6 +33,7 @@ type RememberedCharacter = {
 
 type Props = {
   apiUrl: string;
+  bookId: string;
   onCharacterAdded: (char: CharacterData) => void;
   onClose: () => void;
   existingCharacters: string[];
@@ -92,60 +94,67 @@ const PERSONALITY_SUGGESTIONS = [
   "Submissive and eager",
 ];
 
-export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCharacters, npcs: propNpcs = [] }: Props) {
+// Get librarian ID from localStorage
+function getLibrarianId(apiUrl: string): string | null {
+  // Try the server-specific key first
+  const serverKey = `raunch_librarian:${apiUrl}`;
+  const serverId = localStorage.getItem(serverKey);
+  if (serverId) return serverId;
+
+  // Fall back to the generic key
+  return localStorage.getItem("raunch_librarian_id");
+}
+
+export function CharacterWizard({ apiUrl, bookId, onCharacterAdded, onClose, existingCharacters, npcs: propNpcs = [] }: Props) {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [npcs, setNpcs] = useState<NPCInfo[]>(propNpcs);
   const [remembered, setRemembered] = useState<RememberedCharacter[]>([]);
 
-  // Fetch NPCs, potential characters, and remembered characters from API on mount
+  // Fetch characters from the book on mount
   useEffect(() => {
     async function fetchData() {
       try {
-        // Fetch world data (scenario NPCs + remembered)
-        const worldRes = await fetch(`${apiUrl}/api/v1/world`);
-        if (worldRes.ok) {
-          const data = await worldRes.json();
+        const librarianId = getLibrarianId(apiUrl);
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (librarianId) {
+          headers["X-Librarian-ID"] = librarianId;
+        }
+
+        // Fetch characters from the book
+        const res = await fetch(`${apiUrl}/api/v1/books/${bookId}/characters`, {
+          headers,
+        });
+        if (res.ok) {
+          const data = await res.json();
           const allNpcs: NPCInfo[] = [];
 
-          if (data.npcs && Array.isArray(data.npcs)) {
-            allNpcs.push(...data.npcs);
-          }
-
-          // Also fetch potential characters (narrator-detected NPCs)
-          try {
-            const potentialRes = await fetch(`${apiUrl}/api/v1/potential-characters`);
-            if (potentialRes.ok) {
-              const potentialData = await potentialRes.json();
-              if (Array.isArray(potentialData)) {
-                for (const pc of potentialData) {
-                  // Only add if not already in npcs list
-                  if (!allNpcs.some(n => n.name.toLowerCase() === pc.name.toLowerCase())) {
-                    allNpcs.push({
-                      name: pc.name,
-                      description: pc.description,
-                    });
-                  }
-                }
-              }
+          // The API returns an array of characters
+          if (Array.isArray(data)) {
+            for (const char of data) {
+              allNpcs.push({
+                name: char.name,
+                description: char.description,
+                species: char.species,
+                personality: char.personality,
+                appearance: char.appearance,
+                desires: char.desires,
+                backstory: char.backstory,
+              });
             }
-          } catch {
-            // Potential characters endpoint failed, continue with scenario NPCs
           }
 
           setNpcs(allNpcs);
-
-          if (data.remembered && Array.isArray(data.remembered)) {
-            setRemembered(data.remembered);
-          }
         }
       } catch {
         // Silently fail - character data is optional
       }
     }
     fetchData();
-  }, [apiUrl]);
+  }, [apiUrl, bookId]);
 
   const [char, setChar] = useState<CharacterData>({
     name: "",
@@ -154,6 +163,7 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
     appearance: "",
     desires: "",
     backstory: "",
+    kinks: "",
   });
 
   // Check if name matches an existing true character (case-insensitive)
@@ -253,6 +263,7 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
       case 3: return char.appearance.trim().length > 0;
       case 4: return char.desires.trim().length > 0;
       case 5: return char.backstory.trim().length > 0;
+      case 6: return true; // kinks is optional
       default: return false;
     }
   }, [step, char]);
@@ -267,7 +278,7 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
       setError("A character with this name already exists");
       return;
     }
-    if (step < 5) {
+    if (step < 6) {
       setStep(step + 1);
     }
   }, [step, char.name, existingCharacters]);
@@ -277,9 +288,17 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
     setError(null);
 
     try {
-      const res = await fetch(`${apiUrl}/api/v1/characters`, {
+      const librarianId = getLibrarianId(apiUrl);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (librarianId) {
+        headers["X-Librarian-ID"] = librarianId;
+      }
+
+      const res = await fetch(`${apiUrl}/api/v1/books/${bookId}/characters`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(char),
       });
 
@@ -294,7 +313,7 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, char, onCharacterAdded]);
+  }, [apiUrl, bookId, char, onCharacterAdded]);
 
   const steps = [
     {
@@ -331,6 +350,12 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
       title: "Backstory",
       field: "backstory" as const,
       placeholder: "Brief history or background...",
+      suggestions: null,
+    },
+    {
+      title: "Kinks",
+      field: "kinks" as const,
+      placeholder: "Any special preferences or kinks... (optional)",
       suggestions: null,
     },
   ];
@@ -390,7 +415,7 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
               {currentStep.title}
             </label>
 
-            {currentStep.field === "backstory" || currentStep.field === "appearance" ? (
+            {currentStep.field === "backstory" || currentStep.field === "appearance" || currentStep.field === "kinks" ? (
               <textarea
                 value={char[currentStep.field]}
                 onChange={e => updateField(currentStep.field, e.target.value)}
@@ -410,7 +435,7 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
                 onKeyDown={e => {
                   if (e.key === "Enter" && canProceed()) {
                     e.preventDefault();
-                    if (step < 5) handleNext();
+                    if (step < 6) handleNext();
                     else handleSubmit();
                   }
                 }}
@@ -516,7 +541,7 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
             {step > 0 ? "Back" : "Cancel"}
           </button>
 
-          {step < 5 ? (
+          {step < 6 ? (
             <button
               onClick={handleNext}
               disabled={!canProceed()}
@@ -536,7 +561,7 @@ export function CharacterWizard({ apiUrl, onCharacterAdded, onClose, existingCha
         </div>
 
         {/* Preview */}
-        {step === 5 && char.name && (
+        {step === 6 && char.name && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}

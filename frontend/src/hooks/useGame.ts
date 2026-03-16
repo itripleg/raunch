@@ -406,8 +406,8 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-export function useGame(wsUrl: string) {
-  const { state: wsState, lastMessage, connect, send, disconnect, setOnMessage } = useWebSocket(wsUrl);
+export function useGame(apiUrl: string, bookId?: string | null) {
+  const { state: wsState, lastMessage, connect, send, disconnect, setOnMessage, url } = useWebSocket(apiUrl, bookId);
   const [game, dispatch] = useReducer(reducer, initial);
 
   // Use ref for streaming accumulation - updates are throttled to avoid React batching all at once

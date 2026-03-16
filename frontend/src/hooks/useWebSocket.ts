@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type ServerMessage = {
   type: string;
@@ -7,7 +7,7 @@ export type ServerMessage = {
 
 type WSState = "connecting" | "connected" | "disconnected";
 
-export function useWebSocket(url: string) {
+export function useWebSocket(baseUrl: string, bookId?: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
   const [state, setState] = useState<WSState>("disconnected");
   const [messages, setMessages] = useState<ServerMessage[]>([]);
@@ -16,7 +16,16 @@ export function useWebSocket(url: string) {
   // Callback ref for processing messages synchronously
   const onMessageRef = useRef<((msg: ServerMessage) => void) | null>(null);
 
+  // Compute the full WebSocket URL including /ws/{bookId} path
+  const url = useMemo(() => {
+    if (!bookId) return null;
+    // Convert http:// to ws://, https:// to wss://
+    const wsBase = baseUrl.replace(/^http/, 'ws');
+    return `${wsBase}/ws/${bookId}`;
+  }, [baseUrl, bookId]);
+
   const connect = useCallback(() => {
+    if (!url) return; // Don't connect if no URL (no bookId)
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     setState("connecting");
@@ -68,11 +77,24 @@ export function useWebSocket(url: string) {
     onMessageRef.current = callback;
   }, []);
 
+  // Auto-reconnect when bookId changes
   useEffect(() => {
+    // Close existing connection when bookId changes
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+      setState("disconnected");
+    }
+
+    // Connect to new URL if we have a valid bookId
+    if (url) {
+      connect();
+    }
+
     return () => {
       wsRef.current?.close();
     };
-  }, []);
+  }, [url, connect]);
 
-  return { state, messages, lastMessage, connect, send, disconnect, setOnMessage };
+  return { state, messages, lastMessage, connect, send, disconnect, setOnMessage, url };
 }

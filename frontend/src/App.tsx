@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, Component, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useGame } from "./hooks/useGame";
+import { useLibrary } from "./hooks/useLibrary";
 import { SplashScreen } from "./components/SplashScreen";
 import { AlphaDashboard } from "./components/AlphaDashboard";
 import { AdminSettings } from "./components/AdminSettings";
@@ -11,45 +12,35 @@ import { GameLayout } from "./components/GameLayout";
 import { NicknamePrompt } from "./components/NicknamePrompt";
 import { CharacterWizard } from "./components/CharacterWizard";
 import { WizardPage } from "./components/WizardPage";
+import { ScenarioSelector } from "./components/ScenarioSelector";
 
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
 const HAS_PLAYED_KEY = "raunch_has_played";
 
-type AppView = "splash" | "dashboard" | "kanban" | "voting" | "about" | "wizard" | "game";
+type AppView = "splash" | "dashboard" | "kanban" | "voting" | "about" | "wizard" | "scenario" | "game";
 
 // Smart URL detection for local vs remote/production
-function getServerUrls(): { wsUrl: string; apiUrl: string } {
+function getApiUrl(): string {
   const hostname = window.location.hostname;
   const protocol = window.location.protocol;
   const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname.startsWith("192.168.");
 
-  // Check for environment overrides (set at build time)
-  const envWsUrl = import.meta.env.VITE_WS_URL;
+  // Check for environment override (set at build time)
   const envApiUrl = import.meta.env.VITE_API_URL;
-
-  if (envWsUrl && envApiUrl) {
-    return { wsUrl: envWsUrl, apiUrl: envApiUrl };
+  if (envApiUrl) {
+    return envApiUrl;
   }
 
   if (isLocal) {
-    // Local development - use hardcoded ports
-    return {
-      wsUrl: `ws://${hostname}:7667`,
-      apiUrl: `http://${hostname}:8000`
-    };
+    // Local development - use hardcoded port
+    return `http://${hostname}:8000`;
   }
 
-  // Remote/tunneled - assume same host, different ports via path or subdomain
-  // For cloudflare tunnels, we need separate tunnel URLs passed via env
-  // Fallback: try same host with standard ports (won't work for most tunnels)
-  const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
-  return {
-    wsUrl: envWsUrl || `${wsProtocol}//${hostname}:7667`,
-    apiUrl: envApiUrl || `${protocol}//${hostname}:8000`
-  };
+  // Remote/tunneled - assume same host
+  return `${protocol}//${hostname}:8000`;
 }
 
-const { wsUrl: DEFAULT_WS_URL, apiUrl: DEFAULT_API_URL } = getServerUrls();
+const DEFAULT_API_URL = getApiUrl();
 
 // Helper to read nickname from localStorage
 function getStoredNickname(): string | null {
@@ -150,9 +141,9 @@ class ErrorBoundary extends Component<
 }
 
 function App() {
-  const [wsUrl, setWsUrl] = useState(DEFAULT_WS_URL);
   const [apiUrl] = useState(DEFAULT_API_URL);
-  const { wsState, game, actions } = useGame(wsUrl);
+  const library = useLibrary(apiUrl);
+  const { wsState, game, actions } = useGame(apiUrl, library.currentBook?.book_id);
 
   // View state (new alpha dashboard flow)
   const [view, setView] = useState<AppView>("splash");
@@ -163,9 +154,8 @@ function App() {
   const [nickname, setNickname] = useState<string>(() => getStoredNickname() ?? "");
   const [nicknameConfirmed, setNicknameConfirmed] = useState(() => hasStoredNickname());
 
-  // World running status from REST API
-  const [worldRunning, setWorldRunning] = useState<boolean | null>(null);
-  const [worldCheckError, setWorldCheckError] = useState<string | null>(null);
+  // Scenario selection loading state
+  const [scenarioLoading, setScenarioLoading] = useState(false);
 
 
   // Character wizard state
@@ -177,30 +167,33 @@ function App() {
   // Handle splash completion - skip to game if user has played before
   const handleSplashComplete = useCallback(() => {
     if (hasPlayedBefore()) {
-      // Skip dashboard, go straight to game
-      if (wsState !== "connected") {
-        actions.connect();
+      // Skip dashboard, go to scenario selection (or game if book exists)
+      if (library.currentBook) {
+        setGameSubView("connecting");
+        setView("game");
+      } else {
+        setView("scenario");
       }
-      setGameSubView("connecting");
-      setView("game");
     } else {
       setView("dashboard");
     }
-  }, [wsState, actions]);
+  }, [library.currentBook]);
 
   // Handle navigation from dashboard
   const handleNavigate = useCallback((newView: AppView) => {
     if (newView === "game") {
       // Mark that user has played (for skip-to-game on future visits)
       setHasPlayed();
-      // Connect WebSocket when entering game
-      if (wsState !== "connected") {
-        actions.connect();
+      // If no current book, go to scenario selection first
+      if (!library.currentBook) {
+        setView("scenario");
+        return;
       }
+      // WebSocket auto-connects when bookId is set
       setGameSubView("connecting");
     }
     setView(newView);
-  }, [wsState, actions]);
+  }, [library.currentBook]);
 
   // Handle back to dashboard
   const handleBackToDashboard = useCallback(() => {
@@ -216,8 +209,11 @@ function App() {
 
   // Handle character deletion
   const handleDeleteCharacter = useCallback(async (name: string) => {
+    if (!library.currentBook) {
+      throw new Error("No active book");
+    }
     try {
-      const response = await fetch(`${apiUrl}/api/v1/characters/${encodeURIComponent(name)}`, {
+      const response = await fetch(`${apiUrl}/api/v1/books/${library.currentBook.book_id}/characters/${encodeURIComponent(name)}`, {
         method: "DELETE",
       });
       if (!response.ok) {
@@ -230,51 +226,50 @@ function App() {
       console.error("Failed to delete character:", err);
       throw err;
     }
-  }, [apiUrl, actions]);
+  }, [apiUrl, library.currentBook, actions]);
 
-  // Check world status and scenarios from REST API
-  const checkWorldStatus = useCallback(async () => {
+  // Handle scenario selection
+  const handleScenarioSelected = useCallback(async (scenario: string) => {
+    setScenarioLoading(true);
     try {
-      // Fetch world status
-      const worldResponse = await fetch(`${apiUrl}/api/v1/world`);
-      if (!worldResponse.ok) {
-        throw new Error("Failed to check world status");
-      }
-      const worldData = await worldResponse.json();
-      setWorldRunning(worldData.running === true);
-      setWorldCheckError(null);
-
+      const { bookId } = await library.createBook(scenario);
+      const book = await library.getBook(bookId);
+      library.setCurrentBook(book);
+      // Mark that user has played (for skip-to-game on future visits)
+      setHasPlayed();
+      // WebSocket will auto-connect due to bookId change
+      setGameSubView("connecting");
+      setView("game");
     } catch (err) {
-      setWorldCheckError(err instanceof Error ? err.message : "Failed to check world status");
-      setWorldRunning(false);
+      console.error("Failed to create book:", err);
+    } finally {
+      setScenarioLoading(false);
     }
-  }, [apiUrl]);
+  }, [library]);
 
-  // Return to dashboard (world keeps running in background)
+  // Return to dashboard (book keeps running in background)
   const handleStopWorld = useCallback(() => {
     actions.disconnect();
+    library.setCurrentBook(null);
     setView("dashboard");
-  }, [actions]);
+  }, [actions, library]);
 
   // Derived state - define these early so they can be used in effects
   const isConnected = wsState === "connected";
-  const hasWorld = worldRunning === true;
+  const hasBook = library.currentBook !== null;
+  const hasWorld = game.world?.world_id !== undefined;
   const isMultiplayer = game.world?.multiplayer === true;
   const needsNicknamePrompt = isMultiplayer && !nicknameConfirmed;
 
-  // Check world status when WebSocket connects
+  // Request world and character data when WebSocket connects
   useEffect(() => {
     if (wsState === "connected") {
-      checkWorldStatus();
-      // Also request world state via WebSocket to sync game.world
+      // Request world state via WebSocket to sync game.world
       actions.getWorld();
       // Request character list
       actions.listCharacters();
-    } else if (wsState === "disconnected") {
-      // Reset world status when disconnected
-      setWorldRunning(null);
     }
-  }, [wsState, checkWorldStatus, actions]);
+  }, [wsState, actions]);
 
   // Send join command only in multiplayer mode after nickname confirmed
   useEffect(() => {
@@ -283,15 +278,7 @@ function App() {
     }
   }, [wsState, nicknameConfirmed, isMultiplayer, nickname, actions]);
 
-  // Sync worldRunning when game.world changes from WebSocket (e.g., world_loaded message)
-  useEffect(() => {
-    if (game.world?.world_id && worldRunning === false) {
-      // World was loaded via WebSocket broadcast, update local state
-      setWorldRunning(true);
-    }
-  }, [game.world, worldRunning]);
-
-  // Update game sub-view when connected and world is running
+  // Update game sub-view when connected and world is loaded
   useEffect(() => {
     if (isConnected && hasWorld && gameSubView === "connecting") {
       setGameSubView("playing");
@@ -411,6 +398,23 @@ function App() {
           </motion.div>
         )}
 
+        {view === "scenario" && (
+          <motion.div
+            key="scenario"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <ScenarioSelector
+              apiUrl={apiUrl}
+              onScenarioSelected={handleScenarioSelected}
+              isLoading={scenarioLoading}
+              onBack={handleBackToDashboard}
+            />
+          </motion.div>
+        )}
+
         {view === "game" && (
           <motion.div
             key="game"
@@ -419,8 +423,21 @@ function App() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5 }}
           >
-            {/* Nickname prompt for multiplayer */}
-            {isConnected && hasWorld && needsNicknamePrompt ? (
+            {/* No book selected - redirect to scenario selector */}
+            {!hasBook ? (
+              <div className="min-h-screen flex items-center justify-center">
+                <div className="text-center space-y-4">
+                  <p className="text-sm text-muted-foreground">No scenario selected</p>
+                  <button
+                    onClick={() => setView("scenario")}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm"
+                  >
+                    Select Scenario
+                  </button>
+                </div>
+              </div>
+            ) : isConnected && hasWorld && needsNicknamePrompt ? (
+              /* Nickname prompt for multiplayer */
               <NicknamePrompt onSubmit={handleNicknameSubmit} />
             ) : gameSubView === "connecting" || !hasWorld ? (
               // Connecting / waiting for world state
@@ -499,22 +516,22 @@ function App() {
                           ))}
                         </div>
                       </motion.div>
-                      {/* Show "No world" message after delay */}
+                      {/* Show error message after delay if world doesn't load */}
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 1.5, duration: 0.3 }}
                         className="text-center space-y-4"
                       >
-                        <p className="text-sm text-muted-foreground">No world running</p>
+                        <p className="text-sm text-muted-foreground">Loading world...</p>
                         <p className="text-xs text-muted-foreground/50 max-w-xs">
-                          Start a scenario from the CLI with <code className="font-mono text-primary/70">raunch start --scenario name</code>
+                          If this takes too long, the book may have an issue
                         </p>
                         <button
-                          onClick={handleBackToDashboard}
+                          onClick={() => setView("scenario")}
                           className="px-4 py-2 text-muted-foreground hover:text-foreground text-sm"
                         >
-                          Back to Dashboard
+                          Choose Different Scenario
                         </button>
                       </motion.div>
                     </>
@@ -541,9 +558,10 @@ function App() {
 
             {/* Character creation wizard */}
             <AnimatePresence>
-              {showCharacterWizard && (
+              {showCharacterWizard && library.currentBook && (
                 <CharacterWizard
                   apiUrl={apiUrl}
+                  bookId={library.currentBook.book_id}
                   onCharacterAdded={handleCharacterAdded}
                   onClose={() => setShowCharacterWizard(false)}
                   existingCharacters={game.characterNames}
