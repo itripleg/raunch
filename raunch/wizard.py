@@ -6,7 +6,7 @@ import os
 import random
 from typing import Dict, Any, List, Optional
 
-from .client import get_client
+from .llm import get_client
 from .config import SCENARIOS_DIR
 
 logger = logging.getLogger(__name__)

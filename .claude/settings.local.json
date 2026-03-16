@@ -29,7 +29,8 @@
       "Bash(git branch:*)",
       "Bash(git log:*)",
       "WebFetch(domain:raunch.onrender.com)",
-      "WebFetch(domain:raunch.motherhaven.net)"
+      "WebFetch(domain:raunch.motherhaven.net)",
+      "Bash(git merge:*)"
     ]
   }
 }

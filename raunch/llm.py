@@ -5,7 +5,7 @@ Supports two authentication methods:
 2. API Key - Uses Anthropic API directly with pay-per-token billing
 
 Usage:
-    from raunch.client import get_client
+    from raunch.llm import get_client
 
     client = get_client()
     result = client.chat(system="...", messages=[...])

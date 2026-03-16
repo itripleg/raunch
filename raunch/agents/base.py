@@ -5,7 +5,7 @@ import logging
 import re
 from typing import List, Dict, Any, Optional, Generator, Tuple
 
-from ..client import get_client
+from ..llm import get_client
 
 logger = logging.getLogger(__name__)
 

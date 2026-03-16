@@ -25,7 +25,7 @@ from .display import (
 from .config import CHARACTERS_DIR, CLIENT_HOST, SERVER_PORT, SAVES_DIR
 from .wizard import generate_scenario, random_scenario, save_scenario, load_scenario, list_scenarios
 from .wizard import SETTINGS, KINK_POOLS, VIBES
-from .client import get_client
+from .llm import get_client
 
 
 def _extract_character_data_safe(raw: str) -> Dict[str, Any]:
