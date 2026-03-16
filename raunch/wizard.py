@@ -296,7 +296,7 @@ def delete_scenario(name: str) -> bool:
 
 
 def load_scenario(name: str) -> Optional[Dict[str, Any]]:
-    """Load a scenario by name or filename."""
+    """Load a scenario by name, filename, or database ID."""
     # Try exact filename
     path = os.path.join(SCENARIOS_DIR, name)
     if not path.endswith(".json"):
@@ -310,6 +310,17 @@ def load_scenario(name: str) -> Optional[Dict[str, Any]]:
         if fname.endswith(".json") and name.lower() in fname.lower():
             with open(os.path.join(SCENARIOS_DIR, fname)) as f:
                 return json.load(f)
+
+    # Try database lookup by ID
+    from . import db
+    scenario = db.get_scenario(name)
+    if scenario and scenario.get("data"):
+        return scenario["data"]
+
+    # Try database lookup by name
+    scenario = db.get_scenario_by_name(name)
+    if scenario and scenario.get("data"):
+        return scenario["data"]
 
     return None
 

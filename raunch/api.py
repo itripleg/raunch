@@ -1073,3 +1073,62 @@ async def check_auth_token(name: str):
             os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = original_token
         elif "CLAUDE_CODE_OAUTH_TOKEN" in os.environ:
             del os.environ["CLAUDE_CODE_OAUTH_TOKEN"]
+
+
+# =============================================================================
+# Admin Cleanup Endpoints
+# =============================================================================
+
+class CleanupResult(BaseModel):
+    """Result of cleanup operation."""
+    deleted_count: int
+    deleted_books: List[str]
+
+
+@app.post("/api/v1/admin/cleanup-invalid-books", response_model=CleanupResult)
+async def cleanup_invalid_books(req: AdminDeleteRequest):
+    """Delete books with invalid scenario names (admin only).
+
+    Removes books where scenario_name looks like a UUID (short hex string)
+    rather than an actual scenario filename.
+    """
+    if req.admin_email.lower() != ADMIN_EMAIL.lower():
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    import sqlite3
+    from .db import _get_conn
+
+    conn = _get_conn()
+
+    # Find invalid books
+    invalid = conn.execute('''
+        SELECT id, scenario_name, bookmark FROM books
+        WHERE LENGTH(scenario_name) <= 12
+        AND scenario_name NOT LIKE '%.json'
+        AND scenario_name NOT LIKE '%scenario%'
+        AND scenario_name NOT LIKE '%library%'
+        AND scenario_name NOT LIKE '%salvation%'
+        AND scenario_name NOT LIKE '%gambit%'
+    ''').fetchall()
+
+    deleted_books = [f"{row[2]} ({row[1]})" for row in invalid]
+
+    # Delete them
+    if invalid:
+        conn.execute('''
+            DELETE FROM books
+            WHERE LENGTH(scenario_name) <= 12
+            AND scenario_name NOT LIKE '%.json'
+            AND scenario_name NOT LIKE '%scenario%'
+            AND scenario_name NOT LIKE '%library%'
+            AND scenario_name NOT LIKE '%salvation%'
+            AND scenario_name NOT LIKE '%gambit%'
+        ''')
+        conn.commit()
+
+    logger.info(f"Admin cleanup: deleted {len(deleted_books)} invalid books")
+
+    return CleanupResult(
+        deleted_count=len(deleted_books),
+        deleted_books=deleted_books
+    )
