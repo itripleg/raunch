@@ -233,3 +233,117 @@ class LocalClient:
         """List all books for this librarian."""
         books = db.list_books_for_librarian(self._librarian_id)
         return [BookInfo.from_dict(b) for b in books]
+
+    # --- READER/CHARACTER ---
+
+    def join_as_reader(self, nickname: str) -> ReaderInfo:
+        """Join as reader (auto-done in local mode)."""
+        return ReaderInfo(
+            reader_id=self._reader_id or "",
+            nickname=nickname,
+        )
+
+    def attach(self, character: str) -> None:
+        """Attach to a character's POV."""
+        if not self._orchestrator:
+            raise ValueError("No book open")
+
+        if character not in self._orchestrator.characters:
+            raise ValueError(f"Character '{character}' not found")
+
+        self._attached_to = character
+        self._orchestrator.attach(character)
+
+    def detach(self) -> None:
+        """Detach from current character."""
+        self._attached_to = None
+        if self._orchestrator:
+            self._orchestrator.attach(None)
+
+    def action(self, text: str) -> None:
+        """Submit an action for the attached character."""
+        if not self._orchestrator:
+            raise ValueError("No book open")
+        if not self._attached_to:
+            raise ValueError("Not attached to a character")
+
+        # Submit as player action
+        self._orchestrator.submit_player_action(text)
+
+    def whisper(self, text: str) -> None:
+        """Send a whisper to the attached character."""
+        if not self._orchestrator:
+            raise ValueError("No book open")
+        if not self._attached_to:
+            raise ValueError("Not attached to a character")
+
+        self._orchestrator.submit_influence(self._attached_to, text)
+
+    def director(self, text: str) -> None:
+        """Send director guidance."""
+        if not self._orchestrator:
+            raise ValueError("No book open")
+
+        self._orchestrator.submit_director_guidance(text)
+
+    # --- POWER COMMANDS ---
+
+    def pause(self) -> None:
+        """Pause page generation."""
+        if self._orchestrator:
+            self._orchestrator.pause()
+
+    def resume(self) -> None:
+        """Resume page generation."""
+        if self._orchestrator:
+            self._orchestrator.resume()
+
+    def trigger_page(self) -> bool:
+        """Manually trigger next page generation."""
+        if not self._orchestrator:
+            return False
+        return self._orchestrator.trigger_page()
+
+    def set_page_interval(self, seconds: int) -> None:
+        """Set page generation interval."""
+        if self._orchestrator:
+            self._orchestrator.set_page_interval(seconds)
+
+    def grab(self, npc_name: str) -> CharacterInfo:
+        """Promote NPC to character."""
+        # TODO: Implement NPC promotion
+        raise NotImplementedError("NPC promotion not yet implemented")
+
+    def list_characters(self) -> List[CharacterInfo]:
+        """List all characters in the current book."""
+        if not self._orchestrator:
+            return []
+
+        return [
+            CharacterInfo(
+                name=name,
+                species=char.character_data.get("species", ""),
+                emotional_state=char.emotional_state,
+            )
+            for name, char in self._orchestrator.characters.items()
+        ]
+
+    # --- STREAMING ---
+
+    def on_page(self, callback: PageCallback) -> None:
+        """Register callback for page events."""
+        self._page_callbacks.append(callback)
+
+    def disconnect(self) -> None:
+        """Disconnect (close book for local mode)."""
+        self.close_book()
+
+    def start(self) -> None:
+        """Start the orchestrator loop."""
+        if self._orchestrator:
+            self._orchestrator.start()
+
+    def stop(self) -> None:
+        """Stop the orchestrator loop."""
+        if self._orchestrator:
+            self._orchestrator.stop()
