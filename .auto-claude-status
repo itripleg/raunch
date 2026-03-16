@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "001-review-multiplayer-api-design-specification",
+  "spec": "002-review-solo-multiplayer-mode-design-spec",
   "state": "building",
   "subtasks": {
-    "completed": 33,
-    "total": 36,
+    "completed": 5,
+    "total": 11,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Integration & Polish",
+    "current": "Frontend: Conditional UI rendering based on mode",
     "id": null,
-    "total": 5
+    "total": 3
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 34,
-    "started_at": "2026-03-12T16:27:00.589037"
+    "number": 6,
+    "started_at": "2026-03-13T08:48:07.514189"
   },
-  "last_update": "2026-03-12T17:39:05.937758"
+  "last_update": "2026-03-13T08:56:23.464349"
 }

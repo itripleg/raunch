@@ -2,54 +2,13 @@ import { useState, useEffect, useCallback, Component, type ReactNode } from "rea
 import { AnimatePresence, motion } from "motion/react";
 import { useGame } from "./hooks/useGame";
 import { SplashScreen } from "./components/SplashScreen";
-import { AlphaDashboard } from "./components/AlphaDashboard";
-import { AdminSettings } from "./components/AdminSettings";
-import { FeedbackKanban } from "./components/FeedbackKanban";
-import { VotingPolls } from "./components/VotingPolls";
-import { AboutPage } from "./components/AboutPage";
 import { GameLayout } from "./components/GameLayout";
 import { NicknamePrompt } from "./components/NicknamePrompt";
-import { CharacterWizard } from "./components/CharacterWizard";
-import { WizardPage } from "./components/WizardPage";
+import { ScenarioSelector } from "./components/ScenarioSelector";
 
+const DEFAULT_WS_URL = "ws://127.0.0.1:7667";
+const DEFAULT_API_URL = "http://127.0.0.1:8000";
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
-const HAS_PLAYED_KEY = "raunch_has_played";
-
-type AppView = "splash" | "dashboard" | "kanban" | "voting" | "about" | "wizard" | "game";
-
-// Smart URL detection for local vs remote/production
-function getServerUrls(): { wsUrl: string; apiUrl: string } {
-  const hostname = window.location.hostname;
-  const protocol = window.location.protocol;
-  const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname.startsWith("192.168.");
-
-  // Check for environment overrides (set at build time)
-  const envWsUrl = import.meta.env.VITE_WS_URL;
-  const envApiUrl = import.meta.env.VITE_API_URL;
-
-  if (envWsUrl && envApiUrl) {
-    // If WS URL doesn't have /ws path, append it (for same-origin deployment)
-    const wsUrl = envWsUrl.endsWith("/ws") ? envWsUrl : `${envWsUrl}/ws`;
-    return { wsUrl, apiUrl: envApiUrl };
-  }
-
-  if (isLocal) {
-    // Local development - use hardcoded ports (separate WS server)
-    return {
-      wsUrl: `ws://${hostname}:7667`,
-      apiUrl: `http://${hostname}:8000`
-    };
-  }
-
-  // Remote/production - same origin with /ws path for WebSocket
-  const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
-  return {
-    wsUrl: `${wsProtocol}//${hostname}/ws`,
-    apiUrl: `${protocol}//${hostname}`
-  };
-}
-
-const { wsUrl: DEFAULT_WS_URL, apiUrl: DEFAULT_API_URL } = getServerUrls();
 
 // Helper to read nickname from localStorage
 function getStoredNickname(): string | null {
@@ -75,33 +34,6 @@ function setStoredNickname(nickname: string): void {
     localStorage.setItem(NICKNAME_STORAGE_KEY, nickname);
   } catch {
     // Silently fail if localStorage is unavailable
-  }
-}
-
-// Helper to check if user has played before
-function hasPlayedBefore(): boolean {
-  try {
-    return localStorage.getItem(HAS_PLAYED_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-// Helper to mark user as having played
-function setHasPlayed(): void {
-  try {
-    localStorage.setItem(HAS_PLAYED_KEY, "true");
-  } catch {
-    // Silently fail if localStorage is unavailable
-  }
-}
-
-// Helper to check admin status from localStorage
-function getStoredAdmin(): boolean {
-  try {
-    return localStorage.getItem("raunch_admin") === "true";
-  } catch {
-    return false;
   }
 }
 
@@ -150,14 +82,9 @@ class ErrorBoundary extends Component<
 }
 
 function App() {
-  const [wsUrl, _setWsUrl] = useState(DEFAULT_WS_URL);
+  const [wsUrl, setWsUrl] = useState(DEFAULT_WS_URL);
   const [apiUrl] = useState(DEFAULT_API_URL);
   const { wsState, game, actions } = useGame(wsUrl);
-
-  // View state (new alpha dashboard flow)
-  const [view, setView] = useState<AppView>("splash");
-  const [isAdmin, setIsAdmin] = useState(() => getStoredAdmin());
-  const [showSettings, setShowSettings] = useState(false);
 
   // Nickname state with localStorage persistence
   const [nickname, setNickname] = useState<string>(() => getStoredNickname() ?? "");
@@ -165,72 +92,10 @@ function App() {
 
   // World running status from REST API
   const [worldRunning, setWorldRunning] = useState<boolean | null>(null);
-  const [_worldCheckError, setWorldCheckError] = useState<string | null>(null);
+  const [worldCheckError, setWorldCheckError] = useState<string | null>(null);
 
-
-  // Character wizard state
-  const [showCharacterWizard, setShowCharacterWizard] = useState(false);
-
-  // Game sub-view: connecting vs actual game (scenario selection removed for alpha)
-  const [gameSubView, setGameSubView] = useState<"connecting" | "playing">("connecting");
-
-  // Handle splash completion - skip to game if user has played before
-  const handleSplashComplete = useCallback(() => {
-    if (hasPlayedBefore()) {
-      // Skip dashboard, go straight to game
-      if (wsState !== "connected") {
-        actions.connect();
-      }
-      setGameSubView("connecting");
-      setView("game");
-    } else {
-      setView("dashboard");
-    }
-  }, [wsState, actions]);
-
-  // Handle navigation from dashboard
-  const handleNavigate = useCallback((newView: AppView) => {
-    if (newView === "game") {
-      // Mark that user has played (for skip-to-game on future visits)
-      setHasPlayed();
-      // Connect WebSocket when entering game
-      if (wsState !== "connected") {
-        actions.connect();
-      }
-      setGameSubView("connecting");
-    }
-    setView(newView);
-  }, [wsState, actions]);
-
-  // Handle back to dashboard
-  const handleBackToDashboard = useCallback(() => {
-    setView("dashboard");
-  }, []);
-
-  // Handle character added via wizard
-  const handleCharacterAdded = useCallback(() => {
-    setShowCharacterWizard(false);
-    // Refresh character list
-    actions.listCharacters();
-  }, [actions]);
-
-  // Handle character deletion
-  const handleDeleteCharacter = useCallback(async (name: string) => {
-    try {
-      const response = await fetch(`${apiUrl}/api/v1/characters/${encodeURIComponent(name)}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || "Failed to delete character");
-      }
-      // Refresh character list
-      actions.listCharacters();
-    } catch (err) {
-      console.error("Failed to delete character:", err);
-      throw err;
-    }
-  }, [apiUrl, actions]);
+  // Scenarios list from REST API (for pre-fetching)
+  const [scenariosAvailable, setScenariosAvailable] = useState<boolean>(false);
 
   // Check world status and scenarios from REST API
   const checkWorldStatus = useCallback(async () => {
@@ -244,44 +109,40 @@ function App() {
       setWorldRunning(worldData.running === true);
       setWorldCheckError(null);
 
+      // Pre-fetch scenarios list to verify API availability
+      const scenariosResponse = await fetch(`${apiUrl}/api/v1/scenarios`);
+      if (scenariosResponse.ok) {
+        const scenariosData = await scenariosResponse.json();
+        setScenariosAvailable(Array.isArray(scenariosData) && scenariosData.length > 0);
+      }
     } catch (err) {
       setWorldCheckError(err instanceof Error ? err.message : "Failed to check world status");
       setWorldRunning(false);
     }
   }, [apiUrl]);
 
-  // Return to dashboard (world keeps running in background)
-  const handleStopWorld = useCallback(() => {
-    actions.disconnect();
-    setView("dashboard");
-  }, [actions]);
-
-  // Derived state - define these early so they can be used in effects
-  const isConnected = wsState === "connected";
-  const hasWorld = worldRunning === true;
-  const isMultiplayer = game.world?.multiplayer === true;
-  const needsNicknamePrompt = isMultiplayer && !nicknameConfirmed;
-
-  // Check world status when WebSocket connects
+  // Auto-confirm nickname in solo mode (skip NicknamePrompt)
   useEffect(() => {
-    if (wsState === "connected") {
+    if (wsState === "connected" && !game.multiplayer && !nicknameConfirmed) {
+      // Solo mode: auto-confirm nickname (use stored or empty)
+      const storedNickname = getStoredNickname() ?? "";
+      setNickname(storedNickname);
+      setStoredNickname(storedNickname);
+      setNicknameConfirmed(true);
+    }
+  }, [wsState, game.multiplayer, nicknameConfirmed]);
+
+  // Send join command and check world status when WebSocket connects
+  useEffect(() => {
+    if (wsState === "connected" && nicknameConfirmed) {
+      // Send join command with the stored nickname
+      actions.join(nickname);
       checkWorldStatus();
-      // Also request world state via WebSocket to sync game.world
-      actions.getWorld();
-      // Request character list
-      actions.listCharacters();
     } else if (wsState === "disconnected") {
       // Reset world status when disconnected
       setWorldRunning(null);
     }
-  }, [wsState, checkWorldStatus, actions]);
-
-  // Send join command only in multiplayer mode after nickname confirmed
-  useEffect(() => {
-    if (wsState === "connected" && nicknameConfirmed && isMultiplayer) {
-      actions.join(nickname);
-    }
-  }, [wsState, nicknameConfirmed, isMultiplayer, nickname, actions]);
+  }, [wsState, nicknameConfirmed, nickname, actions, checkWorldStatus]);
 
   // Sync worldRunning when game.world changes from WebSocket (e.g., world_loaded message)
   useEffect(() => {
@@ -291,21 +152,6 @@ function App() {
     }
   }, [game.world, worldRunning]);
 
-  // Update game sub-view when connected and world is running
-  useEffect(() => {
-    if (isConnected && hasWorld && gameSubView === "connecting") {
-      setGameSubView("playing");
-    }
-  }, [isConnected, hasWorld, gameSubView]);
-
-  // In solo mode, auto-confirm nickname (skip the prompt)
-  useEffect(() => {
-    if (isConnected && hasWorld && !isMultiplayer && !nicknameConfirmed) {
-      // Solo mode: auto-confirm with stored or empty nickname
-      setNicknameConfirmed(true);
-    }
-  }, [isConnected, hasWorld, isMultiplayer, nicknameConfirmed]);
-
   // Handle nickname submission
   const handleNicknameSubmit = (submittedNickname: string) => {
     setNickname(submittedNickname);
@@ -313,257 +159,71 @@ function App() {
     setNicknameConfirmed(true);
   };
 
+  // Handle scenario loaded - refresh world status
+  const handleScenarioLoaded = useCallback(() => {
+    checkWorldStatus();
+  }, [checkWorldStatus]);
 
-  // Render based on view state
+  const isConnected = wsState === "connected";
+  // Use worldRunning from REST API as source of truth for whether a scenario is loaded
+  // game.world is set from welcome message regardless of scenario state
+  const hasWorld = worldRunning === true;
+
+  // Check if we need to show nickname prompt (only in multiplayer mode)
+  const needsNicknamePrompt = isConnected && game.multiplayer && !nicknameConfirmed;
+
   return (
-    <>
-      <AnimatePresence mode="wait">
-        {view === "splash" && (
-          <motion.div
-            key="splash"
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <SplashScreen
-              onComplete={handleSplashComplete}
-              showIntro={!hasPlayedBefore()}
-              apiUrl={apiUrl}
-            />
-          </motion.div>
-        )}
-
-        {view === "dashboard" && (
-          <motion.div
-            key="dashboard"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <AlphaDashboard
-              onNavigate={handleNavigate}
-              isAdmin={isAdmin}
-              onOpenSettings={() => setShowSettings(true)}
-              apiUrl={apiUrl}
-            />
-          </motion.div>
-        )}
-
-        {view === "kanban" && (
-          <motion.div
-            key="kanban"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            <FeedbackKanban
-              onBack={handleBackToDashboard}
-              isAdmin={isAdmin}
-              apiUrl={apiUrl}
-            />
-          </motion.div>
-        )}
-
-        {view === "voting" && (
-          <motion.div
-            key="voting"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            <VotingPolls
-              onBack={handleBackToDashboard}
-              isAdmin={isAdmin}
-              apiUrl={apiUrl}
-            />
-          </motion.div>
-        )}
-
-        {view === "about" && (
-          <motion.div
-            key="about"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            <AboutPage
-              onBack={handleBackToDashboard}
-              isAdmin={isAdmin}
-              apiUrl={apiUrl}
-            />
-          </motion.div>
-        )}
-
-        {view === "wizard" && (
-          <motion.div
-            key="wizard"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            <WizardPage
-              onBack={handleBackToDashboard}
-              apiUrl={apiUrl}
-            />
-          </motion.div>
-        )}
-
-        {view === "game" && (
-          <motion.div
-            key="game"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            {/* Nickname prompt for multiplayer */}
-            {isConnected && hasWorld && needsNicknamePrompt ? (
-              <NicknamePrompt onSubmit={handleNicknameSubmit} />
-            ) : gameSubView === "connecting" || !hasWorld ? (
-              // Connecting / waiting for world state
-              <div className="min-h-screen flex items-center justify-center">
-                <div className="text-center space-y-6">
-                  {wsState === "connecting" && (
-                    <>
-                      <div className="flex gap-1.5 justify-center">
-                        {[0, 1, 2].map((i) => (
-                          <motion.div
-                            key={i}
-                            className="w-1.5 h-1.5 rounded-full bg-primary/50"
-                            animate={{
-                              opacity: [0.2, 0.8, 0.2],
-                              scale: [0.9, 1.1, 0.9],
-                            }}
-                            transition={{
-                              duration: 1.8,
-                              repeat: Infinity,
-                              delay: i * 0.25,
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <p className="text-xs text-muted-foreground/40">connecting to server</p>
-                    </>
-                  )}
-
-                  {wsState === "disconnected" && (
-                    <>
-                      <p className="text-sm text-muted-foreground">Server not available</p>
-                      <p className="text-xs text-muted-foreground/50 max-w-xs">
-                        Start the server with <code className="font-mono text-primary/70">raunch start</code>
-                      </p>
-                      <div className="flex gap-3 justify-center">
-                        <button
-                          onClick={() => actions.connect()}
-                          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm"
-                        >
-                          Retry
-                        </button>
-                        <button
-                          onClick={handleBackToDashboard}
-                          className="px-4 py-2 text-muted-foreground hover:text-foreground text-sm"
-                        >
-                          Back
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  {isConnected && !hasWorld && (
-                    <>
-                      {/* Loading dots while waiting for world info */}
-                      <motion.div
-                        initial={{ opacity: 1 }}
-                        animate={{ opacity: 0 }}
-                        transition={{ delay: 1.2, duration: 0.3 }}
-                        className="absolute inset-0 flex items-center justify-center"
-                      >
-                        <div className="flex gap-1.5">
-                          {[0, 1, 2].map((i) => (
-                            <motion.div
-                              key={i}
-                              className="w-1.5 h-1.5 rounded-full bg-primary/50"
-                              animate={{
-                                opacity: [0.2, 0.8, 0.2],
-                                scale: [0.9, 1.1, 0.9],
-                              }}
-                              transition={{
-                                duration: 1.8,
-                                repeat: Infinity,
-                                delay: i * 0.25,
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </motion.div>
-                      {/* Show "No world" message after delay */}
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 1.5, duration: 0.3 }}
-                        className="text-center space-y-4"
-                      >
-                        <p className="text-sm text-muted-foreground">No world running</p>
-                        <p className="text-xs text-muted-foreground/50 max-w-xs">
-                          Start a scenario from the CLI with <code className="font-mono text-primary/70">raunch start --scenario name</code>
-                        </p>
-                        <button
-                          onClick={handleBackToDashboard}
-                          className="px-4 py-2 text-muted-foreground hover:text-foreground text-sm"
-                        >
-                          Back to Dashboard
-                        </button>
-                      </motion.div>
-                    </>
-                  )}
-                </div>
-              </div>
-            ) : (
-              // Main game interface
-              <ErrorBoundary onReset={() => window.location.reload()}>
-                <GameLayout
-                  game={game}
-                  actions={actions}
-                  apiUrl={apiUrl}
-                  onAddCharacter={() => {
-                    actions.listCharacters();
-                    setShowCharacterWizard(true);
-                  }}
-                  onDeleteCharacter={handleDeleteCharacter}
-                  onStopWorld={handleStopWorld}
-                  onBackToDashboard={handleBackToDashboard}
-                />
-              </ErrorBoundary>
-            )}
-
-            {/* Character creation wizard */}
-            <AnimatePresence>
-              {showCharacterWizard && (
-                <CharacterWizard
-                  apiUrl={apiUrl}
-                  onCharacterAdded={handleCharacterAdded}
-                  onClose={() => setShowCharacterWizard(false)}
-                  existingCharacters={game.characterNames}
-                />
-              )}
-            </AnimatePresence>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Admin settings modal */}
-      <AdminSettings
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        isAdmin={isAdmin}
-        onAdminChange={setIsAdmin}
-        apiUrl={apiUrl}
-      />
-    </>
+    <AnimatePresence mode="wait">
+      {!isConnected ? (
+        <motion.div
+          key="splash"
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.8, ease: "easeInOut" }}
+        >
+          <SplashScreen
+            onConnect={actions.connect}
+            wsState={wsState}
+            wsUrl={wsUrl}
+            onUrlChange={setWsUrl}
+          />
+        </motion.div>
+      ) : needsNicknamePrompt ? (
+        <motion.div
+          key="nickname"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5, ease: "easeInOut" }}
+        >
+          <NicknamePrompt onSubmit={handleNicknameSubmit} />
+        </motion.div>
+      ) : !hasWorld ? (
+        <motion.div
+          key="scenario"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.8, ease: "easeInOut" }}
+        >
+          <ScenarioSelector
+            apiUrl={apiUrl}
+            onScenarioLoaded={handleScenarioLoaded}
+          />
+        </motion.div>
+      ) : (
+        <motion.div
+          key="game"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1.2, delay: 0.2, ease: "easeOut" }}
+          className="min-h-screen"
+        >
+          <ErrorBoundary onReset={() => window.location.reload()}>
+            <GameLayout game={game} actions={actions} />
+          </ErrorBoundary>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 

@@ -13,6 +13,8 @@ saves/*.db
 # Character templates and scenarios are user data
 characters/*.json
 scenarios/*.json
+# But allow test scenarios for integration testing
+!scenarios/test_*.json
 
 # IDE
 .vscode/
@@ -29,11 +31,6 @@ Thumbs.db
 # Frontend
 frontend/node_modules/
 frontend/dist/
-
-# Auto-claude agent metadata (local only)
-.auto-claude-security.json
-.claude_settings.json
-.auto-claude-status
 
 # Auto Claude data directory
 .auto-claude/

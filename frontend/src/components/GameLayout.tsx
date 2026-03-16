@@ -1,34 +1,31 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { PageData, StreamingState, TurnState, Player } from "@/hooks/useGame";
+import type { TickData, StreamingState, TurnState, Player } from "@/hooks/useGame";
 import { CharacterPanel } from "./CharacterPanel";
-import { DirectorPanel } from "./DirectorPanel";
-import { PageFeed } from "./PageFeed";
+import { TickFeed } from "./TickFeed";
 import { Sidebar } from "./Sidebar";
 import { ActionBar } from "./ActionBar";
 import { TurnStateUI } from "./TurnStateUI";
 import { PlayerPresence } from "./PlayerPresence";
-import { DebugPanel } from "./DebugPanel";
 
 type GameState = {
   world: Record<string, unknown> | null;
   characterNames: string[];
   characterDetails: Record<string, Record<string, unknown>>;
   attachedTo: string | null;
-  pages: PageData[];
+  ticks: TickData[];
   history: unknown[];
-  characterHistory: { name: string; pages: unknown[] } | null;
-  replayPage: Record<string, unknown> | null;
+  characterHistory: { name: string; ticks: unknown[] } | null;
+  replayTick: Record<string, unknown> | null;
   status: Record<string, unknown> | null;
   error: string | null;
   paused?: boolean;
-  pageInterval?: number;
+  tickInterval?: number;
   manualMode?: boolean;
   pendingInfluence?: { character: string; text: string } | null;
   directorMode?: boolean;
   pendingDirectorGuidance?: string | null;
   streaming?: StreamingState;
-  pageGenerating?: number | null;
   // Multiplayer
   multiplayer?: boolean;
   turnState?: TurnState | null;
@@ -46,109 +43,46 @@ type Actions = {
   getStatus: () => void;
   getHistory: (count?: number, offset?: number) => void;
   getCharacterHistory: (name: string, count?: number) => void;
-  replay: (page: number) => void;
+  replay: (tick: number) => void;
   submitAction: (text: string) => void;
   clearError: () => void;
   togglePause?: () => void;
-  setPageInterval?: (seconds: number) => void;
-  triggerPage?: () => void;
+  setTickInterval?: (seconds: number) => void;
+  triggerTick?: () => void;
   toggleDirectorMode?: () => void;
   submitDirectorGuidance?: (text: string) => void;
   ready?: () => void;
-  sendCommand?: (cmd: string, data?: Record<string, unknown>) => void;
 };
 
 type Props = {
   game: GameState;
   actions: Actions;
-  apiUrl: string;
-  onAddCharacter?: () => void;
-  onDeleteCharacter?: (name: string) => Promise<void>;
-  onStopWorld?: () => void;
-  onBackToDashboard?: () => void;
 };
 
-export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteCharacter, onStopWorld, onBackToDashboard: _onBackToDashboard }: Props) {
-  const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
-  const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
+export function GameLayout({ game, actions }: Props) {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [autoScroll, _setAutoScroll] = useState(true);
   const [isNearBottom, setIsNearBottom] = useState(true);
-  const [focusedPageNum, setFocusedPageNum] = useState<number | null>(null);
-  const [previewCharacter, setPreviewCharacter] = useState<string | null>(null);
-  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
-  const [nextClicked, setNextClicked] = useState(false);
-  const [waitingForPage, setWaitingForPage] = useState(false);
+  const [focusedTickNum, setFocusedTickNum] = useState<number | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
-  // Handle next button click with animation
-  const handleNextClick = useCallback(() => {
-    if (actions.triggerPage) {
-      setNextClicked(true);
-      setWaitingForPage(true);
-      actions.triggerPage();
-      // Reset button animation after short delay
-      setTimeout(() => setNextClicked(false), 600);
-    }
-  }, [actions]);
-
-  // Clear waiting state when streaming starts or new page arrives
-  const pageCount = game.pages.length;
-  const prevPageCountRef = useRef(pageCount);
+  // Initialize focused tick to latest when ticks first load
   useEffect(() => {
-    // Clear when streaming starts
-    if (game.streaming?.isStreaming) {
-      setWaitingForPage(false);
+    if (game.ticks.length > 0 && focusedTickNum === null) {
+      setFocusedTickNum(game.ticks[game.ticks.length - 1].tick);
     }
-    // Clear when a new page arrives (non-streaming mode)
-    if (pageCount > prevPageCountRef.current) {
-      setWaitingForPage(false);
-    }
-    prevPageCountRef.current = pageCount;
-  }, [game.streaming?.isStreaming, pageCount]);
+  }, [game.ticks.length, focusedTickNum]);
 
-  // Also show intermission when backend signals page is generating (CLI-triggered)
-  const isWaitingForPage = waitingForPage || game.pageGenerating !== null;
+  // Get the character data for the focused tick
+  const focusedTickData = useMemo(() => {
+    if (!focusedTickNum || !game.attachedTo) return null;
+    const tick = game.ticks.find(t => t.tick === focusedTickNum);
+    return tick?.characters[game.attachedTo] ?? null;
+  }, [focusedTickNum, game.ticks, game.attachedTo]);
 
-  // Handle character deletion
-  const handleDeleteCharacter = useCallback(async (name: string) => {
-    if (onDeleteCharacter) {
-      await onDeleteCharacter(name);
-      // Refresh character list
-      actions.listCharacters();
-    }
-  }, [onDeleteCharacter, actions]);
-
-  // Initialize focused page to latest when pages first load
-  useEffect(() => {
-    if (game.pages.length > 0 && focusedPageNum === null) {
-      setFocusedPageNum(game.pages[game.pages.length - 1].page);
-    }
-  }, [game.pages.length, focusedPageNum]);
-
-  // Fallback to latest page if no focus
-  const latestPage = game.pages[game.pages.length - 1];
-
-  // Determine which character to display: preview > attached
-  const displayedCharacterName = previewCharacter ?? game.attachedTo;
-
-  // Wide mode when at most one panel is open (narrow only when both are open)
-  const hasSidebarOpen = sidebarOpen;
-  const hasRightPanelOpen = !!(game.attachedTo || previewCharacter || game.directorMode);
-  const wideMode = !(hasSidebarOpen && hasRightPanelOpen);
-
-  // Get the focused page data
-  const focusedPage = useMemo(() => {
-    if (focusedPageNum) {
-      return game.pages.find(p => p.page === focusedPageNum) ?? null;
-    }
-    return latestPage ?? null;
-  }, [focusedPageNum, game.pages, latestPage]);
-
-  // Get character data for the displayed character at the focused page
-  const displayedCharacterData = useMemo(() => {
-    if (!displayedCharacterName) return undefined;
-    return focusedPage?.characters[displayedCharacterName] ?? undefined;
-  }, [displayedCharacterName, focusedPage]);
+  // Fallback to latest tick if no focus
+  const latestTick = game.ticks[game.ticks.length - 1];
+  const displayedCharacterData = focusedTickData ?? latestTick?.characters[game.attachedTo ?? ""];
 
   // Fetch character list and recent history on mount
   useEffect(() => {
@@ -165,40 +99,10 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
     }
   }, []);
 
-  // Handle page focus changes from scroll position
-  const handlePageFocus = useCallback((pageNum: number) => {
-    setFocusedPageNum(pageNum);
+  // Handle tick focus changes from scroll position
+  const handleTickFocus = useCallback((tickNum: number) => {
+    setFocusedTickNum(tickNum);
   }, []);
-
-  // Open character panel on mobile when attaching to a character
-  const handleCharacterAttached = useCallback(() => {
-    // Check if we're on mobile (lg breakpoint is 1024px)
-    if (window.innerWidth < 1024) {
-      setCharacterPanelOpen(true);
-      setSidebarOpen(false); // Close sidebar when opening character panel
-    }
-  }, []);
-
-  // Preview a character (hover on desktop, tap on mobile)
-  // Only allow hover preview if a panel is already open (to avoid layout shift)
-  const handlePreviewCharacter = useCallback((name: string | null) => {
-    // Only allow hover if right panel is already open (attached or director mode)
-    if (game.attachedTo || game.directorMode || previewCharacter) {
-      setPreviewCharacter(name);
-    }
-  }, [game.attachedTo, game.directorMode, previewCharacter]);
-
-  // Click on character name - only works if panel already open (to avoid layout shift)
-  const handleTapCharacter = useCallback((name: string) => {
-    // Only allow if right panel is already open
-    if (game.attachedTo || game.directorMode || previewCharacter) {
-      setPreviewCharacter(name);
-      // On mobile, also open the overlay panel
-      if (window.innerWidth < 1024) {
-        setCharacterPanelOpen(true);
-      }
-    }
-  }, [game.attachedTo, game.directorMode, previewCharacter]);
 
   // Smart auto-scroll: only if user is near bottom AND autoScroll is on
   useEffect(() => {
@@ -212,31 +116,29 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [game.pages.length, autoScroll, isNearBottom]);
+  }, [game.ticks.length, autoScroll, isNearBottom]);
 
   return (
     <div className="h-screen relative bg-background overflow-hidden">
       {/* Top bar - fixed, transparent with blur to see content through */}
-      <header className="absolute top-0 inset-x-0 h-12 flex items-center justify-between px-3 sm:px-4 bg-background/30 backdrop-blur-xl z-20 after:absolute after:inset-x-0 after:top-full after:h-8 after:bg-gradient-to-b after:from-background/50 after:to-transparent after:pointer-events-none after:backdrop-blur-sm">
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Sidebar toggle - always visible */}
+      <header className="absolute top-0 inset-x-0 h-12 flex items-center justify-between px-4 bg-background/30 backdrop-blur-xl z-20 after:absolute after:inset-x-0 after:top-full after:h-8 after:bg-gradient-to-b after:from-background/50 after:to-transparent after:pointer-events-none after:backdrop-blur-sm">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 -ml-1.5 text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Toggle sidebar"
+            className="text-muted-foreground hover:text-foreground transition-colors"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M3 12h18M3 6h18M3 18h18" />
             </svg>
           </button>
           <h1 className="text-sm font-bold tracking-wider text-primary">RAUNCH</h1>
-          <span className="text-xs text-muted-foreground hidden sm:inline">
+          <span className="text-xs text-muted-foreground">
             {(game.world as Record<string, unknown>)?.world_name as string ?? ""}
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Player presence indicator - only in multiplayer */}
+          {/* Player presence indicator - only in multiplayer mode */}
           {game.multiplayer && game.players && game.players.length > 0 && (
             <PlayerPresence
               players={game.players}
@@ -244,13 +146,13 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
             />
           )}
 
-          {/* Page interval selector */}
-          {actions.setPageInterval && (
+          {/* Tick interval selector */}
+          {actions.setTickInterval && (
             <select
-              value={game.pageInterval ?? 0}
-              onChange={(e) => actions.setPageInterval?.(parseInt(e.target.value))}
+              value={game.tickInterval ?? 0}
+              onChange={(e) => actions.setTickInterval?.(parseInt(e.target.value))}
               className="bg-muted/50 text-muted-foreground text-xs px-2 py-1 rounded border-none outline-none cursor-pointer hover:bg-muted"
-              title="Page interval"
+              title="Tick interval"
             >
               <option value={0}>Manual</option>
               <option value={10}>10s</option>
@@ -266,46 +168,26 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
 
           {/* Manual: Next button / Auto: Pause/Resume button - same position */}
           {game.manualMode ? (
-            actions.triggerPage && (
-              <motion.button
-                onClick={handleNextClick}
-                disabled={game.streaming?.isStreaming || nextClicked}
-                className="relative flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed px-2 py-1 -my-1 rounded"
-                whileTap={{ scale: 0.95 }}
+            actions.triggerTick && (
+              <button
+                onClick={actions.triggerTick}
+                disabled={game.streaming?.isStreaming}
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {/* Pulse ring on click */}
-                <AnimatePresence>
-                  {nextClicked && (
-                    <motion.span
-                      className="absolute inset-0 rounded bg-primary/20"
-                      initial={{ opacity: 0.8, scale: 0.8 }}
-                      animate={{ opacity: 0, scale: 1.5 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.5, ease: "easeOut" }}
-                    />
-                  )}
-                </AnimatePresence>
-                <motion.svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  animate={nextClicked ? { x: [0, 4, 0], scale: [1, 1.2, 1] } : {}}
-                  transition={{ duration: 0.3, ease: "easeOut" }}
-                >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M8 5v14l11-7z" />
-                </motion.svg>
-                <span>Next</span>
-              </motion.button>
+                </svg>
+                Next
+              </button>
             )
           ) : (
             actions.togglePause && (
               <button
                 onClick={actions.togglePause}
-                className={`flex items-center gap-1 text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
                   game.paused
-                    ? "text-amber-400 hover:text-amber-300"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30"
+                    : "bg-muted/50 text-muted-foreground hover:bg-muted"
                 }`}
               >
                 {game.paused ? (
@@ -327,19 +209,8 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
             )
           )}
 
-          {/* Debug button */}
-          <button
-            onClick={() => setDebugPanelOpen(true)}
-            className="p-1.5 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-            title="Debug Panel"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 20h.01M8.5 3H7a2 2 0 0 0-2 2v1.5M15.5 3H17a2 2 0 0 1 2 2v1.5M8.5 21H7a2 2 0 0 1-2-2v-1.5M15.5 21H17a2 2 0 0 0 2-2v-1.5M3 8.5V7a2 2 0 0 1 2-2h1.5M21 8.5V7a2 2 0 0 0-2-2h-1.5M3 15.5V17a2 2 0 0 0 2 2h1.5M21 15.5V17a2 2 0 0 1-2 2h-1.5M12 12h.01" />
-            </svg>
-          </button>
-
-          {/* Status LED with hover tooltip - desktop only */}
-          <div className="relative group hidden sm:block">
+          {/* Status LED with hover tooltip */}
+          <div className="relative group">
             <span
               className={`block w-2.5 h-2.5 rounded-full shadow-sm cursor-default transition-colors ${
                 game.paused
@@ -351,34 +222,9 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
             />
             <div className="absolute right-0 top-full mt-2 px-2 py-1 bg-popover border border-border rounded text-xs text-popover-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
               {game.paused ? "Simulation paused" : game.manualMode ? "Manual mode" : "Auto-advancing"}
-              {!game.manualMode && game.pageInterval && ` · ${game.pageInterval}s intervals`}
+              {!game.manualMode && game.tickInterval && ` · ${game.tickInterval}s intervals`}
             </div>
           </div>
-
-          {/* Right panel toggle - mobile only, shown when attached or director mode */}
-          {(game.attachedTo || game.directorMode) && (
-            <button
-              onClick={() => setCharacterPanelOpen(!characterPanelOpen)}
-              className={`lg:hidden p-1.5 -mr-1.5 transition-colors ${
-                game.directorMode
-                  ? "text-amber-400 hover:text-amber-300"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              aria-label={game.directorMode ? "Toggle director panel" : "Toggle character panel"}
-            >
-              {game.directorMode ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 11l18-5v12L3 13v-2z" />
-                  <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
-                </svg>
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-              )}
-            </button>
-          )}
 
           {/* Hidden disconnect button - kept for future remote server features */}
           {false && (
@@ -394,8 +240,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
 
       {/* Main content - full height, content scrolls under header */}
       <div className="flex h-full overflow-hidden">
-        {/* Sidebar - Desktop: inline, Mobile: overlay */}
-        {/* Desktop sidebar */}
+        {/* Sidebar */}
         <AnimatePresence initial={false}>
           {sidebarOpen && (
             <motion.div
@@ -403,76 +248,32 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
               animate={{ width: 256, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
-              className="hidden lg:block overflow-hidden shrink-0 h-full"
+              className="overflow-hidden shrink-0 h-full"
             >
               <Sidebar
                 game={game}
                 actions={actions}
                 onClose={() => setSidebarOpen(false)}
-                onCharacterAttached={handleCharacterAttached}
-                onAddCharacter={onAddCharacter}
-                onDeleteCharacter={handleDeleteCharacter}
-                onStopWorld={onStopWorld}
               />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Mobile sidebar overlay */}
-        <AnimatePresence>
-          {sidebarOpen && (
-            <div className="lg:hidden fixed inset-0 z-40">
-              {/* Backdrop */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                onClick={() => setSidebarOpen(false)}
-              />
-              {/* Panel */}
-              <motion.div
-                initial={{ x: "-100%" }}
-                animate={{ x: 0 }}
-                exit={{ x: "-100%" }}
-                transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
-                className="absolute left-0 top-0 h-full w-[280px] max-w-[85vw]"
-              >
-                <Sidebar
-                  game={game}
-                  actions={actions}
-                  onClose={() => setSidebarOpen(false)}
-                  onCharacterAttached={handleCharacterAttached}
-                  onDeleteCharacter={handleDeleteCharacter}
-                  onStopWorld={onStopWorld}
-                />
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-
-        {/* Center: Page feed */}
+        {/* Center: Tick feed */}
         <main className="flex-1 flex flex-col overflow-hidden">
           <div
             ref={feedRef}
             className="flex-1 overflow-y-auto scroll-smooth pt-14"
             onScroll={handleScroll}
           >
-            <PageFeed
-              pages={game.pages}
+            <TickFeed
+              ticks={game.ticks}
               attachedTo={game.attachedTo}
               autoScroll={autoScroll && isNearBottom}
-              focusedPage={focusedPageNum}
-              onPageFocus={handlePageFocus}
+              focusedTick={focusedTickNum}
+              onTickFocus={handleTickFocus}
               containerRef={feedRef}
               streaming={game.streaming}
-              onHoverCharacter={handlePreviewCharacter}
-              onTapCharacter={handleTapCharacter}
-              wideMode={wideMode}
-              mood={(game.world as Record<string, unknown>)?.mood as string}
-              waitingForPage={isWaitingForPage}
-              nextPageNum={game.pageGenerating ?? (game.pages.length > 0 ? game.pages[game.pages.length - 1].page + 1 : 1)}
             />
           </div>
 
@@ -483,18 +284,17 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
             attachedTo={game.attachedTo}
             directorMode={game.directorMode ?? false}
             pendingDirectorGuidance={game.pendingDirectorGuidance}
-            wideMode={wideMode}
           />
 
-          {/* Turn state indicator - only in multiplayer */}
+          {/* Turn state indicator - shows waiting players and countdown (multiplayer only) */}
           {game.multiplayer && (
             <TurnStateUI
               turnState={game.turnState ? {
-                timeout: 60,
+                timeout: game.turnState.countdown,
                 waitingFor: game.turnState.waiting_for,
                 allReady: game.turnState.all_ready,
                 playerCount: game.players?.length ?? 0,
-                turnStartedAt: Date.now() - (60 - game.turnState.countdown) * 1000,
+                turnStartedAt: null,
               } : null}
               myNickname={game.nickname ?? null}
               isMyReady={game.nickname ? !game.turnState?.waiting_for.includes(game.nickname) : true}
@@ -503,158 +303,31 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
           )}
         </main>
 
-        {/* Right panel: Director or Character with smooth crossfade */}
+        {/* Right panel: attached character - synced with scroll */}
         <AnimatePresence initial={false}>
-          {(game.directorMode || game.attachedTo || previewCharacter) && (
+          {game.attachedTo && (
             <motion.div
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: 320, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
-              className="hidden lg:block overflow-hidden shrink-0 h-full"
+              className="overflow-hidden shrink-0 h-full"
             >
-              <AnimatePresence mode="wait" initial={false}>
-                {/* Preview character takes precedence, then director mode, then attached */}
-                {previewCharacter ? (
-                  <motion.div
-                    key={`character-${previewCharacter}`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="h-full"
-                  >
-                    <CharacterPanel
-                      name={previewCharacter}
-                      data={focusedPage?.characters[previewCharacter] ?? undefined}
-                      isPreview={true}
-                      pendingInfluence={null}
-                      streamingText={
-                        game.streaming?.isStreaming
-                          ? game.streaming.characters[previewCharacter]
-                          : undefined
-                      }
-                    />
-                  </motion.div>
-                ) : game.directorMode ? (
-                  <motion.div
-                    key="director"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="h-full"
-                  >
-                    <DirectorPanel
-                      pageData={focusedPage}
-                      pendingGuidance={game.pendingDirectorGuidance}
-                      onDeleteCharacter={handleDeleteCharacter}
-                      onAddCharacter={onAddCharacter}
-                    />
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key={`character-${displayedCharacterName}`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="h-full"
-                  >
-                    <CharacterPanel
-                      name={displayedCharacterName!}
-                      data={displayedCharacterData}
-                      isPreview={false}
-                      pendingInfluence={
-                        game.pendingInfluence?.character === displayedCharacterName
-                          ? game.pendingInfluence.text
-                          : null
-                      }
-                      streamingText={
-                        game.streaming?.isStreaming && displayedCharacterName
-                          ? game.streaming.characters[displayedCharacterName]
-                          : undefined
-                      }
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Mobile right panel overlay - Director or Character */}
-        <AnimatePresence>
-          {characterPanelOpen && (game.directorMode || displayedCharacterName) && (
-            <div className="lg:hidden fixed inset-0 z-40">
-              {/* Backdrop */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                onClick={() => {
-                  setCharacterPanelOpen(false);
-                  setPreviewCharacter(null);
-                }}
+              <CharacterPanel
+                name={game.attachedTo}
+                data={displayedCharacterData}
+                pendingInfluence={
+                  game.pendingInfluence?.character === game.attachedTo
+                    ? game.pendingInfluence.text
+                    : null
+                }
+                streamingText={
+                  game.streaming?.isStreaming
+                    ? game.streaming.characters[game.attachedTo]
+                    : undefined
+                }
               />
-              {/* Panel */}
-              <motion.div
-                initial={{ x: "100%" }}
-                animate={{ x: 0 }}
-                exit={{ x: "100%" }}
-                transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
-                className="absolute right-0 top-0 h-full w-[320px] max-w-[90vw]"
-              >
-                {/* Preview character takes precedence, then director mode */}
-                {previewCharacter ? (
-                  <CharacterPanel
-                    name={previewCharacter}
-                    data={focusedPage?.characters[previewCharacter] ?? undefined}
-                    isPreview={true}
-                    pendingInfluence={null}
-                    streamingText={
-                      game.streaming?.isStreaming
-                        ? game.streaming.characters[previewCharacter]
-                        : undefined
-                    }
-                    onClose={() => {
-                      setCharacterPanelOpen(false);
-                      setPreviewCharacter(null);
-                    }}
-                  />
-                ) : game.directorMode ? (
-                  <DirectorPanel
-                    pageData={focusedPage}
-                    pendingGuidance={game.pendingDirectorGuidance}
-                    onClose={() => setCharacterPanelOpen(false)}
-                    onDeleteCharacter={handleDeleteCharacter}
-                    onAddCharacter={onAddCharacter}
-                  />
-                ) : (
-                  <CharacterPanel
-                    name={displayedCharacterName!}
-                    data={displayedCharacterData}
-                    isPreview={false}
-                    pendingInfluence={
-                      game.pendingInfluence?.character === displayedCharacterName
-                        ? game.pendingInfluence.text
-                        : null
-                    }
-                    streamingText={
-                      game.streaming?.isStreaming
-                        ? game.streaming.characters[displayedCharacterName!]
-                        : undefined
-                    }
-                    onClose={() => {
-                      setCharacterPanelOpen(false);
-                      setPreviewCharacter(null);
-                    }}
-                  />
-                )}
-              </motion.div>
-            </div>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
@@ -668,14 +341,6 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
           {game.error}
         </div>
       )}
-
-      {/* Debug panel */}
-      <DebugPanel
-        isOpen={debugPanelOpen}
-        onClose={() => setDebugPanelOpen(false)}
-        sendCommand={actions.sendCommand ?? (() => {})}
-        apiUrl={apiUrl}
-      />
     </div>
   );
 }

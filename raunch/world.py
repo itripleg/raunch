@@ -17,7 +17,7 @@ class WorldState:
         self.world_id: str = uuid.uuid4().hex[:8]
         self.world_name: str = name or f"world-{self.world_id}"
         self.created_at: str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        self.page_count: int = 0
+        self.tick_count: int = 0
         self.world_time: str = "Dawn of the First Day"
         self.mood: str = "anticipation"
         self.locations: Dict[str, Dict[str, Any]] = {
@@ -27,14 +27,14 @@ class WorldState:
             }
         }
         self.scenario: Optional[Dict[str, Any]] = None  # Generated scenario context
-        self.multiplayer: bool = False  # Solo mode by default
         self.active_events: List[str] = []
         self.event_log: List[Dict[str, Any]] = []
+        self.multiplayer: bool = False  # Whether this is a multiplayer session
 
     def snapshot(self) -> str:
         """Produce a text summary of current world state for agents."""
         lines = [
-            f"[WORLD STATE — Page {self.page_count}]",
+            f"[WORLD STATE — Tick {self.tick_count}]",
             f"Time: {self.world_time}",
             f"Mood: {self.mood}",
         ]
@@ -46,7 +46,7 @@ class WorldState:
             themes = ", ".join(self.scenario.get("themes", []))
             if themes:
                 lines.append(f"Themes: {themes}")
-            if self.page_count <= 1:
+            if self.tick_count <= 1:
                 lines.append(f"Opening: {self.scenario.get('opening_situation', '')}")
             # Include NPCs from scenario for narrator to introduce
             npcs = self.scenario.get("npcs", [])
@@ -73,14 +73,12 @@ class WorldState:
             lines.append("")
             lines.append("Recent events:")
             for entry in self.event_log[-5:]:
-                # Backwards compat: accept both 'page' and old 'tick' key
-                page_num = entry.get('page', entry.get('tick', '?'))
-                lines.append(f"  [{page_num}] {entry['event']}")
+                lines.append(f"  [{entry['tick']}] {entry['event']}")
 
         return "\n".join(lines)
 
     def apply_narrator_update(self, narrator_result: Dict[str, Any]) -> None:
-        """Apply changes from the narrator's page output."""
+        """Apply changes from the narrator's tick output."""
         changes = narrator_result.get("world_changes", {})
         if changes.get("time_advance"):
             self.world_time = changes["time_advance"]
@@ -89,7 +87,7 @@ class WorldState:
 
         # Log events
         for event in narrator_result.get("events", []):
-            self.event_log.append({"page": self.page_count, "event": event})
+            self.event_log.append({"tick": self.tick_count, "event": event})
 
         self.active_events = narrator_result.get("events", self.active_events)
 
@@ -115,11 +113,10 @@ class WorldState:
             "world_id": self.world_id,
             "world_name": self.world_name,
             "created_at": self.created_at,
-            "page_count": self.page_count,
+            "tick_count": self.tick_count,
             "world_time": self.world_time,
             "mood": self.mood,
             "characters": char_count,
-            "multiplayer": self.multiplayer,
         }
 
     def save(self, name: str = "autosave") -> str:
@@ -129,14 +126,14 @@ class WorldState:
             "world_id": self.world_id,
             "world_name": self.world_name,
             "created_at": self.created_at,
-            "page_count": self.page_count,
+            "tick_count": self.tick_count,
             "world_time": self.world_time,
             "mood": self.mood,
             "locations": self.locations,
             "scenario": self.scenario,
-            "multiplayer": self.multiplayer,
             "active_events": self.active_events,
             "event_log": self.event_log,
+            "multiplayer": self.multiplayer,
             "saved_at": time.time(),
         }
         with open(path, "w") as f:
@@ -153,13 +150,12 @@ class WorldState:
         self.world_id = data.get("world_id", self.world_id)
         self.world_name = data.get("world_name", self.world_name)
         self.created_at = data.get("created_at", self.created_at)
-        # Backwards compat: accept both page_count and old tick_count
-        self.page_count = data.get("page_count", data.get("tick_count", 0))
+        self.tick_count = data["tick_count"]
         self.world_time = data["world_time"]
         self.mood = data["mood"]
         self.locations = data["locations"]
         self.scenario = data.get("scenario")
-        self.multiplayer = data.get("multiplayer", False)
         self.active_events = data["active_events"]
         self.event_log = data["event_log"]
+        self.multiplayer = data.get("multiplayer", False)
         return True

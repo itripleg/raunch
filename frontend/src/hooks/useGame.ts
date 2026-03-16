@@ -7,7 +7,7 @@ export type CharacterInfo = {
   location?: string;
 };
 
-export type CharacterPage = {
+export type CharacterTick = {
   action?: string;
   dialogue?: string;
   emotional_state?: string;
@@ -15,11 +15,11 @@ export type CharacterPage = {
   desires_update?: string;
 };
 
-export type PageData = {
-  page: number;
+export type TickData = {
+  tick: number;
   narration: string;
   events: string[];
-  characters: Record<string, CharacterPage>;
+  characters: Record<string, CharacterTick>;
   attached_to: string | null;
   created_at?: string;
 };
@@ -28,24 +28,23 @@ export type WorldInfo = {
   world_id?: string;
   world_name?: string;
   created_at?: string;
-  page_count?: number;
+  tick_count?: number;
   world_time?: string;
   mood?: string;
-  multiplayer?: boolean;
 };
 
-type HistoryPage = {
-  page: number;
+type HistoryTick = {
+  tick: number;
   narration: string;
   events: string[];
   world_time?: string;
   mood?: string;
-  characters?: Record<string, CharacterPage>;
+  characters?: Record<string, CharacterTick>;
   created_at?: string;
 };
 
-type CharHistoryPage = {
-  page: number;
+type CharHistoryTick = {
+  tick: number;
   inner_thoughts?: string;
   action?: string;
   dialogue?: string;
@@ -53,7 +52,7 @@ type CharHistoryPage = {
 };
 
 export type StreamingState = {
-  page: number | null;
+  tick: number | null;
   narrator: string;
   characters: Record<string, string>;
   isStreaming: boolean;
@@ -79,14 +78,14 @@ type State = {
   characterNames: string[];
   characterDetails: Record<string, CharacterInfo>;
   attachedTo: string | null;
-  pages: PageData[];
-  history: HistoryPage[];
-  characterHistory: { name: string; pages: CharHistoryPage[] } | null;
-  replayPage: Record<string, unknown> | null;
+  ticks: TickData[];
+  history: HistoryTick[];
+  characterHistory: { name: string; ticks: CharHistoryTick[] } | null;
+  replayTick: Record<string, unknown> | null;
   status: Record<string, unknown> | null;
   error: string | null;
   paused: boolean;
-  pageInterval: number;
+  tickInterval: number;
   manualMode: boolean;
   pendingInfluence: { character: string; text: string } | null;
   // Director mode
@@ -94,8 +93,6 @@ type State = {
   pendingDirectorGuidance: string | null;
   // Streaming
   streaming: StreamingState;
-  // Non-streaming page generation
-  pageGenerating: number | null;
   // Multiplayer
   multiplayer: boolean;
   playerId: string | null;
@@ -106,17 +103,17 @@ type State = {
 
 type Action =
   | { type: "WELCOME"; world: WorldInfo; characters: string[]; multiplayer: boolean }
-  | { type: "PAGE"; data: PageData }
+  | { type: "TICK"; data: TickData }
   | { type: "ATTACHED"; character: string }
   | { type: "DETACHED" }
   | { type: "CHARACTERS"; characters: Record<string, CharacterInfo> }
   | { type: "WORLD"; snapshot: Record<string, unknown> }
   | { type: "STATUS"; data: Record<string, unknown> }
-  | { type: "HISTORY"; pages: HistoryPage[] }
-  | { type: "CHARACTER_HISTORY"; character: string; pages: CharHistoryPage[] }
+  | { type: "HISTORY"; ticks: HistoryTick[] }
+  | { type: "CHARACTER_HISTORY"; character: string; ticks: CharHistoryTick[] }
   | { type: "REPLAY"; data: Record<string, unknown> }
   | { type: "PAUSE_STATE"; paused: boolean }
-  | { type: "PAGE_INTERVAL"; seconds: number; manual: boolean }
+  | { type: "TICK_INTERVAL"; seconds: number; manual: boolean }
   | { type: "ERROR"; message: string }
   | { type: "CLEAR_ERROR" }
   | { type: "INFLUENCE_QUEUED"; character: string; text: string }
@@ -125,13 +122,9 @@ type Action =
   | { type: "TOGGLE_DIRECTOR_MODE" }
   | { type: "DIRECTOR_QUEUED"; text: string }
   // Streaming
-  | { type: "PAGE_START"; page: number }
-  | { type: "STREAM_SYNC"; page: number; narrator: string; characters: Record<string, string> }
-  | { type: "STREAM_DONE"; page: number; source: string }
-  // Non-streaming progressive updates
-  | { type: "PAGE_GENERATING"; page: number }
-  | { type: "NARRATOR_READY"; page: number; narration: string; mood: string; created_at: string }
-  | { type: "CHARACTER_READY"; page: number; character: string; data: Record<string, unknown> }
+  | { type: "TICK_START"; tick: number }
+  | { type: "STREAM_SYNC"; tick: number; narrator: string; characters: Record<string, string> }
+  | { type: "STREAM_DONE"; tick: number; source: string }
   // Multiplayer
   | { type: "JOINED"; player_id: string; nickname: string }
   | { type: "PLAYERS"; players: Player[] }
@@ -143,27 +136,26 @@ const initial: State = {
   characterNames: [],
   characterDetails: {},
   attachedTo: null,
-  pages: [],
+  ticks: [],
   history: [],
   characterHistory: null,
-  replayPage: null,
+  replayTick: null,
   status: null,
   error: null,
   paused: false,
-  pageInterval: 0,
+  tickInterval: 0,
   manualMode: true,
   pendingInfluence: null,
   directorMode: false,
   pendingDirectorGuidance: null,
   streaming: {
-    page: null,
+    tick: null,
     narrator: "",
     characters: {},
     isStreaming: false,
     narratorDone: false,
     charactersDone: [],
   },
-  pageGenerating: null,
   // Multiplayer
   multiplayer: false,
   playerId: null,
@@ -176,75 +168,28 @@ function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "WELCOME":
       return { ...initial, world: action.world, characterNames: action.characters, multiplayer: action.multiplayer };
-    case "PAGE": {
-      // Clear pending influence/director and streaming when page arrives
-      const existingIndex = state.pages.findIndex(p => p.page === action.data.page);
-      if (existingIndex !== -1) {
-        // Update existing partial page with full data (characters, etc.)
-        const updatedPages = [...state.pages];
-        updatedPages[existingIndex] = {
-          ...updatedPages[existingIndex],
-          ...action.data,
-          // Merge characters - full page has all character data
-          characters: action.data.characters,
-        };
+    case "TICK": {
+      // Clear pending influence/director and streaming when tick arrives
+      // Deduplicate - don't add if tick number already exists
+      const tickExists = state.ticks.some(t => t.tick === action.data.tick);
+      if (tickExists) {
         return {
           ...state,
-          pages: updatedPages,
           pendingInfluence: null,
           pendingDirectorGuidance: null,
           streaming: { ...initial.streaming },
-          pageGenerating: null,
         };
       }
       return {
         ...state,
-        pages: [...state.pages.slice(-100), action.data],
+        ticks: [...state.ticks.slice(-100), action.data],
         pendingInfluence: null,
         pendingDirectorGuidance: null,
         streaming: { ...initial.streaming },
-        pageGenerating: null,
       };
-    }
-    case "PAGE_GENERATING":
-      // Non-streaming mode: page generation started
-      return { ...state, pageGenerating: action.page };
-    case "NARRATOR_READY": {
-      // Add partial page with just narration (non-streaming mode)
-      // This allows typewriter to start before characters are done
-      const partialPage: PageData = {
-        page: action.page,
-        narration: action.narration,
-        events: [],
-        characters: {},
-        attached_to: state.attachedTo,
-        created_at: action.created_at,
-      };
-      return {
-        ...state,
-        pages: [...state.pages.slice(-100), partialPage],
-        pendingInfluence: null,
-        pendingDirectorGuidance: null,
-        pageGenerating: null, // Clear - page content is now arriving
-      };
-    }
-    case "CHARACTER_READY": {
-      // Add character to existing page (non-streaming mode)
-      const pageIndex = state.pages.findIndex(p => p.page === action.page);
-      if (pageIndex === -1) return state; // Page not found
-      const updatedPages = [...state.pages];
-      updatedPages[pageIndex] = {
-        ...updatedPages[pageIndex],
-        characters: {
-          ...updatedPages[pageIndex].characters,
-          [action.character]: action.data,
-        },
-      };
-      return { ...state, pages: updatedPages };
     }
     case "ATTACHED":
-      // Also exit director mode when attaching (prevents panel close/reopen)
-      return { ...state, attachedTo: action.character, directorMode: false };
+      return { ...state, attachedTo: action.character };
     case "DETACHED":
       return { ...state, attachedTo: null };
     case "CHARACTERS":
@@ -262,68 +207,37 @@ function reducer(state: State, action: Action): State {
         paused: (action.data as { paused?: boolean }).paused ?? state.paused,
       };
     case "HISTORY": {
-      // Convert history pages to PageData, merging with existing live pages
-      // History has full character data from DB; live pages may have partial data
-      // (only attached character's inner_thoughts). We need to merge, not replace.
-      const existingPageMap = new Map(state.pages.map(p => [p.page, p]));
-
-      const historyAsPages: PageData[] = action.pages.map(h => {
-        const existing = existingPageMap.get(h.page);
-        const historyCharacters = (h.characters || {}) as Record<string, CharacterPage>;
-
-        if (existing) {
-          // Merge: history has full data, existing may have partial
-          // For each character, prefer history data (has inner_thoughts from DB)
-          // but keep any live data that might be more recent
-          const mergedCharacters: Record<string, CharacterPage> = { ...historyCharacters };
-          for (const [name, liveData] of Object.entries(existing.characters)) {
-            if (!mergedCharacters[name]) {
-              mergedCharacters[name] = liveData;
-            } else {
-              // History has full data, but merge in case live has something newer
-              mergedCharacters[name] = {
-                ...mergedCharacters[name],
-                ...liveData,
-                // Prefer history's inner_thoughts if live doesn't have it
-                inner_thoughts: liveData.inner_thoughts || mergedCharacters[name].inner_thoughts,
-              };
-            }
-          }
-          return {
-            ...existing,
-            narration: h.narration || existing.narration,
-            events: h.events || existing.events,
-            characters: mergedCharacters,
-            created_at: h.created_at || existing.created_at,
-          };
-        }
-
-        return {
-          page: h.page,
+      // Convert history ticks to TickData and merge with existing live ticks
+      const existingTickNums = new Set(state.ticks.map(t => t.tick));
+      const historyAsTicks: TickData[] = action.ticks
+        .filter(h => !existingTickNums.has(h.tick))
+        .map(h => ({
+          tick: h.tick,
           narration: h.narration || "",
           events: h.events || [],
-          characters: historyCharacters,
+          characters: (h.characters || {}) as Record<string, CharacterTick>,
           attached_to: null,
           created_at: h.created_at,
-        };
+        }));
+      const merged = [...historyAsTicks, ...state.ticks];
+      merged.sort((a, b) => a.tick - b.tick);
+      // Final dedupe pass - keep last occurrence of each tick number
+      const seen = new Set<number>();
+      const deduped = merged.filter(t => {
+        if (seen.has(t.tick)) return false;
+        seen.add(t.tick);
+        return true;
       });
-
-      // Merge with any pages that weren't in history (shouldn't happen normally)
-      const historyPageNums = new Set(action.pages.map(h => h.page));
-      const nonHistoryPages = state.pages.filter(p => !historyPageNums.has(p.page));
-      const merged = [...historyAsPages, ...nonHistoryPages];
-      merged.sort((a, b) => a.page - b.page);
-
-      return { ...state, pages: merged, history: action.pages };
+      return { ...state, ticks: deduped, history: action.ticks };
     }
     case "CHARACTER_HISTORY":
-      return { ...state, characterHistory: { name: action.character, pages: action.pages } };
+      return { ...state, characterHistory: { name: action.character, ticks: action.ticks } };
     case "REPLAY":
-      return { ...state, replayPage: action.data };
+      return { ...state, replayTick: action.data };
     case "PAUSE_STATE":
       return { ...state, paused: action.paused };
-    case "PAGE_INTERVAL":
-      return { ...state, pageInterval: action.seconds, manualMode: action.manual };
+    case "TICK_INTERVAL":
+      return { ...state, tickInterval: action.seconds, manualMode: action.manual };
     case "ERROR":
       return { ...state, error: action.message };
     case "CLEAR_ERROR":
@@ -334,11 +248,11 @@ function reducer(state: State, action: Action): State {
       return { ...state, directorMode: !state.directorMode };
     case "DIRECTOR_QUEUED":
       return { ...state, pendingDirectorGuidance: action.text };
-    case "PAGE_START":
+    case "TICK_START":
       return {
         ...state,
         streaming: {
-          page: action.page,
+          tick: action.tick,
           narrator: "",
           characters: {},
           isStreaming: true,
@@ -348,7 +262,7 @@ function reducer(state: State, action: Action): State {
       };
     case "STREAM_SYNC":
       // Throttled sync from ref - replace entire streaming content (preserve done states)
-      if (state.streaming.page !== action.page) return state;
+      if (state.streaming.tick !== action.tick) return state;
       return {
         ...state,
         streaming: {
@@ -360,7 +274,7 @@ function reducer(state: State, action: Action): State {
       };
     case "STREAM_DONE":
       // Track which sources are done (narrator or character names)
-      if (state.streaming.page !== action.page) return state;
+      if (state.streaming.tick !== action.tick) return state;
       if (action.source === "narrator") {
         return {
           ...state,
@@ -388,7 +302,7 @@ function reducer(state: State, action: Action): State {
           world_name: action.name,
         },
         characterNames: action.characters,
-        pages: [],
+        ticks: [],
         history: [],
       };
     case "TURN_STATE":
@@ -413,12 +327,12 @@ export function useGame(wsUrl: string) {
 
   // Use ref for streaming accumulation - updates are throttled to avoid React batching all at once
   const streamingRef = useRef<{
-    page: number | null;
+    tick: number | null;
     narrator: string;
     characters: Record<string, string>;
     dirty: boolean;
   }>({
-    page: null,
+    tick: null,
     narrator: "",
     characters: {},
     dirty: false,
@@ -429,11 +343,11 @@ export function useGame(wsUrl: string) {
     const interval = setInterval(() => {
       try {
         const ref = streamingRef.current;
-        if (ref && ref.dirty && ref.page !== null) {
+        if (ref && ref.dirty && ref.tick !== null) {
           ref.dirty = false;
           dispatch({
             type: "STREAM_SYNC",
-            page: ref.page,
+            tick: ref.tick,
             narrator: ref.narrator || "",
             characters: ref.characters ? { ...ref.characters } : {},
           });
@@ -445,42 +359,23 @@ export function useGame(wsUrl: string) {
     return () => clearInterval(interval);
   }, []);
 
-  // Process messages synchronously via callback (for streaming AND welcome)
+  // Process messages synchronously via callback (for streaming)
   useEffect(() => {
     setOnMessage((msg: ServerMessage) => {
-      // Handle welcome message synchronously to avoid race condition
-      if (msg.type === "welcome") {
-        dispatch({
-          type: "WELCOME",
-          world: msg.world as WorldInfo,
-          characters: msg.characters as string[],
-          multiplayer: ((msg.world as WorldInfo & { multiplayer?: boolean })?.multiplayer) ?? false,
-        });
-        if (msg.history && Array.isArray(msg.history)) {
-          dispatch({ type: "HISTORY", pages: msg.history as HistoryPage[] });
-        }
-        if (typeof msg.page_interval === "number") {
-          dispatch({ type: "PAGE_INTERVAL", seconds: msg.page_interval, manual: msg.manual === true });
-        }
-        if (typeof msg.paused === "boolean") {
-          dispatch({ type: "PAUSE_STATE", paused: msg.paused });
-        }
-        return;
-      }
       // Handle streaming messages - accumulate in ref, mark dirty for throttled sync
-      if (msg.type === "page_start") {
+      if (msg.type === "tick_start") {
         streamingRef.current = {
-          page: msg.page as number,
+          tick: msg.tick as number,
           narrator: "",
           characters: {},
           dirty: false,
         };
-        dispatch({ type: "PAGE_START", page: msg.page as number });
+        dispatch({ type: "TICK_START", tick: msg.tick as number });
       } else if (msg.type === "stream_delta") {
-        const page = msg.page as number;
+        const tick = msg.tick as number;
         const source = msg.source as string;
         const delta = msg.delta as string;
-        if (streamingRef.current.page === page) {
+        if (streamingRef.current.tick === tick) {
           if (source === "narrator") {
             streamingRef.current.narrator += delta;
           } else {
@@ -491,17 +386,17 @@ export function useGame(wsUrl: string) {
         }
       } else if (msg.type === "stream_done") {
         // Final sync before marking done
-        if (streamingRef.current.page !== null) {
+        if (streamingRef.current.tick !== null) {
           dispatch({
             type: "STREAM_SYNC",
-            page: streamingRef.current.page,
+            tick: streamingRef.current.tick,
             narrator: streamingRef.current.narrator,
             characters: { ...streamingRef.current.characters },
           });
         }
         dispatch({
           type: "STREAM_DONE",
-          page: msg.page as number,
+          tick: msg.tick as number,
           source: msg.source as string,
         });
       }
@@ -515,37 +410,33 @@ export function useGame(wsUrl: string) {
     if (!lastMessage) return;
     const msg = lastMessage as ServerMessage;
 
-    // Skip messages handled in sync callback
-    if (msg.type === "page_start" || msg.type === "stream_delta" || msg.type === "stream_done" || msg.type === "welcome") {
+    // Skip streaming messages (handled above)
+    if (msg.type === "tick_start" || msg.type === "stream_delta" || msg.type === "stream_done") {
       return;
     }
 
     switch (msg.type) {
-      case "page":
-        dispatch({ type: "PAGE", data: msg as unknown as PageData });
-        break;
-      case "page_generating":
-        // Non-streaming mode: page generation started (show intermission)
-        dispatch({ type: "PAGE_GENERATING", page: msg.page as number });
-        break;
-      case "narrator_ready":
-        // Non-streaming mode: narrator finished, show narration before characters are done
+      case "welcome":
         dispatch({
-          type: "NARRATOR_READY",
-          page: msg.page as number,
-          narration: msg.narration as string,
-          mood: (msg.mood as string) || "",
-          created_at: (msg.created_at as string) || new Date().toISOString(),
+          type: "WELCOME",
+          world: msg.world as WorldInfo,
+          characters: msg.characters as string[],
+          multiplayer: (msg.multiplayer as boolean) ?? false,
         });
+        // Process initial history if included
+        if (msg.history && Array.isArray(msg.history)) {
+          dispatch({ type: "HISTORY", ticks: msg.history as HistoryTick[] });
+        }
+        // Process initial tick interval and pause state
+        if (typeof msg.tick_interval === "number") {
+          dispatch({ type: "TICK_INTERVAL", seconds: msg.tick_interval, manual: msg.manual === true });
+        }
+        if (typeof msg.paused === "boolean") {
+          dispatch({ type: "PAUSE_STATE", paused: msg.paused });
+        }
         break;
-      case "character_ready":
-        // Non-streaming mode: character finished, add to page
-        dispatch({
-          type: "CHARACTER_READY",
-          page: msg.page as number,
-          character: msg.character as string,
-          data: msg.data as Record<string, unknown>,
-        });
+      case "tick":
+        dispatch({ type: "TICK", data: msg as unknown as TickData });
         break;
       case "attached":
         dispatch({ type: "ATTACHED", character: msg.character as string });
@@ -563,13 +454,13 @@ export function useGame(wsUrl: string) {
         dispatch({ type: "STATUS", data: msg });
         break;
       case "history":
-        dispatch({ type: "HISTORY", pages: msg.pages as HistoryPage[] });
+        dispatch({ type: "HISTORY", ticks: msg.ticks as HistoryTick[] });
         break;
       case "character_history":
         dispatch({
           type: "CHARACTER_HISTORY",
           character: msg.character as string,
-          pages: msg.pages as CharHistoryPage[],
+          ticks: msg.ticks as CharHistoryTick[],
         });
         break;
       case "replay":
@@ -578,8 +469,8 @@ export function useGame(wsUrl: string) {
       case "pause_state":
         dispatch({ type: "PAUSE_STATE", paused: msg.paused as boolean });
         break;
-      case "page_interval":
-        dispatch({ type: "PAGE_INTERVAL", seconds: msg.seconds as number, manual: msg.manual === true });
+      case "tick_interval":
+        dispatch({ type: "TICK_INTERVAL", seconds: msg.seconds as number, manual: msg.manual === true });
         break;
       case "error":
         dispatch({ type: "ERROR", message: msg.message as string });
@@ -623,12 +514,7 @@ export function useGame(wsUrl: string) {
           all_ready: msg.all_ready as boolean,
         });
         break;
-      case "debug":
-        // Dispatch custom event for DebugPanel to receive
-        console.log("[useGame] Received debug data, dispatching event", msg.stats);
-        window.dispatchEvent(new CustomEvent("raunch-debug-data", { detail: msg }));
-        break;
-      // page_start, stream_delta, stream_done handled synchronously above
+      // tick_start, stream_delta, stream_done handled synchronously above
     }
   }, [lastMessage]);
 
@@ -650,7 +536,7 @@ export function useGame(wsUrl: string) {
       getHistory: (count = 20, offset = 0) => send({ cmd: "history", count, offset }),
       getCharacterHistory: (name: string, count = 20) =>
         send({ cmd: "character_history", character: name, count }),
-      replay: (page: number) => send({ cmd: "replay", page }),
+      replay: (tick: number) => send({ cmd: "replay", tick }),
       submitAction: (text: string, autoReady = false) => {
         send({ cmd: "action", text });
         if (autoReady) {
@@ -660,11 +546,10 @@ export function useGame(wsUrl: string) {
       togglePause: () => send({ cmd: "toggle_pause" }),
       pause: () => send({ cmd: "pause" }),
       resume: () => send({ cmd: "resume" }),
-      setPageInterval: (seconds: number) => send({ cmd: "set_page_interval", seconds }),
-      getPageInterval: () => send({ cmd: "get_page_interval" }),
-      triggerPage: () => send({ cmd: "page" }),
+      setTickInterval: (seconds: number) => send({ cmd: "set_tick_interval", seconds }),
+      getTickInterval: () => send({ cmd: "get_tick_interval" }),
+      triggerTick: () => send({ cmd: "tick" }),
       clearError: () => dispatch({ type: "CLEAR_ERROR" }),
-      reset: () => dispatch({ type: "RESET" }),
       // Director mode
       toggleDirectorMode: () => dispatch({ type: "TOGGLE_DIRECTOR_MODE" }),
       submitDirectorGuidance: (text: string, autoReady = false) => {
@@ -673,10 +558,6 @@ export function useGame(wsUrl: string) {
           send({ cmd: "ready" });
         }
       },
-      // Debug
-      fetchDebug: (limit = 50) => send({ cmd: "debug", limit, include_raw: true }),
-      // Raw send for custom commands
-      sendCommand: (cmd: string, data?: Record<string, unknown>) => send({ cmd, ...data }),
     }),
     [connect, disconnect, send]
   );
