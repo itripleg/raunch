@@ -357,11 +357,185 @@ def open_book(self, scenario: str, librarian_id: str) -> Book:
 
 ---
 
-## Open Questions
+## Authentication (v1)
 
-1. **Authentication**: Librarian accounts - OAuth? Magic links? API keys? (Future scope)
-2. **Book persistence**: When does a Book unload from memory? Idle timeout? Always persisted?
-3. **Rate limiting**: How to prevent abuse of page generation?
+For alpha/v1, authentication is **anonymous with auto-generated librarians**:
+
+- First request creates an anonymous librarian (UUID stored in browser localStorage / CLI config)
+- No login required - the librarian ID acts as a bearer token
+- Book ownership tied to librarian ID
+- Future: OAuth/magic links layered on top
+
+**How it works:**
+```
+POST /api/v1/librarians → {librarian_id: "uuid"}  # Create anonymous librarian
+Header: X-Librarian-ID: uuid                       # All subsequent requests
+```
+
+WebSocket authenticates via query param:
+```
+/ws/{book_id}?librarian={librarian_id}&reader={reader_id}
+```
+
+---
+
+## Book Lifecycle
+
+Books are **always persisted** to SQLite. Memory management:
+
+1. **On startup**: Library loads book metadata (not full state) from DB
+2. **On access**: `Library.get_book(id)` loads full state into memory if not present
+3. **Active**: Book stays in memory while readers are connected
+4. **Idle timeout**: After 30 min with no readers, book state saved and unloaded from memory
+5. **On close**: `DELETE /api/v1/books/{id}` removes from memory and DB
+
+When a book unloads:
+- WebSocket connections already closed (no readers)
+- Next access reloads from DB seamlessly
+
+```python
+class Library:
+    IDLE_TIMEOUT = 30 * 60  # seconds
+
+    async def _cleanup_loop(self):
+        """Background task to unload idle books."""
+        while True:
+            await asyncio.sleep(60)
+            for book_id, book in list(self.books.items()):
+                if book.idle_seconds > self.IDLE_TIMEOUT:
+                    await book.save()
+                    del self.books[book_id]
+```
+
+---
+
+## Error Handling
+
+### WebSocket Errors
+
+| Code | Condition | Response |
+|------|-----------|----------|
+| `not_attached` | `action`/`whisper` sent without attachment | `{"type": "error", "code": "not_attached", "message": "Attach to a character first"}` |
+| `character_taken` | Attaching to character another reader has | `{"type": "error", "code": "character_taken", "message": "Jake is controlled by another reader"}` |
+| `book_closed` | Book deleted while connected | `{"type": "error", "code": "book_closed", "message": "Book has been closed"}` + connection closed |
+| `invalid_command` | Unknown or malformed command | `{"type": "error", "code": "invalid_command", "message": "Unknown command: xyz"}` |
+| `not_found` | Character/page doesn't exist | `{"type": "error", "code": "not_found", "message": "Character 'Bob' not found"}` |
+
+### REST Errors
+
+Standard HTTP status codes:
+- `400` - Invalid request body
+- `401` - Missing/invalid librarian ID
+- `403` - Not book owner (for owner-only actions)
+- `404` - Book/character/page not found
+- `429` - Rate limited (future)
+
+---
+
+## Response Schemas
+
+### Book State
+```json
+GET /api/v1/books/{id}
+
+{
+  "book_id": "abc123",
+  "bookmark": "MILK-1234",
+  "scenario_name": "milk_money",
+  "owner_id": "lib-uuid",
+  "private": false,
+  "page_count": 42,
+  "created_at": "2026-03-15T10:00:00Z",
+  "last_active": "2026-03-15T14:30:00Z",
+  "characters": ["Jake Morrison", "Bessie Mae"],
+  "readers": [
+    {"reader_id": "r1", "nickname": "Boss", "attached_to": "Jake Morrison"}
+  ],
+  "paused": false,
+  "page_interval": 30
+}
+```
+
+### Character List
+```json
+GET /api/v1/books/{id}/characters
+
+[
+  {
+    "name": "Jake Morrison",
+    "species": "human",
+    "emotional_state": "nervous",
+    "attached_by": "r1"  // null if unattached
+  },
+  {
+    "name": "Bessie Mae",
+    "species": "cow-girl",
+    "emotional_state": "playful",
+    "attached_by": null
+  }
+]
+```
+
+### Page History
+```json
+GET /api/v1/books/{id}/pages?limit=10&offset=0
+
+{
+  "pages": [
+    {
+      "page": 1,
+      "narration": "The barn doors creaked open...",
+      "mood": "tense",
+      "world_time": "Morning",
+      "created_at": "2026-03-15T10:05:00Z",
+      "characters": {
+        "Jake Morrison": {
+          "action": "stepped inside cautiously",
+          "dialogue": "Hello? Anyone here?",
+          "emotional_state": "nervous"
+        }
+      }
+    }
+  ],
+  "total": 42,
+  "limit": 10,
+  "offset": 0
+}
+```
+
+### Bookmark Format
+
+Bookmarks are **4 random uppercase letters + 4 digits**: `ABCD-1234`
+
+- Case-insensitive for input
+- Generated randomly, checked for uniqueness
+- No profanity filter (can add later)
+
+---
+
+## Implementation Phases
+
+This spec covers multiple subsystems. Recommended implementation order:
+
+### Phase 1: Core Server Module
+- `server/library.py`, `server/book.py`, `server/reader.py`
+- `server/routes/books.py`, `server/routes/health.py`
+- `server/ws.py`
+- Database schema changes
+
+### Phase 2: Client Module
+- `client/base.py`, `client/remote.py`
+- `client/models.py`
+
+### Phase 3: CLI Refactor
+- `cli/` module using client
+- `client/local.py` (in-process mode)
+
+### Phase 4: Migration
+- React app endpoint updates
+- Old `api.py` deprecation
+
+Each phase can be its own implementation plan.
 
 ---
 
