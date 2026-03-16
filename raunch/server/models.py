@@ -1,9 +1,14 @@
 """Data models for the Living Library server."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 import uuid
+
+
+def _utcnow() -> datetime:
+    """Return current UTC datetime (timezone-aware)."""
+    return datetime.now(timezone.utc)
 
 
 @dataclass
@@ -15,7 +20,7 @@ class Reader:
     librarian_id: Optional[str] = None
     attached_to: Optional[str] = None  # Character name
     ready: bool = False
-    connected_at: datetime = field(default_factory=datetime.utcnow)
+    connected_at: datetime = field(default_factory=_utcnow)
 
     @classmethod
     def create(cls, nickname: str, librarian_id: Optional[str] = None) -> "Reader":
