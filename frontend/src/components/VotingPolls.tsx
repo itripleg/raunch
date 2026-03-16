@@ -38,6 +38,7 @@ type Props = {
   onBack: () => void;
   isAdmin: boolean;
   apiUrl: string;
+  userEmail?: string;
 };
 
 function getVoterId(): string {
@@ -49,7 +50,7 @@ function getVoterId(): string {
   return id;
 }
 
-export function VotingPolls({ onBack, isAdmin, apiUrl }: Props) {
+export function VotingPolls({ onBack, isAdmin, apiUrl, userEmail }: Props) {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -333,6 +334,7 @@ export function VotingPolls({ onBack, isAdmin, apiUrl }: Props) {
             onClose={() => setShowCreateForm(false)}
             onCreated={fetchPolls}
             apiUrl={apiUrl}
+            userEmail={userEmail}
           />
         )}
       </AnimatePresence>
@@ -568,10 +570,12 @@ function CreatePollModal({
   onClose,
   onCreated,
   apiUrl,
+  userEmail,
 }: {
   onClose: () => void;
   onCreated: () => void;
   apiUrl: string;
+  userEmail?: string;
 }) {
   const [question, setQuestion] = useState("");
   const [pollType, setPollType] = useState<PollType>("single");
@@ -594,6 +598,7 @@ function CreatePollModal({
           allow_submissions: allowSubmissions,
           show_live_results: showLiveResults,
           options: options.filter((o) => o.trim()).map((o) => o.trim()),
+          admin_email: userEmail,
         }),
       });
       onCreated();

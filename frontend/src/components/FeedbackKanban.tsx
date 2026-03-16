@@ -30,6 +30,7 @@ type Props = {
   onBack: () => void;
   isAdmin: boolean;
   apiUrl: string;
+  userEmail?: string;
 };
 
 const STATUS_CONFIG: Record<FeedbackStatus, { label: string; color: string; bgColor: string }> = {
@@ -67,7 +68,7 @@ function getVoterId(): string {
   return id;
 }
 
-export function FeedbackKanban({ onBack, isAdmin, apiUrl }: Props) {
+export function FeedbackKanban({ onBack, isAdmin, apiUrl, userEmail }: Props) {
   const [items, setItems] = useState<FeedbackItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -183,6 +184,7 @@ export function FeedbackKanban({ onBack, isAdmin, apiUrl }: Props) {
           status: newStatus,
           outcome: outcome || null,
           outcome_notes: outcomeNotes || null,
+          admin_email: userEmail,
         }),
       });
       await fetchItems();
@@ -205,6 +207,8 @@ export function FeedbackKanban({ onBack, isAdmin, apiUrl }: Props) {
     try {
       await fetch(`${apiUrl}/api/v1/alpha/feedback/${itemId}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_email: userEmail }),
       });
       await fetchItems();
     } catch {

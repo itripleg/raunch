@@ -455,6 +455,7 @@ function App() {
               onBack={handleBackToDashboard}
               isAdmin={isAuthenticated}
               apiUrl={apiUrl}
+              userEmail={user?.email}
             />
           </motion.div>
         )}
@@ -471,6 +472,7 @@ function App() {
               onBack={handleBackToDashboard}
               isAdmin={isAuthenticated}
               apiUrl={apiUrl}
+              userEmail={user?.email}
             />
           </motion.div>
         )}
