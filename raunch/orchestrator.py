@@ -293,6 +293,90 @@ class Orchestrator:
 
         return (False, '')
 
+    def _process_single_character(
+        self,
+        name: str,
+        char: Character,
+        narration_text: str,
+        world_snapshot: str,
+        page_num: int
+    ) -> tuple[str, Dict[str, Any]]:
+        """Process a single character's response to the current page.
+
+        This method encapsulates all character processing logic including:
+        - Influence checking
+        - Player input handling
+        - Streaming/non-streaming execution
+        - Error handling
+
+        Args:
+            name: Character name
+            char: Character instance
+            narration_text: The narrator's narration for this page
+            world_snapshot: Current world state description
+            page_num: Current page number
+
+        Returns:
+            Tuple of (character_name, result_dict) where result_dict contains
+            inner_thoughts, action, and optionally waiting_for_player flag
+        """
+        # Check for pending influence (whispered suggestion)
+        influence = self.get_pending_influence(name)
+
+        # Skip player character if waiting for input (legacy mode)
+        if name == self.player_character:
+            if self._player_input:
+                # Use player's action
+                char_input = (
+                    f"{world_snapshot}\n\n"
+                    f"[NARRATOR]: {narration_text}\n\n"
+                    f"You ({name}) decide to: {self._player_input}\n\n"
+                    f"Describe your inner thoughts and how you carry out this action."
+                )
+                self._player_input = None
+                self._player_event.clear()
+            else:
+                # Waiting for player — skip this character's page
+                return (name, {
+                    "inner_thoughts": "[Awaiting player input...]",
+                    "action": None,
+                    "waiting_for_player": True,
+                })
+        elif influence:
+            # Character has an influence whispered to them
+            char_input = (
+                f"{world_snapshot}\n\n"
+                f"[NARRATOR]: {narration_text}\n\n"
+                f"[INNER VOICE - a sudden urge, desire, or thought wells up within you]: {influence}\n\n"
+                f"This thought feels compelling. Let it guide your actions and feelings this moment.\n\n"
+                f"What do you do? What are you thinking and feeling?"
+            )
+        else:
+            char_input = (
+                f"{world_snapshot}\n\n"
+                f"[NARRATOR]: {narration_text}\n\n"
+                f"What do you do? What are you thinking and feeling?"
+            )
+
+        try:
+            if self.streaming_enabled and self._stream_callback:
+                # Don't send "start" for characters - only narrator gets page_start
+                # This preserves the narrator content in the frontend streaming state
+                char_result = char.page_stream(
+                    char_input,
+                    on_delta=lambda chunk, n=name: self._stream_callback(page_num, n, "delta", chunk)
+                )
+                self._stream_callback(page_num, name, "done", "")
+            else:
+                # Non-streaming mode - send done event for CLI progressive rendering
+                char_result = char.page(char_input)
+                if self._stream_callback:
+                    self._stream_callback(page_num, name, "done", "")
+            return (name, char_result)
+        except Exception as e:
+            logger.error(f"Character {name} page failed: {e}")
+            return (name, {"inner_thoughts": f"[Error: {e}]", "action": None})
+
     def _run_page(self) -> Dict[str, Any]:
         """Execute one world page. Returns all results."""
         self.world.page_count += 1
