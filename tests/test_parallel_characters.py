@@ -51,9 +51,8 @@ class TestParallelCharacterProcessing:
             "Charlie": {"inner_thoughts": "This is familiar.", "action": "Stay alert", "emotional_state": "watchful"}
         }
 
-        # Patch the agent base class's page method
-        with patch.object(Character, 'page') as mock_char_page, \
-             patch('raunch.orchestrator.Narrator') as mock_narrator_class:
+        # Patch each character instance's page method individually
+        with patch('raunch.orchestrator.Narrator') as mock_narrator_class:
 
             # Setup narrator mock
             mock_narrator = MagicMock()
@@ -61,16 +60,10 @@ class TestParallelCharacterProcessing:
             mock_narrator_class.return_value = mock_narrator
             orch.narrator = mock_narrator
 
-            # Setup character page mock to return different responses based on character
-            def char_page_side_effect(world_context):
-                # Extract character name from the mock's parent
-                for name, char in orch.characters.items():
-                    if char.page == mock_char_page:
-                        return char_responses[name]
-                # Fallback: return response based on call order
-                return char_responses[list(char_responses.keys())[mock_char_page.call_count - 1]]
-
-            mock_char_page.side_effect = char_page_side_effect
+            # Mock each character's page method with their specific response
+            char1.page = MagicMock(return_value=char_responses["Alice"])
+            char2.page = MagicMock(return_value=char_responses["Bob"])
+            char3.page = MagicMock(return_value=char_responses["Charlie"])
 
             # Run a page
             results = orch._run_page()
