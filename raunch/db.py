@@ -539,6 +539,51 @@ def get_full_page(world_id: str, page_num: int) -> Optional[Dict[str, Any]]:
     }
 
 
+def get_page_count(world_id: str) -> int:
+    """Get total page count for a world."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT COUNT(*) as count FROM pages WHERE world_id = ?",
+        (world_id,)
+    ).fetchone()
+    return row["count"] if row else 0
+
+
+def get_page(world_id: str, page_num: int) -> Optional[Dict[str, Any]]:
+    """Get a specific page by number."""
+    conn = _get_conn()
+    row = conn.execute(
+        """SELECT page_num, narration, mood, world_time, events, created_at
+           FROM pages WHERE world_id = ? AND page_num = ?""",
+        (world_id, page_num)
+    ).fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "page": row["page_num"],
+        "narration": row["narration"],
+        "mood": row["mood"],
+        "world_time": row["world_time"],
+        "events": json.loads(row["events"]) if row["events"] else [],
+        "created_at": row["created_at"],
+    }
+
+
+def get_character_pages(world_id: str, page_num: int) -> List[Dict[str, Any]]:
+    """Get character data for a specific page."""
+    conn = _get_conn()
+    rows = conn.execute(
+        """SELECT character_name, action, dialogue, emotional_state,
+                  inner_thoughts, desires_update
+           FROM character_pages WHERE world_id = ? AND page_num = ?""",
+        (world_id, page_num)
+    ).fetchall()
+
+    return [dict(r) for r in rows]
+
+
 def save_potential_character(world_id: str, name: str, description: str, page_num: int) -> None:
     """Insert or update (increment mention count) a potential character.
 
