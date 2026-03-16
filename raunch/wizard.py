@@ -331,25 +331,26 @@ def list_scenarios() -> List[Dict[str, Any]]:
 
     # Load file-based scenarios
     try:
-        for fname in sorted(os.listdir(SCENARIOS_DIR)):
-            if not fname.endswith(".json"):
-                continue
-            path = os.path.join(SCENARIOS_DIR, fname)
-            try:
-                with open(path) as f:
-                    data = json.load(f)
-                results.append({
-                    "file": fname,
-                    "name": data.get("scenario_name", "?"),
-                    "setting": (data.get("setting", "")[:80] + "...") if len(data.get("setting", "")) > 80 else data.get("setting", ""),
-                    "characters": len(data.get("characters", [])),
-                    "themes": data.get("themes", []),
-                    "source": "file",
-                })
-            except (json.JSONDecodeError, KeyError):
-                continue
-    except FileNotFoundError:
-        # scenarios directory doesn't exist (e.g., on Render)
+        if os.path.isdir(SCENARIOS_DIR):
+            for fname in sorted(os.listdir(SCENARIOS_DIR)):
+                if not fname.endswith(".json"):
+                    continue
+                path = os.path.join(SCENARIOS_DIR, fname)
+                try:
+                    with open(path) as f:
+                        data = json.load(f)
+                    results.append({
+                        "file": fname,
+                        "name": data.get("scenario_name", "?"),
+                        "setting": (data.get("setting", "")[:80] + "...") if len(data.get("setting", "")) > 80 else data.get("setting", ""),
+                        "characters": len(data.get("characters", [])),
+                        "themes": data.get("themes", []),
+                        "source": "file",
+                    })
+                except (json.JSONDecodeError, KeyError, IOError):
+                    continue
+    except Exception:
+        # Any filesystem error (permissions, not found, etc.)
         pass
 
     # Load public database scenarios
