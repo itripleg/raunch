@@ -286,6 +286,25 @@ class LLMClient:
 _instance: Optional[LLMClient] = None
 
 
+def reload_client() -> None:
+    """Reload the LLM client with current token from database."""
+    global _instance
+
+    # Try to get active token from database
+    try:
+        from .auth_db import get_active_token
+        token = get_active_token()
+        if token:
+            os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = token
+            logger.info(f"Loaded OAuth token from database: {token[:20]}...")
+    except Exception as e:
+        logger.debug(f"Could not load token from database: {e}")
+
+    # Reset singleton to force re-initialization
+    _instance = None
+    logger.info("LLM client will reinitialize on next use")
+
+
 def get_client() -> LLMClient:
     """Get or create the global LLM client."""
     global _instance
