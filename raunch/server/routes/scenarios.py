@@ -12,6 +12,7 @@ from raunch.wizard import (
     generate_scenario,
     save_scenario,
     SETTINGS,
+    PAIRINGS,
     KINK_POOLS,
     VIBES,
 )
@@ -62,12 +63,14 @@ class ScenarioDetail(BaseModel):
 
 class WizardOptions(BaseModel):
     settings: List[str]
+    pairings: List[str]
     kinks: List[str]
     vibes: List[str]
 
 
 class WizardGenerateRequest(BaseModel):
     setting: Optional[str] = None
+    pairings: Optional[List[str]] = None
     kinks: Optional[List[str]] = None
     vibe: Optional[str] = None
     preferences: Optional[str] = None
@@ -163,6 +166,7 @@ async def get_wizard_options():
     """Get available options for the Smut Wizard."""
     return WizardOptions(
         settings=SETTINGS,
+        pairings=PAIRINGS,
         kinks=KINK_POOLS,
         vibes=VIBES,
     )
@@ -175,6 +179,7 @@ async def wizard_generate(request: WizardGenerateRequest):
         scenario = generate_scenario(
             preferences=request.preferences,
             num_characters=request.num_characters,
+            pairings=request.pairings,
             kinks=request.kinks,
             setting_hint=request.setting,
             vibe=request.vibe,

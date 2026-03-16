@@ -53,7 +53,9 @@
       "Bash(git -C \"C:/dev/raunch\" log --oneline -5)",
       "Bash(del:*)",
       "Bash(git reset:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(wmic process:*)",
+      "Bash(pip install:*)"
     ]
   }
 }

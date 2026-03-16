@@ -116,34 +116,49 @@ Respond with ONLY a JSON object (no markdown, no commentary):
 
 # Flavor pools for random generation
 SETTINGS = [
-    "space station brothel", "enchanted forest fertility ritual", "dragon's breeding lair",
-    "interdimensional pleasure palace", "post-apocalyptic breeding colony",
-    "wizard's tower experiment gone wrong", "alien first contact ceremony",
-    "time-displaced Victorian meets cyberpunk", "underwater merfolk spawning grounds",
-    "dream realm where fantasies manifest physically", "gladiator arena with carnal stakes",
-    "magical academy after dark", "pirate ship with a succubus captain",
-    "frontier colony with a breeding mandate", "fae court during mating season",
+    # Fantasy
+    "enchanted forest ritual", "dragon's lair", "fae court", "wizard's tower",
+    "magical academy after dark", "dream realm",
+    # Sci-fi
+    "space station", "alien first contact", "cyberpunk nightclub", "colony ship",
+    # Historical/Adventure
+    "pirate ship", "gladiator arena", "Victorian manor", "frontier saloon",
+    # Modern/Urban
+    "penthouse party", "exclusive club", "art gallery opening", "hotel & hot springs",
 ]
 
+# Pairings - who's involved
+PAIRINGS = [
+    "lesbian/sapphic", "gay/mlm", "straight", "bi exploration",
+    "throuple", "group/orgy", "solo with toys",
+]
+
+# Kinks - what happens
 KINK_POOLS = [
-    "breeding/impregnation", "size difference", "monster/xeno", "multiple partners",
-    "power dynamics", "transformation", "aphrodisiac/heat", "voyeurism/exhibition",
-    "body worship", "rough/primal", "tender/romantic", "first time",
-    "forbidden/taboo attraction", "pregnancy/fertility", "marking/claiming",
-    "telepathic bond during sex", "magic-enhanced sensation", "competition/rivalry to lovers",
-    "rescue romance", "enemies to lovers", "strangers with instant chemistry",
+    # Physical
+    "size difference", "monster/alien", "transformation", "body worship",
+    "rough/primal", "bondage/restraint", "sensation play", "oral fixation",
+    # Dynamics
+    "dom/sub", "service/devotion", "breeding", "corruption/temptation",
+    "voyeurism/exhibition", "caught in the act", "praise kink",
+    # Situations
+    "aphrodisiac/heat", "first time", "forbidden attraction", "friends to lovers",
+    "enemies to lovers", "strangers with chemistry", "reunion/exes",
+    # Magical
+    "telepathic bond", "magic-enhanced sensation", "marking/claiming",
 ]
 
 VIBES = [
     "slow burn tension", "immediate filth", "dark and intense", "playful and fun",
-    "emotionally charged", "primal and animalistic", "sweet and surprisingly tender",
-    "competitive and aggressive", "mysterious and seductive", "chaotic and unpredictable",
+    "emotionally charged", "primal and animalistic", "sweet and tender",
+    "competitive", "mysterious and seductive", "chaotic and wild",
 ]
 
 
 def generate_scenario(
     preferences: Optional[str] = None,
     num_characters: int = 3,
+    pairings: Optional[List[str]] = None,
     kinks: Optional[List[str]] = None,
     setting_hint: Optional[str] = None,
     vibe: Optional[str] = None,
@@ -161,6 +176,8 @@ def generate_scenario(
 
     if setting_hint:
         parts.append(f"Setting: {setting_hint}")
+    if pairings:
+        parts.append(f"Pairing types: {', '.join(pairings)}")
     if kinks:
         parts.append(f"Must include these kinks/themes: {', '.join(kinks)}")
     if vibe:

@@ -909,6 +909,8 @@ def connect(host, port, bookmark, nickname):
         raunch connect raunch.example.com --port 8000
         raunch connect my-server.com --bookmark MILK-1234
     """
+    import httpx
+
     # Build server URL
     if not host.startswith("http"):
         host = f"http://{host}"
@@ -922,6 +924,33 @@ def connect(host, port, bookmark, nickname):
         nickname = os.environ.get("USER", os.environ.get("USERNAME", "Anonymous"))
 
     console.print(f"[cyan]Connecting to {server_url}...[/cyan]")
+
+    # Check server health and type
+    try:
+        response = httpx.get(f"{server_url}/health", timeout=5.0)
+        response.raise_for_status()
+        health = response.json()
+
+        server_type = health.get("server")
+        server_version = health.get("version", "unknown")
+
+        if server_type != "raunch":
+            console.print(f"[red]Not a Raunch server (got: {server_type or 'unknown'})[/red]")
+            console.print("[dim]Make sure you're connecting to a Raunch Living Library server.[/dim]")
+            return
+
+        console.print(f"[green]Found Raunch server v{server_version}[/green]")
+
+    except httpx.ConnectError:
+        console.print(f"[red]Cannot connect to {server_url}[/red]")
+        console.print("[dim]Check the server is running and the address is correct.[/dim]")
+        return
+    except httpx.HTTPStatusError as e:
+        console.print(f"[red]Server error: {e.response.status_code}[/red]")
+        return
+    except Exception as e:
+        console.print(f"[red]Connection error: {e}[/red]")
+        return
 
     try:
         client = RemoteClient(server_url, nickname=nickname)

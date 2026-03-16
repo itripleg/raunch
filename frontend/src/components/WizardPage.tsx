@@ -21,6 +21,7 @@ import {
 
 type WizardOptions = {
   settings: string[];
+  pairings: string[];
   kinks: string[];
   vibes: string[];
 };
@@ -247,6 +248,7 @@ export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
   // Form state
   const [selectedSetting, setSelectedSetting] = useState<string>("");
   const [customSetting, setCustomSetting] = useState<string>("");
+  const [selectedPairings, setSelectedPairings] = useState<string[]>([]);
   const [selectedKinks, setSelectedKinks] = useState<string[]>([]);
   const [customKinks, setCustomKinks] = useState<string>("");
   const [selectedVibe, setSelectedVibe] = useState<string>("");
@@ -280,6 +282,10 @@ export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
     );
     setCustomSetting("");
 
+    // Pick 1-2 random pairings
+    const shuffledPairings = [...options.pairings].sort(() => Math.random() - 0.5);
+    setSelectedPairings(shuffledPairings.slice(0, 1 + Math.floor(Math.random() * 2)));
+
     // Pick 2-4 random kinks
     const shuffled = [...options.kinks].sort(() => Math.random() - 0.5);
     setSelectedKinks(shuffled.slice(0, 2 + Math.floor(Math.random() * 3)));
@@ -303,6 +309,12 @@ export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
       .catch((e) => setError(`Failed to load options: ${e.message}`))
       .finally(() => setLoading(false));
   }, [apiUrl]);
+
+  const togglePairing = (pairing: string) => {
+    setSelectedPairings((prev) =>
+      prev.includes(pairing) ? prev.filter((p) => p !== pairing) : [...prev, pairing]
+    );
+  };
 
   const toggleKink = (kink: string) => {
     setSelectedKinks((prev) =>
@@ -330,6 +342,7 @@ export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           setting: finalSetting,
+          pairings: selectedPairings.length > 0 ? selectedPairings : null,
           kinks: finalKinks,
           vibe: finalVibe,
           preferences: customPrefs || null,
@@ -620,11 +633,43 @@ export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
             />
           </motion.section>
 
+          {/* Pairings Section */}
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.18 }}
+            className="relative"
+          >
+            <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-rose-500/50 via-rose-500/20 to-transparent rounded-full" />
+            <div className="flex items-center gap-2 mb-3">
+              <Heart className="w-4 h-4 text-rose-400" />
+              <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+                Pairings
+              </h2>
+              {selectedPairings.length > 0 && (
+                <span className="text-xs text-muted-foreground bg-secondary/50 px-2 py-0.5 rounded-full">
+                  {selectedPairings.length} selected
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {options?.pairings.map((p) => (
+                <SelectableChip
+                  key={p}
+                  label={p}
+                  selected={selectedPairings.includes(p)}
+                  onClick={() => togglePairing(p)}
+                />
+              ))}
+            </div>
+          </motion.section>
+
           {/* Kinks Section */}
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.22 }}
             className="relative"
           >
             <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-primary/50 via-primary/20 to-transparent rounded-full" />
@@ -633,9 +678,11 @@ export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
               <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
                 Kinks & Themes
               </h2>
-              <span className="text-xs text-muted-foreground bg-secondary/50 px-2 py-0.5 rounded-full">
-                {selectedKinks.length} selected
-              </span>
+              {selectedKinks.length > 0 && (
+                <span className="text-xs text-muted-foreground bg-secondary/50 px-2 py-0.5 rounded-full">
+                  {selectedKinks.length} selected
+                </span>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2 mb-3">
