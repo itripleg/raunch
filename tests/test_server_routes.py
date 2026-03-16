@@ -72,3 +72,112 @@ def test_get_librarian(client_with_db):
     response = client_with_db.get(f"/api/v1/librarians/{librarian_id}")
     assert response.status_code == 200
     assert response.json()["librarian_id"] == librarian_id
+
+
+def test_create_book(client_with_db):
+    """Should create a book."""
+    # Create librarian first
+    lib_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Owner"}
+    )
+    librarian_id = lib_resp.json()["librarian_id"]
+
+    response = client_with_db.post(
+        "/api/v1/books",
+        json={"scenario": "milk_money"},
+        headers={"X-Librarian-ID": librarian_id}
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert "book_id" in data
+    assert "bookmark" in data
+
+
+def test_get_book(client_with_db):
+    """Should get a book by ID."""
+    # Setup
+    lib_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Owner"}
+    )
+    librarian_id = lib_resp.json()["librarian_id"]
+
+    create_resp = client_with_db.post(
+        "/api/v1/books",
+        json={"scenario": "milk_money"},
+        headers={"X-Librarian-ID": librarian_id}
+    )
+    book_id = create_resp.json()["book_id"]
+
+    # Get
+    response = client_with_db.get(
+        f"/api/v1/books/{book_id}",
+        headers={"X-Librarian-ID": librarian_id}
+    )
+    assert response.status_code == 200
+    assert response.json()["book_id"] == book_id
+
+
+def test_join_book_by_bookmark(client_with_db):
+    """Should join a book via bookmark."""
+    # Owner creates book
+    lib_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Owner"}
+    )
+    owner_id = lib_resp.json()["librarian_id"]
+
+    create_resp = client_with_db.post(
+        "/api/v1/books",
+        json={"scenario": "milk_money"},
+        headers={"X-Librarian-ID": owner_id}
+    )
+    bookmark = create_resp.json()["bookmark"]
+    book_id = create_resp.json()["book_id"]
+
+    # Another user joins
+    lib2_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Joiner"}
+    )
+    joiner_id = lib2_resp.json()["librarian_id"]
+
+    join_resp = client_with_db.post(
+        "/api/v1/books/join",
+        json={"bookmark": bookmark},
+        headers={"X-Librarian-ID": joiner_id}
+    )
+    assert join_resp.status_code == 200
+    assert join_resp.json()["book_id"] == book_id
+
+
+def test_delete_book(client_with_db):
+    """Should delete a book (owner only)."""
+    # Setup
+    lib_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Owner"}
+    )
+    owner_id = lib_resp.json()["librarian_id"]
+
+    create_resp = client_with_db.post(
+        "/api/v1/books",
+        json={"scenario": "milk_money"},
+        headers={"X-Librarian-ID": owner_id}
+    )
+    book_id = create_resp.json()["book_id"]
+
+    # Delete
+    response = client_with_db.delete(
+        f"/api/v1/books/{book_id}",
+        headers={"X-Librarian-ID": owner_id}
+    )
+    assert response.status_code == 200
+
+    # Verify deleted
+    get_resp = client_with_db.get(
+        f"/api/v1/books/{book_id}",
+        headers={"X-Librarian-ID": owner_id}
+    )
+    assert get_resp.status_code == 404
