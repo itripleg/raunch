@@ -501,6 +501,7 @@ function App() {
             <WizardPage
               onBack={handleBackToDashboard}
               apiUrl={apiUrl}
+              librarianId={library.librarianId}
             />
           </motion.div>
         )}
@@ -519,6 +520,7 @@ function App() {
               onScenarioSelected={handleScenarioSelected}
               isLoading={scenarioLoading}
               onBack={handleBackToDashboard}
+              onOpenWizard={() => setView("wizard")}
             />
           </motion.div>
         )}

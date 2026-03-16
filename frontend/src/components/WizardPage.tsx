@@ -30,10 +30,11 @@ type GeneratedScenario = {
 
 type Props = {
   apiUrl: string;
+  librarianId: string | null;
   onBack: () => void;
 };
 
-export function WizardPage({ apiUrl, onBack }: Props) {
+export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
   const [options, setOptions] = useState<WizardOptions | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -128,21 +129,34 @@ export function WizardPage({ apiUrl, onBack }: Props) {
   };
 
   const saveScenario = async () => {
+    if (!librarianId) {
+      setError("Please log in to save scenarios");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const scenario = JSON.parse(rawJson);
-      const res = await fetch(`${apiUrl}/api/v1/scenarios/save`, {
+      const res = await fetch(`${apiUrl}/api/v1/scenarios`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: rawJson,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Librarian-ID": librarianId,
+        },
+        body: JSON.stringify({
+          name: scenario.scenario_name || "Untitled Scenario",
+          description: scenario.premise,
+          setting: scenario.setting,
+          data: scenario,
+          public: false,
+        }),
       });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.detail || "Save failed");
       }
       const data = await res.json();
-      setResult({ ...scenario, saved_to: data.saved_to });
+      setResult({ ...scenario, saved_to: data.id });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Invalid JSON");
     } finally {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, Trash2, Plus, Sparkles } from "lucide-react";
+import { ArrowLeft, Trash2, Plus, Sparkles, Wand2 } from "lucide-react";
 
 type Scenario = {
   file?: string;  // For file-based scenarios
@@ -20,9 +20,10 @@ type Props = {
   onScenarioSelected: (scenario: string) => void;
   isLoading?: boolean;
   onBack?: () => void;
+  onOpenWizard?: () => void;
 };
 
-export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLoading, onBack }: Props) {
+export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLoading, onBack, onOpenWizard }: Props) {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -222,17 +223,17 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
           </button>
         </motion.div>
 
-        {/* Create Button */}
+        {/* Create Buttons */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
-          className="w-full mb-4"
+          className="w-full mb-4 flex gap-2"
         >
           <button
             onClick={handleGenerate}
             disabled={generating}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-primary/30 hover:border-primary/50 rounded-xl text-primary/70 hover:text-primary transition-all disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-primary/30 hover:border-primary/50 rounded-xl text-primary/70 hover:text-primary transition-all disabled:opacity-50"
           >
             {generating ? (
               <>
@@ -242,10 +243,21 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
             ) : (
               <>
                 <Plus className="w-4 h-4" />
-                generate new scenario
+                quick generate
               </>
             )}
           </button>
+          {onOpenWizard && (
+            <button
+              onClick={onOpenWizard}
+              disabled={generating}
+              className="flex items-center justify-center gap-2 px-4 py-3 border border-amber-500/30 hover:border-amber-500/50 rounded-xl text-amber-500/70 hover:text-amber-500 transition-all disabled:opacity-50"
+              title="Open Smut Wizard for custom scenario creation"
+            >
+              <Wand2 className="w-4 h-4" />
+              <span className="hidden sm:inline">wizard</span>
+            </button>
+          )}
         </motion.div>
 
         {/* Scenario List */}
