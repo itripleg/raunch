@@ -5,6 +5,7 @@ import os
 import re
 import sqlite3
 import threading
+import uuid
 from typing import Dict, Any, List, Optional
 
 from .config import SAVES_DIR
@@ -945,3 +946,39 @@ def delete_poll(poll_id: int) -> bool:
     cursor = conn.execute("DELETE FROM polls WHERE id = ?", (poll_id,))
     conn.commit()
     return cursor.rowcount > 0
+
+
+# =============================================================================
+# Living Library Functions
+# =============================================================================
+
+def create_librarian(nickname: str) -> Dict[str, Any]:
+    """Create a new librarian and return their data."""
+    conn = _get_conn()
+    librarian_id = str(uuid.uuid4())[:8]
+
+    conn.execute(
+        "INSERT INTO librarians (id, nickname) VALUES (?, ?)",
+        (librarian_id, nickname)
+    )
+    conn.commit()
+
+    return get_librarian(librarian_id)
+
+
+def get_librarian(librarian_id: str) -> Optional[Dict[str, Any]]:
+    """Get a librarian by ID."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT id, nickname, created_at FROM librarians WHERE id = ?",
+        (librarian_id,)
+    ).fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "id": row["id"],
+        "nickname": row["nickname"],
+        "created_at": row["created_at"],
+    }

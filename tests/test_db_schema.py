@@ -84,3 +84,36 @@ def test_book_access_table_exists(temp_db):
     assert "book_id" in columns
     assert "librarian_id" in columns
     assert "role" in columns
+
+
+def test_create_librarian(temp_db):
+    """Should create a librarian and return it."""
+    from raunch import db
+    db.init_db()
+
+    librarian = db.create_librarian("TestUser")
+    assert librarian["id"] is not None
+    assert librarian["nickname"] == "TestUser"
+    assert librarian["created_at"] is not None
+
+
+def test_get_librarian(temp_db):
+    """Should retrieve a librarian by ID."""
+    from raunch import db
+    db.init_db()
+
+    created = db.create_librarian("TestUser")
+    fetched = db.get_librarian(created["id"])
+
+    assert fetched is not None
+    assert fetched["id"] == created["id"]
+    assert fetched["nickname"] == "TestUser"
+
+
+def test_get_librarian_not_found(temp_db):
+    """Should return None for non-existent librarian."""
+    from raunch import db
+    db.init_db()
+
+    result = db.get_librarian("nonexistent-id")
+    assert result is None
