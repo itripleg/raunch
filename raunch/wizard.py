@@ -116,42 +116,37 @@ Respond with ONLY a JSON object (no markdown, no commentary):
 
 # Flavor pools for random generation
 SETTINGS = [
-    # Fantasy
-    "enchanted forest ritual", "dragon's lair", "fae court", "wizard's tower",
-    "magical academy after dark", "dream realm",
-    # Sci-fi
-    "space station", "alien first contact", "cyberpunk nightclub", "colony ship",
-    # Historical/Adventure
-    "pirate ship", "gladiator arena", "Victorian manor", "frontier saloon",
-    # Modern/Urban
-    "penthouse party", "exclusive club", "art gallery opening", "hotel & hot springs",
+    "wizard's tower", "cyberpunk nightclub", "haunted mansion", "pirate ship",
+    "fae court", "underground fighting ring", "space station", "Victorian manor",
+    "royal court intrigue", "dragon's lair", "hotel & hot springs", "colony ship",
+    "desert oasis", "gladiator arena", "dream realm", "exclusive club",
+    "enchanted forest ritual", "frontier saloon", "submarine depths", "penthouse party",
+    "alien first contact", "magical academy after dark", "art gallery opening",
 ]
 
-# Pairings - who's involved
 PAIRINGS = [
-    "lesbian/sapphic", "gay/mlm", "straight", "bi exploration",
-    "throuple", "group/orgy", "solo with toys",
+    "bi exploration", "lesbian/sapphic", "anonymous/masked", "throuple",
+    "gay/mlm", "nonbinary character(s)", "straight", "cuckold/cuckquean",
+    "group/orgy", "trans-inclusive", "solo with toys", "androgynous",
 ]
 
-# Kinks - what happens
 KINK_POOLS = [
-    # Physical
-    "size difference", "monster/alien", "transformation", "body worship",
-    "rough/primal", "bondage/restraint", "sensation play", "oral fixation",
-    # Dynamics
-    "dom/sub", "service/devotion", "breeding", "corruption/temptation",
-    "voyeurism/exhibition", "caught in the act", "praise kink",
-    # Situations
-    "aphrodisiac/heat", "first time", "forbidden attraction", "friends to lovers",
-    "enemies to lovers", "strangers with chemistry", "reunion/exes",
-    # Magical
-    "telepathic bond", "magic-enhanced sensation", "marking/claiming",
+    "bondage/restraint", "enemies to lovers", "telepathic bond", "size difference",
+    "breeding", "caught in the act", "monster/alien", "mind control",
+    "dom/sub", "strangers with chemistry", "body worship", "public/semi-public",
+    "transformation", "praise kink", "rough/primal", "friends to lovers",
+    "corruption/temptation", "pet play", "sensation play", "marking/claiming",
+    "oral fixation", "forbidden attraction", "degradation", "magic-enhanced sensation",
+    "service/devotion", "first time", "voyeurism/exhibition", "breath play",
+    "aphrodisiac/heat", "reunion/exes",
 ]
 
 VIBES = [
-    "slow burn tension", "immediate filth", "dark and intense", "playful and fun",
-    "emotionally charged", "primal and animalistic", "sweet and tender",
-    "competitive", "mysterious and seductive", "chaotic and wild",
+    "mysterious and seductive", "desperate and needy", "playful and fun",
+    "dark and intense", "possessive", "slow burn tension", "chaotic and wild",
+    "emotionally charged", "reluctant/dubcon", "competitive", "sweet and tender",
+    "worshipful/reverent", "primal and animalistic", "humorous/lighthearted",
+    "immediate filth",
 ]
 
 
