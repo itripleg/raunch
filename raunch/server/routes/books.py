@@ -135,3 +135,85 @@ async def join_book(
     db.grant_book_access(book_id, librarian_id, role="reader")
 
     return JoinBookResponse(book_id=book_id)
+
+
+class PauseResponse(BaseModel):
+    paused: bool
+
+
+class SettingsRequest(BaseModel):
+    page_interval: Optional[int] = None
+
+
+@router.post("/{book_id}/pause", response_model=PauseResponse)
+async def pause_book(
+    book_id: str,
+    librarian_id: str = Depends(get_librarian_id),
+):
+    """Pause page generation for a book."""
+    library = get_library()
+    book = library.get_book(book_id)
+
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    if book.orchestrator:
+        book.orchestrator.pause()
+
+    return PauseResponse(paused=True)
+
+
+@router.post("/{book_id}/resume", response_model=PauseResponse)
+async def resume_book(
+    book_id: str,
+    librarian_id: str = Depends(get_librarian_id),
+):
+    """Resume page generation for a book."""
+    library = get_library()
+    book = library.get_book(book_id)
+
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    if book.orchestrator:
+        book.orchestrator.resume()
+
+    return PauseResponse(paused=False)
+
+
+@router.post("/{book_id}/page")
+async def trigger_page(
+    book_id: str,
+    librarian_id: str = Depends(get_librarian_id),
+):
+    """Trigger the next page generation."""
+    library = get_library()
+    book = library.get_book(book_id)
+
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    if book.orchestrator:
+        triggered = book.orchestrator.trigger_page()
+        return {"triggered": triggered}
+
+    return {"triggered": False, "message": "Book not started"}
+
+
+@router.put("/{book_id}/settings")
+async def update_settings(
+    book_id: str,
+    request: SettingsRequest,
+    librarian_id: str = Depends(get_librarian_id),
+):
+    """Update book settings."""
+    library = get_library()
+    book = library.get_book(book_id)
+
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    if request.page_interval is not None and book.orchestrator:
+        book.orchestrator.set_tick_interval(request.page_interval)
+
+    return {"updated": True}

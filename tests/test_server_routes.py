@@ -181,3 +181,109 @@ def test_delete_book(client_with_db):
         headers={"X-Librarian-ID": owner_id}
     )
     assert get_resp.status_code == 404
+
+
+def test_pause_book(client_with_db):
+    """Should pause a book."""
+    # Setup
+    lib_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Owner"}
+    )
+    owner_id = lib_resp.json()["librarian_id"]
+
+    create_resp = client_with_db.post(
+        "/api/v1/books",
+        json={"scenario": "milk_money"},
+        headers={"X-Librarian-ID": owner_id}
+    )
+    book_id = create_resp.json()["book_id"]
+
+    # Pause
+    response = client_with_db.post(
+        f"/api/v1/books/{book_id}/pause",
+        headers={"X-Librarian-ID": owner_id}
+    )
+    assert response.status_code == 200
+    assert response.json()["paused"] == True
+
+
+def test_resume_book(client_with_db):
+    """Should resume a paused book."""
+    # Setup
+    lib_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Owner"}
+    )
+    owner_id = lib_resp.json()["librarian_id"]
+
+    create_resp = client_with_db.post(
+        "/api/v1/books",
+        json={"scenario": "milk_money"},
+        headers={"X-Librarian-ID": owner_id}
+    )
+    book_id = create_resp.json()["book_id"]
+
+    # Pause then resume
+    client_with_db.post(
+        f"/api/v1/books/{book_id}/pause",
+        headers={"X-Librarian-ID": owner_id}
+    )
+
+    response = client_with_db.post(
+        f"/api/v1/books/{book_id}/resume",
+        headers={"X-Librarian-ID": owner_id}
+    )
+    assert response.status_code == 200
+    assert response.json()["paused"] == False
+
+
+def test_trigger_page(client_with_db):
+    """Should trigger next page generation."""
+    # Setup
+    lib_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Owner"}
+    )
+    owner_id = lib_resp.json()["librarian_id"]
+
+    create_resp = client_with_db.post(
+        "/api/v1/books",
+        json={"scenario": "milk_money"},
+        headers={"X-Librarian-ID": owner_id}
+    )
+    book_id = create_resp.json()["book_id"]
+
+    # Trigger page (no orchestrator, so triggered=False)
+    response = client_with_db.post(
+        f"/api/v1/books/{book_id}/page",
+        headers={"X-Librarian-ID": owner_id}
+    )
+    assert response.status_code == 200
+    assert "triggered" in response.json()
+
+
+def test_update_settings(client_with_db):
+    """Should update book settings."""
+    # Setup
+    lib_resp = client_with_db.post(
+        "/api/v1/librarians",
+        json={"nickname": "Owner"}
+    )
+    owner_id = lib_resp.json()["librarian_id"]
+
+    create_resp = client_with_db.post(
+        "/api/v1/books",
+        json={"scenario": "milk_money"},
+        headers={"X-Librarian-ID": owner_id}
+    )
+    book_id = create_resp.json()["book_id"]
+
+    # Update settings
+    response = client_with_db.put(
+        f"/api/v1/books/{book_id}/settings",
+        json={"page_interval": 60},
+        headers={"X-Librarian-ID": owner_id}
+    )
+    assert response.status_code == 200
+    assert response.json()["updated"] == True
