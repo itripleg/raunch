@@ -1223,6 +1223,63 @@ async def process_ws_command(client: WSClient, msg: Dict[str, Any]):
             orch.submit_director_guidance(text)
             await client.send({"type": "director_queued", "text": text})
 
+    elif cmd == "page":
+        # Trigger next page
+        if not orch:
+            await client.send({"type": "error", "message": "No world running"})
+            return
+        if orch.trigger_page():
+            await client.send({"type": "ok", "message": "Page triggered"})
+        else:
+            await client.send({"type": "error", "message": "Cannot trigger page (paused or already running)"})
+
+    elif cmd == "toggle_pause":
+        if orch:
+            if orch._paused:
+                orch.resume()
+                await ws_manager.broadcast({"type": "paused", "paused": False})
+            else:
+                orch.pause()
+                await ws_manager.broadcast({"type": "paused", "paused": True})
+
+    elif cmd == "set_page_interval":
+        if not orch:
+            await client.send({"type": "error", "message": "No world running"})
+            return
+        seconds = msg.get("seconds", 0)
+        orch.page_interval = max(0, int(seconds))
+        await client.send({"type": "page_interval", "seconds": orch.page_interval})
+
+    elif cmd == "get_page_interval":
+        if orch:
+            await client.send({"type": "page_interval", "seconds": orch.page_interval})
+        else:
+            await client.send({"type": "page_interval", "seconds": 0})
+
+    elif cmd == "character_history":
+        if not orch:
+            await client.send({"type": "character_history", "character": "", "pages": []})
+            return
+        name = msg.get("character", client.attached_to or "")
+        matches = [n for n in orch.characters if n.lower().startswith(name.lower())]
+        if not matches:
+            await client.send({"type": "error", "message": f"No character matching '{name}'"})
+        else:
+            limit = msg.get("count", 20)
+            offset = msg.get("offset", 0)
+            history = db.get_character_history(orch.world.world_id, matches[0], limit=limit, offset=offset)
+            await client.send({"type": "character_history", "character": matches[0], "pages": history})
+
+    elif cmd == "debug":
+        if not orch:
+            await client.send({"type": "debug", "stats": {}, "pages": []})
+            return
+        limit = msg.get("limit", 50)
+        include_raw = msg.get("include_raw", False)
+        stats = db.get_debug_stats(orch.world.world_id)
+        pages = db.get_debug_character_pages(orch.world.world_id, limit=limit, include_raw=include_raw)
+        await client.send({"type": "debug", "stats": stats, "pages": pages})
+
     else:
         await client.send({"type": "error", "message": f"Unknown command: {cmd}"})
 
