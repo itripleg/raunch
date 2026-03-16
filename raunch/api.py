@@ -806,6 +806,7 @@ class FeedbackItemUpdate(BaseModel):
     status: Optional[str] = None
     outcome: Optional[str] = None
     outcome_notes: Optional[str] = None
+    admin_email: str
 
 
 @app.get("/api/v1/alpha/feedback", response_model=List[FeedbackItem])
@@ -825,15 +826,24 @@ async def create_feedback(req: FeedbackItemCreate):
 @app.put("/api/v1/alpha/feedback/{item_id}", response_model=FeedbackItem)
 async def update_feedback(item_id: int, req: FeedbackItemUpdate):
     """Update a feedback item (admin)."""
+    if req.admin_email != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin access required")
     item = update_feedback_item(item_id, req.status, req.outcome, req.outcome_notes)
     if item is None:
         raise HTTPException(status_code=404, detail="Feedback item not found")
     return FeedbackItem(**item)
 
 
+class AdminDeleteRequest(BaseModel):
+    """Admin delete request."""
+    admin_email: str
+
+
 @app.delete("/api/v1/alpha/feedback/{item_id}")
-async def remove_feedback(item_id: int):
+async def remove_feedback(item_id: int, req: AdminDeleteRequest):
     """Delete a feedback item (admin)."""
+    if req.admin_email != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin access required")
     success = delete_feedback_item(item_id)
     if not success:
         raise HTTPException(status_code=404, detail="Feedback item not found")
@@ -884,6 +894,7 @@ class PollCreate(BaseModel):
     show_live_results: bool = True
     options: List[str] = []
     closes_at: Optional[str] = None
+    admin_email: str
 
 
 class PollVoteRequest(BaseModel):
@@ -908,6 +919,8 @@ async def list_polls(voter_id: Optional[str] = None):
 @app.post("/api/v1/alpha/polls", response_model=Poll)
 async def create_new_poll(req: PollCreate):
     """Create a new poll (admin)."""
+    if req.admin_email != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin access required")
     poll = create_poll(
         req.question, req.poll_type, req.max_selections,
         req.allow_submissions, req.show_live_results,
@@ -931,8 +944,10 @@ async def add_option_to_poll(poll_id: int, req: PollOptionCreate):
 
 
 @app.delete("/api/v1/alpha/polls/{poll_id}")
-async def remove_poll(poll_id: int):
+async def remove_poll(poll_id: int, req: AdminDeleteRequest):
     """Delete a poll (admin)."""
+    if req.admin_email != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin access required")
     success = delete_poll(poll_id)
     if not success:
         raise HTTPException(status_code=404, detail="Poll not found")
