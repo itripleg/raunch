@@ -80,9 +80,9 @@ class Book:
         if orch:
             characters = list(orch.characters.keys())
             paused = orch._paused
-            page_interval = orch.tick_interval
+            page_interval = orch.page_interval
             if orch.world:
-                page_count = orch.world.tick_count
+                page_count = orch.world.page_count
 
         return BookState(
             book_id=self.book_id,

@@ -182,6 +182,8 @@ def init_db() -> None:
         CREATE TABLE IF NOT EXISTS librarians (
             id          TEXT PRIMARY KEY,
             nickname    TEXT NOT NULL,
+            kinde_user_id TEXT,
+            last_active_book_id TEXT,
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -206,6 +208,22 @@ def init_db() -> None:
             PRIMARY KEY (book_id, librarian_id)
         );
     """)
+    conn.commit()
+
+    # Migration: add kinde_user_id column if it doesn't exist
+    try:
+        conn.execute("ALTER TABLE librarians ADD COLUMN kinde_user_id TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    # Migration: add last_active_book_id column if it doesn't exist
+    try:
+        conn.execute("ALTER TABLE librarians ADD COLUMN last_active_book_id TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    # Create index after migration
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_librarians_kinde ON librarians(kinde_user_id)")
     conn.commit()
 
 
@@ -999,14 +1017,25 @@ def delete_poll(poll_id: int) -> bool:
 # Living Library Functions
 # =============================================================================
 
-def create_librarian(nickname: str) -> Dict[str, Any]:
-    """Create a new librarian and return their data."""
+def create_librarian(nickname: str, kinde_user_id: Optional[str] = None) -> Dict[str, Any]:
+    """Create a new librarian and return their data.
+
+    If kinde_user_id is provided and a librarian with that ID already exists,
+    returns the existing librarian instead of creating a duplicate.
+    """
     conn = _get_conn()
+
+    # Check for existing librarian with this Kinde ID
+    if kinde_user_id:
+        existing = get_librarian_by_kinde_id(kinde_user_id)
+        if existing:
+            return existing
+
     librarian_id = str(uuid.uuid4())[:8]
 
     conn.execute(
-        "INSERT INTO librarians (id, nickname) VALUES (?, ?)",
-        (librarian_id, nickname)
+        "INSERT INTO librarians (id, nickname, kinde_user_id) VALUES (?, ?, ?)",
+        (librarian_id, nickname, kinde_user_id)
     )
     conn.commit()
 
@@ -1017,7 +1046,7 @@ def get_librarian(librarian_id: str) -> Optional[Dict[str, Any]]:
     """Get a librarian by ID."""
     conn = _get_conn()
     row = conn.execute(
-        "SELECT id, nickname, created_at FROM librarians WHERE id = ?",
+        "SELECT id, nickname, kinde_user_id, last_active_book_id, created_at FROM librarians WHERE id = ?",
         (librarian_id,)
     ).fetchone()
 
@@ -1027,8 +1056,41 @@ def get_librarian(librarian_id: str) -> Optional[Dict[str, Any]]:
     return {
         "id": row["id"],
         "nickname": row["nickname"],
+        "kinde_user_id": row["kinde_user_id"],
+        "last_active_book_id": row["last_active_book_id"],
         "created_at": row["created_at"],
     }
+
+
+def get_librarian_by_kinde_id(kinde_user_id: str) -> Optional[Dict[str, Any]]:
+    """Get a librarian by their Kinde user ID."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT id, nickname, kinde_user_id, last_active_book_id, created_at FROM librarians WHERE kinde_user_id = ?",
+        (kinde_user_id,)
+    ).fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "id": row["id"],
+        "nickname": row["nickname"],
+        "kinde_user_id": row["kinde_user_id"],
+        "last_active_book_id": row["last_active_book_id"],
+        "created_at": row["created_at"],
+    }
+
+
+def set_librarian_last_active_book(librarian_id: str, book_id: Optional[str]) -> bool:
+    """Set the last active book for a librarian."""
+    conn = _get_conn()
+    result = conn.execute(
+        "UPDATE librarians SET last_active_book_id = ? WHERE id = ?",
+        (book_id, librarian_id)
+    )
+    conn.commit()
+    return result.rowcount > 0
 
 
 def _generate_bookmark() -> str:

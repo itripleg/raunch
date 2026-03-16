@@ -95,7 +95,16 @@ function extractCharacterData(rawData: CharacterPage | undefined): CharacterPage
 
 export function CharacterPanel({ name, data: rawData, pendingInfluence, streamingText, onClose, isPreview }: Props) {
   // Extract character data from raw JSON if needed
-  const data = useMemo(() => extractCharacterData(rawData), [rawData]);
+  const data = useMemo(() => {
+    const extracted = extractCharacterData(rawData);
+    console.log("[CharacterPanel]", {
+      name,
+      rawData,
+      extractedData: extracted,
+      hasInnerThoughts: extracted?.inner_thoughts,
+    });
+    return extracted;
+  }, [rawData, name]);
 
   const streamingThoughts = useMemo(
     () => extractThoughtsFromStream(streamingText || ""),

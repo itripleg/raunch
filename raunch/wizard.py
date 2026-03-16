@@ -263,6 +263,26 @@ def save_scenario(scenario: Dict[str, Any]) -> str:
     return path
 
 
+def delete_scenario(name: str) -> bool:
+    """Delete a scenario file. Returns True if deleted, False if not found."""
+    # Try exact match first
+    path = os.path.join(SCENARIOS_DIR, name)
+    if not path.endswith(".json"):
+        path += ".json"
+
+    if os.path.exists(path):
+        os.remove(path)
+        return True
+
+    # Try fuzzy match
+    for fname in os.listdir(SCENARIOS_DIR):
+        if fname.endswith(".json") and name.lower() in fname.lower():
+            os.remove(os.path.join(SCENARIOS_DIR, fname))
+            return True
+
+    return False
+
+
 def load_scenario(name: str) -> Optional[Dict[str, Any]]:
     """Load a scenario by name or filename."""
     # Try exact filename

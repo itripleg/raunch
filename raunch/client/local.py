@@ -215,7 +215,7 @@ class LocalClient:
             return None
 
         characters = list(self._orchestrator.characters.keys()) if self._orchestrator else []
-        page_count = self._orchestrator.world.tick_count if self._orchestrator else 0
+        page_count = self._orchestrator.world.page_count if self._orchestrator else 0
 
         return BookInfo(
             book_id=self._book_id,

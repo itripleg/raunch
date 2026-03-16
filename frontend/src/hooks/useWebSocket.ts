@@ -39,6 +39,7 @@ export function useWebSocket(baseUrl: string, bookId?: string | null) {
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data) as ServerMessage;
+        console.log("[WS] Received message:", msg.type, msg);
         // Call the callback synchronously for EVERY message
         if (onMessageRef.current) {
           onMessageRef.current(msg);

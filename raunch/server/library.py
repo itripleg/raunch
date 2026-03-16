@@ -34,7 +34,7 @@ class BookLimitReached(Exception):
 class Library:
     """Manages all active books on this server."""
 
-    MAX_BOOKS_PER_LIBRARIAN = 5
+    MAX_BOOKS_PER_LIBRARIAN = 100
 
     def __init__(self):
         self.books: Dict[str, Book] = {}

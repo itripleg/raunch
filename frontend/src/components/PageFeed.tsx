@@ -51,9 +51,19 @@ function extractCharacterFromRaw(data: Record<string, unknown> | undefined): Rec
 function formatTimestamp(timestamp?: string | number): string {
   if (!timestamp) return "";
 
-  const date = typeof timestamp === "string"
-    ? new Date(timestamp.includes("T") ? timestamp : timestamp + "Z")
-    : new Date(timestamp);
+  let date: Date;
+  if (typeof timestamp === "string") {
+    // Ensure UTC parsing: add Z if ISO format without explicit timezone
+    let ts = timestamp;
+    if (ts.includes("T") && !/[Z+-]/.test(ts.slice(-6))) {
+      ts = ts + "Z";
+    } else if (!ts.includes("T")) {
+      ts = ts.replace(" ", "T") + "Z";
+    }
+    date = new Date(ts);
+  } else {
+    date = new Date(timestamp);
+  }
 
   if (isNaN(date.getTime())) return "";
 
@@ -228,6 +238,148 @@ function IntensityPhrase({ content, level, animate = false }: { content: string;
       style={{ textShadow: visible ? INTENSITY_GLOW[level] : "none" }}
     >
       {content}
+    </span>
+  );
+}
+
+/** Sequences character dialogues one at a time */
+function CharacterDialogueSequence({
+  characters,
+  useTypewriter,
+  characterNames,
+  onHoverCharacter,
+  onTapCharacter,
+}: {
+  characters: Record<string, unknown>;
+  useTypewriter: boolean;
+  characterNames: string[];
+  onHoverCharacter?: (name: string | null) => void;
+  onTapCharacter?: (name: string) => void;
+}) {
+  const entries = Object.entries(characters);
+  const [completedCount, setCompletedCount] = useState(useTypewriter ? 0 : entries.length);
+
+  // Reset when characters change
+  useEffect(() => {
+    if (!useTypewriter) {
+      setCompletedCount(entries.length);
+    }
+  }, [entries.length, useTypewriter]);
+
+  const handleComplete = useCallback(() => {
+    setCompletedCount(c => c + 1);
+  }, []);
+
+  return (
+    <div className="space-y-3 pl-3 mt-4">
+      <AnimatePresence mode="popLayout">
+        {entries.slice(0, completedCount + 1).map(([name, rawData], index) => (
+          <CharacterDialogueEntry
+            key={name}
+            name={name}
+            rawData={rawData as Record<string, unknown>}
+            useTypewriter={useTypewriter}
+            isActive={index === completedCount}
+            onComplete={handleComplete}
+            characterNames={characterNames}
+            onHoverCharacter={onHoverCharacter}
+            onTapCharacter={onTapCharacter}
+          />
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** Character dialogue entry with typewriter */
+function CharacterDialogueEntry({
+  name,
+  rawData,
+  useTypewriter,
+  isActive,
+  onComplete,
+  characterNames,
+  onHoverCharacter,
+  onTapCharacter,
+}: {
+  name: string;
+  rawData: Record<string, unknown>;
+  useTypewriter: boolean;
+  isActive: boolean;
+  onComplete?: () => void;
+  characterNames: string[];
+  onHoverCharacter?: (name: string | null) => void;
+  onTapCharacter?: (name: string) => void;
+}) {
+  const data = extractCharacterFromRaw(rawData);
+  if (!data?.dialogue) return null;
+
+  const colors = getCharacterColor(name, characterNames);
+  const dialogue = data.dialogue as string;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="text-sm relative cursor-pointer hover:brightness-110 transition-all"
+      onMouseEnter={() => onHoverCharacter?.(name)}
+      onMouseLeave={() => onHoverCharacter?.(null)}
+      onClick={() => onTapCharacter?.(name)}
+    >
+      {/* Character name with distinct color */}
+      <span
+        className={`text-xs font-semibold ${colors.text}`}
+        style={{ textShadow: `0 0 12px currentColor` }}
+      >
+        {name}
+      </span>
+
+      {/* Dialogue with typewriter */}
+      <span className="text-muted-foreground/50 mx-1">—</span>
+      <span className={`italic ${colors.quote}`}>
+        <span className="text-muted-foreground/30 not-italic">"</span>
+        {useTypewriter && isActive ? (
+          <TypewriterDialogue text={dialogue} onComplete={onComplete} />
+        ) : (
+          dialogue
+        )}
+        <span className="text-muted-foreground/30 not-italic">"</span>
+      </span>
+    </motion.div>
+  );
+}
+
+/** Simple character-by-character typewriter for dialogue */
+function TypewriterDialogue({
+  text,
+  onComplete,
+  className
+}: {
+  text: string;
+  onComplete?: () => void;
+  className?: string;
+}) {
+  const [visibleCount, setVisibleCount] = useState(0);
+
+  useEffect(() => {
+    if (visibleCount < text.length) {
+      const timer = setTimeout(() => {
+        setVisibleCount(v => v + 1);
+      }, 25); // Fast character reveal
+      return () => clearTimeout(timer);
+    } else if (onComplete) {
+      onComplete();
+    }
+  }, [visibleCount, text.length, onComplete]);
+
+  return (
+    <span className={className}>
+      {text.slice(0, visibleCount)}
+      {visibleCount < text.length && (
+        <span className="animate-pulse">▌</span>
+      )}
     </span>
   );
 }
@@ -428,26 +580,28 @@ function PageHeader({ pageNum, isFirst }: { pageNum: number; isFirst: boolean })
   );
 }
 
-/** Grand opening for the first page - special treatment */
+/** Grand opening for the first page - simple fade in */
 function OpeningScene({ children }: { children: React.ReactNode }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 1.2, ease: "easeOut" }}
-      className="relative"
+      transition={{ duration: 0.8, ease: "easeOut" }}
     >
-      {/* The actual content with dramatic entrance */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 0.6 }}
-      >
-        {children}
-      </motion.div>
+      {children}
     </motion.div>
   );
 }
+
+// Special messages for the very first page - make it feel magical
+const FIRST_PAGE_MESSAGES = [
+  "Opening the book...",
+  "The story stirs to life...",
+  "Your adventure begins...",
+  "The first words appear...",
+  "A new tale unfolds...",
+  "The Library awakens...",
+];
 
 // Witty loading messages for the intermission - cycles through these
 const INTERMISSION_MESSAGES = [
@@ -466,32 +620,16 @@ const INTERMISSION_MESSAGES = [
 ];
 
 /** Theatrical intermission while waiting for page generation */
-function PageIntermission({
-  pageNum,
-  onScrollNeeded
-}: {
-  pageNum: number;
-  onScrollNeeded?: () => void;
-}) {
+function PageIntermission({ pageNum }: { pageNum: number }) {
   const [phase, setPhase] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
   const [dots, setDots] = useState(1);
-  const scrollTriggered = useRef(false);
 
   // Format page number as word for low numbers
   const pageWord = pageNum === 1 ? "One" : pageNum === 2 ? "Two" : pageNum === 3 ? "Three" :
                    pageNum === 4 ? "Four" : pageNum === 5 ? "Five" : pageNum === 6 ? "Six" :
                    pageNum === 7 ? "Seven" : pageNum === 8 ? "Eight" : pageNum === 9 ? "Nine" :
                    pageNum === 10 ? "Ten" : String(pageNum);
-
-  // Auto-scroll to intermission immediately on mount
-  useEffect(() => {
-    // Small delay to ensure DOM is ready
-    const scrollTimer = setTimeout(() => {
-      onScrollNeeded?.();
-    }, 100);
-    return () => clearTimeout(scrollTimer);
-  }, [onScrollNeeded]);
 
   // Animate dots
   useEffect(() => {
@@ -501,36 +639,30 @@ function PageIntermission({
     return () => clearInterval(dotTimer);
   }, []);
 
+  // Choose message set based on whether this is the first page
+  const messages = pageNum === 1 ? FIRST_PAGE_MESSAGES : INTERMISSION_MESSAGES;
+
   // Cycle through messages
   useEffect(() => {
     const messageTimer = setInterval(() => {
-      setMessageIndex(i => (i + 1) % INTERMISSION_MESSAGES.length);
+      setMessageIndex(i => (i + 1) % messages.length);
     }, 2800);
     return () => clearInterval(messageTimer);
-  }, []);
+  }, [messages.length]);
 
-  // Phase progression: 0 -> 1 -> 2 -> 3
+  // Phase progression: 0 -> 1 -> 2
   // Phase 0: 0-6s - Initial fade in, first message
   // Phase 1: 6-14s - Message cycling, decorative elements appear
-  // Phase 2: 14-20s - More atmosphere, building anticipation
-  // Phase 3: 20-23s - "Ready" state, trigger scroll
+  // Phase 2: 14s+ - More atmosphere, building anticipation
   useEffect(() => {
     const phase1 = setTimeout(() => setPhase(1), 6000);
     const phase2 = setTimeout(() => setPhase(2), 14000);
-    const phase3 = setTimeout(() => {
-      setPhase(3);
-      if (!scrollTriggered.current) {
-        scrollTriggered.current = true;
-        onScrollNeeded?.();
-      }
-    }, 20000);
 
     return () => {
       clearTimeout(phase1);
       clearTimeout(phase2);
-      clearTimeout(phase3);
     };
-  }, [onScrollNeeded]);
+  }, []);
 
   return (
     <motion.div
@@ -548,7 +680,7 @@ function PageIntermission({
         className="text-center"
       >
         <div className="text-xs uppercase tracking-[0.4em] text-primary/40 font-medium">
-          Page {pageWord}
+          {pageNum === 1 ? "The Beginning" : `Page ${pageWord}`}
         </div>
       </motion.div>
 
@@ -619,7 +751,7 @@ function PageIntermission({
             transition={{ duration: 0.4 }}
             className="text-sm text-muted-foreground/70 italic"
           >
-            {INTERMISSION_MESSAGES[messageIndex]}
+            {messages[messageIndex]}
           </motion.p>
         </AnimatePresence>
 
@@ -670,6 +802,39 @@ function PageIntermission({
   );
 }
 
+/** Wrapper for intermission - scrolls into view once when mounted */
+function IntermissionWrapper({ pageNum }: { pageNum: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const hasScrolled = useRef(false);
+
+  // Scroll intermission into view once when it appears
+  useEffect(() => {
+    if (hasScrolled.current) return;
+    hasScrolled.current = true;
+
+    const timer = setTimeout(() => {
+      if (ref.current) {
+        ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="min-h-[200px]"
+      data-intermission="true"
+    >
+      <PageIntermission pageNum={pageNum} />
+    </motion.div>
+  );
+}
+
 type Props = {
   pages: PageData[];
   attachedTo: string | null;
@@ -689,13 +854,6 @@ type Props = {
 export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, onPageFocus, containerRef, streaming, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
-
-  // Track which page was streamed so we don't re-animate it when finalized
-  // Only mark as streamed if we actually displayed streaming content (narrator had content)
-  const streamedPageRef = useRef<number | null>(null);
-  if (streaming?.isStreaming && streaming.page && streaming.narrator && streaming.narrator.length > 50) {
-    streamedPageRef.current = streaming.page;
-  }
 
   // Track newest page synchronously (not in effect) so isNew works on first render
   const newestPage = useMemo(() => {
@@ -717,8 +875,10 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
   // Register page element refs
   const setPageRef = useCallback((pageNum: number, el: HTMLElement | null) => {
     if (el) {
+      console.log("[PageFeed] Setting ref for page:", pageNum);
       pageRefs.current.set(pageNum, el);
     } else {
+      console.log("[PageFeed] Removing ref for page:", pageNum);
       pageRefs.current.delete(pageNum);
     }
   }, []);
@@ -735,7 +895,12 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
       let closestPage: number | null = null;
       let closestDistance = Infinity;
 
-      pageRefs.current.forEach((el, pageNum) => {
+      // Query all page elements by data-page attribute
+      const pageElements = container.querySelectorAll('[data-page]');
+      pageElements.forEach((el) => {
+        const pageNum = parseInt(el.getAttribute('data-page') || '0', 10);
+        if (!pageNum) return;
+
         const rect = el.getBoundingClientRect();
         const elCenter = rect.top + rect.height / 2;
         const distance = Math.abs(elCenter - containerCenter);
@@ -751,35 +916,110 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
       }
     };
 
-    // Initial check
-    handleScroll();
+    // Initial check after DOM settles
+    const initialTimer = setTimeout(handleScroll, 100);
 
     container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
+    return () => {
+      clearTimeout(initialTimer);
+      container.removeEventListener("scroll", handleScroll);
+    };
   }, [containerRef, onPageFocus, pages.length]);
 
-  // Only auto-scroll if enabled
+  // Debug: check for duplicate page numbers
   useEffect(() => {
-    if (autoScroll && endRef.current) {
-      endRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    const pageNums = pages.map(p => p.page);
+    const duplicates = pageNums.filter((num, idx) => pageNums.indexOf(num) !== idx);
+    if (duplicates.length > 0) {
+      console.error("[PageFeed] DUPLICATE PAGE NUMBERS:", duplicates, "All pages:", pageNums);
     }
-  }, [pages.length, autoScroll]);
+  }, [pages]);
 
-  if (pages.length === 0) {
+  // Scroll to last page on initial load
+  const hasScrolledOnLoad = useRef(false);
+  useEffect(() => {
+    if (hasScrolledOnLoad.current || pages.length === 0) return;
+
+    // Wait for DOM and animations to settle
+    const timer = setTimeout(() => {
+      const lastPageNum = pages[pages.length - 1]?.page;
+      if (!lastPageNum) return;
+
+      let el = document.querySelector(`[data-page="${lastPageNum}"]`) as HTMLElement;
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        hasScrolledOnLoad.current = true;
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [pages.length]);
+
+  // Auto-scroll: scroll new page into view after delay
+  const lastPageCount = useRef(pages.length);
+  useEffect(() => {
+    // No pages yet - just track count
+    if (pages.length === 0) {
+      lastPageCount.current = 0;
+      return;
+    }
+
+    // Page count didn't increase - no scroll needed
+    if (pages.length <= lastPageCount.current) {
+      lastPageCount.current = pages.length;
+      return;
+    }
+
+    const newestPageNum = pages[pages.length - 1]?.page;
+    lastPageCount.current = pages.length;
+
+    if (!newestPageNum) return;
+
+    // Mark that we've handled initial load if this is first pages
+    if (!hasScrolledOnLoad.current) {
+      hasScrolledOnLoad.current = true;
+    }
+
+    const timer = setTimeout(() => {
+      let el = pageRefs.current.get(newestPageNum);
+      if (!el) {
+        el = document.querySelector(`[data-page="${newestPageNum}"]`) as HTMLElement;
+      }
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [pages.length]);
+
+  // Empty state - show centered "Your story awaits" when no pages and not waiting
+  if (pages.length === 0 && !waitingForPage && !streaming?.isStreaming) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <motion.div
-            className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full mx-auto"
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          />
-          <p className="text-muted-foreground text-sm">Waiting for the next page...</p>
-        </div>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5 }}
+          className="text-center space-y-6 max-w-md px-6"
+        >
+          <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-primary/60">
+              <path d="M12 6.25278V19.2528M12 6.25278C10.8321 5.47686 9.24649 5 7.5 5C5.75351 5 4.16789 5.47686 3 6.25278V19.2528C4.16789 18.4769 5.75351 18 7.5 18C9.24649 18 10.8321 18.4769 12 19.2528M12 6.25278C13.1679 5.47686 14.7535 5 16.5 5C18.2465 5 19.8321 5.47686 21 6.25278V19.2528C19.8321 18.4769 18.2465 18 16.5 18C14.7535 18 13.1679 18.4769 12 19.2528" />
+            </svg>
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-medium text-foreground/80">Your story awaits</h3>
+            <p className="text-sm text-muted-foreground/60">
+              Press <span className="text-primary/70 font-medium">Begin</span> to turn the first page
+            </p>
+          </div>
+        </motion.div>
       </div>
     );
   }
 
+  // Main render: pages + intermission (all in same container to avoid CLS)
   return (
     <div className={`mx-auto px-4 sm:px-6 py-4 space-y-6 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
       <AnimatePresence mode="popLayout">
@@ -788,27 +1028,19 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
           const isNewest = pageItem.page === newestPage;
           const isLast = index === pages.length - 1;
 
-          const entry = (
-            <PageEntry
-              key={pageItem.page}
-              pageItem={pageItem}
-              attachedTo={attachedTo}
-              isFocused={focusedPage === pageItem.page}
-              isNew={isNewest}
-              isFirst={isFirst}
-              wasStreamed={pageItem.page === streamedPageRef.current}
-              setRef={(el) => setPageRef(pageItem.page, el)}
-              onHoverCharacter={onHoverCharacter}
-              onTapCharacter={onTapCharacter}
-              characterNames={allCharacterNames}
-              moodStyle={moodStyle}
-            />
-          );
-
           const content = (
             <>
               <PageHeader pageNum={pageItem.page} isFirst={isFirst} />
-              {entry}
+              <PageEntry
+                pageItem={pageItem}
+                attachedTo={attachedTo}
+                isFocused={focusedPage === pageItem.page}
+                isNew={isNewest}
+                onHoverCharacter={onHoverCharacter}
+                onTapCharacter={onTapCharacter}
+                characterNames={allCharacterNames}
+                moodStyle={moodStyle}
+              />
               {!isLast && (
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -825,30 +1057,35 @@ export function PageFeed({ pages, attachedTo, autoScroll = false, focusedPage, o
           // Wrap first page in OpeningScene for grand entrance animation
           if (isFirst) {
             return (
-              <OpeningScene key={`opening-${pageItem.page}`}>
-                {content}
+              <OpeningScene key={`page-${pageItem.page}`}>
+                <div
+                  data-page={pageItem.page}
+                  ref={(el) => setPageRef(pageItem.page, el)}
+                  className="min-h-[250px]"
+                >
+                  {content}
+                </div>
               </OpeningScene>
             );
           }
 
-          // Use div instead of Fragment - AnimatePresence needs refs on children
           return (
-            <div key={pageItem.page}>
+            <div
+              key={`page-${pageItem.page}`}
+              data-page={pageItem.page}
+              ref={(el) => setPageRef(pageItem.page, el)}
+              className="min-h-[250px]"
+            >
               {content}
             </div>
           );
         })}
       </AnimatePresence>
 
-      {/* Intermission while waiting for generation to start */}
-      <AnimatePresence>
+      {/* Intermission while waiting for generation - fixed height container to prevent CLS */}
+      <AnimatePresence mode="wait">
         {waitingForPage && !streaming?.isStreaming && (
-          <PageIntermission
-            pageNum={nextPageNum}
-            onScrollNeeded={() => {
-              endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-            }}
-          />
+          <IntermissionWrapper key="intermission" pageNum={nextPageNum} />
         )}
       </AnimatePresence>
 
@@ -867,9 +1104,6 @@ type PageEntryProps = {
   attachedTo: string | null;
   isFocused: boolean;
   isNew: boolean;
-  isFirst?: boolean;
-  wasStreamed?: boolean;
-  setRef: (el: HTMLElement | null) => void;
   onHoverCharacter?: (name: string | null) => void;
   onTapCharacter?: (name: string) => void;
   characterNames: string[];
@@ -879,22 +1113,30 @@ type PageEntryProps = {
 /** Check if a timestamp is within the last N seconds */
 function isRecentTimestamp(timestamp?: string | number, maxAgeSeconds = 60): boolean {
   if (!timestamp) return false;
-  const date = typeof timestamp === "string"
-    ? new Date(timestamp.includes("T") ? timestamp : timestamp + "Z")
-    : new Date(timestamp);
+  let date: Date;
+  if (typeof timestamp === "string") {
+    // Ensure UTC parsing: add Z if ISO format without explicit timezone
+    // Backend sends "2026-03-16T10:30:00" (UTC but no Z suffix)
+    let ts = timestamp;
+    if (ts.includes("T") && !/[Z+-]/.test(ts.slice(-6))) {
+      ts = ts + "Z";
+    } else if (!ts.includes("T")) {
+      ts = ts.replace(" ", "T") + "Z";
+    }
+    date = new Date(ts);
+  } else {
+    date = new Date(timestamp);
+  }
   if (isNaN(date.getTime())) return false;
   const diffMs = Date.now() - date.getTime();
   return diffMs < maxAgeSeconds * 1000;
 }
 
-function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirst, wasStreamed, setRef, onHoverCharacter, onTapCharacter, characterNames, moodStyle }: PageEntryProps) {
-  const localRef = useRef<HTMLElement>(null);
+function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, onHoverCharacter, onTapCharacter, characterNames, moodStyle }: PageEntryProps) {
+  // Use typewriter for recent pages (created < 1 min ago)
+  const useTypewriter = isNew && isRecentTimestamp(pageItem.created_at, 60);
 
-  // Only use typewriter for truly recent pages (created < 1 min ago)
-  const isTrulyNew = isNew && !wasStreamed && !isFirst && isRecentTimestamp(pageItem.created_at, 60);
-  const useTypewriter = isTrulyNew;
-
-  // Track narration completion for staggering character dialogue
+  // Track narration completion for skip-on-double-click feature
   const [narrationComplete, setNarrationComplete] = useState(!useTypewriter);
 
   // Allow skipping typewriter with double-click
@@ -906,38 +1148,16 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
     }
   }, [useTypewriter, narrationComplete]);
 
-  // Combine refs
-  const handleRef = useCallback((el: HTMLElement | null) => {
-    (localRef as React.MutableRefObject<HTMLElement | null>).current = el;
-    setRef(el);
-  }, [setRef]);
-
-  // Skip entrance animation if this page was just streamed (prevents jarring re-render)
-  const skipAnimation = wasStreamed;
-
   return (
-    <motion.article
-      ref={handleRef}
-      initial={skipAnimation ? false : { opacity: 0, y: 20, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -10, scale: 0.98 }}
-      transition={{
-        duration: 0.4,
-        ease: [0.25, 0.46, 0.45, 0.94],
-      }}
-      className={`space-y-3 transition-all duration-200 ${
+    <div
+      className={`space-y-3 ${
         isFocused
           ? "relative before:absolute before:-left-4 before:top-0 before:bottom-0 before:w-1 before:bg-primary before:rounded-full"
           : ""
       }`}
     >
       {/* Timestamp header */}
-      <motion.div
-        className="flex items-center gap-2 group/timestamp"
-        initial={skipAnimation ? false : { opacity: 0, x: -10 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 0.1, duration: 0.3 }}
-      >
+      <div className="flex items-center gap-2 group/timestamp">
         {/* Short timestamp, hover for full */}
         <span
           className={`text-[10px] font-mono transition-colors duration-200 cursor-default ${
@@ -950,79 +1170,36 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, isFirs
             {pageItem.created_at ? new Date(pageItem.created_at).toLocaleString() : ""}
           </span>
         </span>
-      </motion.div>
+      </div>
 
       {/* Narration with highlighted dialogue and intensity words */}
       {/* Double-click to skip typewriter animation */}
-      <motion.div
+      <div
         className={`text-sm leading-relaxed text-foreground/90 pl-3 border-l-2 ${moodStyle.border} whitespace-pre-line cursor-text`}
-        initial={skipAnimation ? false : { opacity: 0, x: -5 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 0.2, duration: 0.4 }}
         onDoubleClick={handleDoubleClick}
         title={useTypewriter && !narrationComplete ? "Double-click to skip animation" : undefined}
       >
         <NarrationText
           text={pageItem.narration}
-          isNew={isTrulyNew && !skipAnimation}
+          isNew={useTypewriter}
           useTypewriter={useTypewriter && !typewriterSkipped}
           onComplete={() => setNarrationComplete(true)}
         />
-      </motion.div>
+      </div>
 
-      {/* Character dialogue (speech) shown here - actions/thoughts go to CharacterPanel */}
-      {/* For typewriter pages, wait for narration to complete before showing */}
-      <AnimatePresence>
-        {(narrationComplete || !useTypewriter) && Object.entries(pageItem.characters).some(([, rawData]) => {
-          const data = extractCharacterFromRaw(rawData as Record<string, unknown>);
-          return data?.dialogue;
-        }) && (
-          <motion.div
-            initial={useTypewriter ? { opacity: 0, y: 8 } : false}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-            className="space-y-3 pl-3 mt-4"
-          >
-            {Object.entries(pageItem.characters).map(([name, rawData], charIndex) => {
-              const data = extractCharacterFromRaw(rawData as Record<string, unknown>);
-              if (!data?.dialogue) return null;
-              const colors = getCharacterColor(name, characterNames);
-
-              return (
-                <motion.div
-                  key={name}
-                  initial={skipAnimation ? false : { opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: useTypewriter ? 0.15 + charIndex * 0.2 : (skipAnimation ? 0 : 0.3 + charIndex * 0.15), duration: 0.4 }}
-                  className="text-sm relative cursor-pointer hover:brightness-110 transition-all"
-                  onMouseEnter={() => onHoverCharacter?.(name)}
-                  onMouseLeave={() => onHoverCharacter?.(null)}
-                  onClick={() => onTapCharacter?.(name)}
-                >
-                  {/* Character name with distinct color */}
-                  <span
-                    className={`text-xs font-semibold ${colors.text}`}
-                    style={{ textShadow: `0 0 12px currentColor` }}
-                  >
-                    {name}
-                  </span>
-
-                  {/* Dialogue with matching accent and elegant quotes */}
-                  <span className="text-muted-foreground/50 mx-1">—</span>
-                  <span className={`italic ${colors.quote}`}>
-                    <span className="text-muted-foreground/30 not-italic">"</span>
-                    {data.dialogue as string}
-                    <span className="text-muted-foreground/30 not-italic">"</span>
-                  </span>
-                </motion.div>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Character dialogue - wait for narration, then sequence one at a time */}
+      {Object.keys(pageItem.characters).length > 0 && (narrationComplete || !useTypewriter) && (
+        <CharacterDialogueSequence
+          characters={pageItem.characters}
+          useTypewriter={useTypewriter && !typewriterSkipped}
+          characterNames={characterNames}
+          onHoverCharacter={onHoverCharacter}
+          onTapCharacter={onTapCharacter}
+        />
+      )}
 
       {/* Events removed - viewable in director panel */}
-    </motion.article>
+    </div>
   );
 }
 

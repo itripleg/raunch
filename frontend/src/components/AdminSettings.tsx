@@ -1,76 +1,32 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Shield, ShieldCheck } from "lucide-react";
+import { X, ShieldCheck, Bug, LogOut } from "lucide-react";
+import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  isAdmin: boolean;
-  onAdminChange: (isAdmin: boolean) => void;
-  apiUrl: string;
+  onOpenDebug?: () => void;
 };
 
-export function AdminSettings({ isOpen, onClose, isAdmin, onAdminChange, apiUrl }: Props) {
-  const [code, setCode] = useState("");
-  const [error, setError] = useState("");
-  const [checking, setChecking] = useState(false);
+export function AdminSettings({ isOpen, onClose, onOpenDebug }: Props) {
+  const { user, logout } = useKindeAuth();
 
   // Clear state when opening
   useEffect(() => {
     if (isOpen) {
-      setCode("");
-      setError("");
+      // Nothing to clear now that we use Kinde
     }
   }, [isOpen]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!code.trim()) return;
-
-    setChecking(true);
-    setError("");
-
-    // Hardcoded fallback for alpha testing (API not implemented yet)
-    if (code.trim() === "raunch-alpha-dev") {
-      onAdminChange(true);
-      localStorage.setItem("raunch_admin", "true");
-      onClose();
-      setChecking(false);
-      return;
-    }
-
-    try {
-      const res = await fetch(`${apiUrl}/api/v1/alpha/admin/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: code.trim() }),
-      });
-
-      if (!res.ok) {
-        setError("Invalid code");
-        return;
-      }
-
-      const data = await res.json();
-
-      if (data.valid) {
-        onAdminChange(true);
-        localStorage.setItem("raunch_admin", "true");
-        onClose();
-      } else {
-        setError("Invalid code");
-      }
-    } catch {
-      setError("Could not verify code");
-    } finally {
-      setChecking(false);
-    }
+  const handleLogout = () => {
+    logout();
+    onClose();
   };
 
-  const handleLogout = () => {
-    onAdminChange(false);
-    localStorage.removeItem("raunch_admin");
+  const handleOpenDebug = () => {
     onClose();
+    onOpenDebug?.();
   };
 
   return (
@@ -107,54 +63,51 @@ export function AdminSettings({ isOpen, onClose, isAdmin, onAdminChange, apiUrl 
               </div>
 
               {/* Content */}
-              <div className="p-6">
-                {isAdmin ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3 text-primary">
-                      <ShieldCheck className="w-5 h-5" />
-                      <span className="text-sm font-medium">Admin mode active</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      You have access to admin features: editing hero messages,
-                      managing kanban items, and creating polls.
-                    </p>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full px-4 py-2 border border-border rounded-lg text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-                    >
-                      Exit admin mode
-                    </button>
+              <div className="p-6 space-y-6">
+                {/* Auth Status */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 text-primary">
+                    <ShieldCheck className="w-5 h-5" />
+                    <span className="text-sm font-medium">Authenticated</span>
                   </div>
-                ) : (
-                  <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="flex items-center gap-3 text-muted-foreground">
-                      <Shield className="w-5 h-5" />
-                      <span className="text-sm font-medium">Developer access</span>
-                    </div>
-
-                    <div className="space-y-2">
-                      <input
-                        type="password"
-                        value={code}
-                        onChange={(e) => setCode(e.target.value)}
-                        placeholder="Enter dev code"
-                        className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50"
-                        autoFocus
-                      />
-                      {error && (
-                        <p className="text-xs text-destructive">{error}</p>
+                  {user && (
+                    <div className="pl-8 space-y-1">
+                      {user.email && (
+                        <p className="text-xs text-muted-foreground">
+                          {user.email}
+                        </p>
+                      )}
+                      {(user.given_name || user.family_name) && (
+                        <p className="text-xs text-foreground/70">
+                          {[user.given_name, user.family_name].filter(Boolean).join(" ")}
+                        </p>
                       )}
                     </div>
+                  )}
+                </div>
 
+                {/* Actions */}
+                <div className="space-y-3">
+                  {/* Debug Panel */}
+                  {onOpenDebug && (
                     <button
-                      type="submit"
-                      disabled={checking || !code.trim()}
-                      className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
+                      onClick={handleOpenDebug}
+                      className="w-full flex items-center gap-3 px-4 py-3 border border-border rounded-lg text-sm text-foreground hover:bg-muted/20 transition-colors"
                     >
-                      {checking ? "Verifying..." : "Verify"}
+                      <Bug className="w-4 h-4 text-amber-400" />
+                      <span>Open Debug Panel</span>
                     </button>
-                  </form>
-                )}
+                  )}
+
+                  {/* Logout */}
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-3 border border-destructive/30 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>

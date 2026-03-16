@@ -73,19 +73,28 @@ type ApiResult = {
   timestamp: Date;
 };
 
+type AuthInfo = {
+  isAuthenticated: boolean;
+  userEmail?: string;
+  userName?: string;
+  accessToken?: string | null;
+  librarianId?: string | null;
+};
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   sendCommand: (cmd: string, data?: Record<string, unknown>) => void;
   bookId?: string;
   apiUrl: string;
+  authInfo?: AuthInfo;
 };
 
-export function DebugPanel({ isOpen, onClose, sendCommand, bookId, apiUrl }: Props) {
+export function DebugPanel({ isOpen, onClose, sendCommand, bookId, apiUrl, authInfo }: Props) {
   const [debugData, setDebugData] = useState<DebugData | null>(null);
   const [npcData, setNpcData] = useState<NPCData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "pages" | "characters" | "npcs" | "api">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "pages" | "characters" | "npcs" | "api" | "auth">("overview");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [apiResults, setApiResults] = useState<ApiResult[]>([]);
   const [scenarios, setScenarios] = useState<string[]>([]);
@@ -145,7 +154,17 @@ export function DebugPanel({ isOpen, onClose, sendCommand, bookId, apiUrl }: Pro
       addApiResult(result);
 
       try {
-        const librarianId = localStorage.getItem("librarianId") || "";
+        // Get librarian ID from authInfo or try to find it in localStorage
+        let librarianId = authInfo?.librarianId || "";
+        if (!librarianId) {
+          // Fallback: try to find it in localStorage with the correct key format
+          try {
+            const host = new URL(apiUrl).host;
+            librarianId = localStorage.getItem(`raunch_librarian_id_${host}`) || "";
+          } catch {
+            // Ignore URL parsing errors
+          }
+        }
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
           "X-Librarian-ID": librarianId,
@@ -170,7 +189,7 @@ export function DebugPanel({ isOpen, onClose, sendCommand, bookId, apiUrl }: Pro
         });
       }
     },
-    [apiUrl]
+    [apiUrl, authInfo?.librarianId]
   );
 
   const fetchScenarios = useCallback(async () => {
@@ -287,7 +306,7 @@ export function DebugPanel({ isOpen, onClose, sendCommand, bookId, apiUrl }: Pro
 
           {/* Tabs */}
           <div className="flex border-b border-border px-4 bg-muted/10">
-            {(["overview", "pages", "characters", "npcs", "api"] as const).map((tab) => (
+            {(["overview", "pages", "characters", "npcs", "api", "auth"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -305,10 +324,8 @@ export function DebugPanel({ isOpen, onClose, sendCommand, bookId, apiUrl }: Pro
           {/* Content */}
           <div className="flex-1 overflow-y-auto min-h-0">
             <div className="p-6">
-              {loading && !debugData ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
-                </div>
+              {activeTab === "auth" ? (
+                <AuthTab authInfo={authInfo} apiUrl={apiUrl} />
               ) : activeTab === "api" ? (
                 <ApiTab
                   scenarios={scenarios}
@@ -318,7 +335,12 @@ export function DebugPanel({ isOpen, onClose, sendCommand, bookId, apiUrl }: Pro
                   apiResults={apiResults}
                   sendCommand={sendCommand}
                   bookId={bookId}
+                  authInfo={authInfo}
                 />
+              ) : loading && !debugData ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+                </div>
               ) : !debugData ? (
                 <div className="text-center py-12 text-muted-foreground">
                   No debug data available
@@ -717,6 +739,7 @@ function ApiTab({
   apiResults,
   sendCommand,
   bookId,
+  authInfo,
 }: {
   scenarios: string[];
   selectedScenario: string;
@@ -725,6 +748,7 @@ function ApiTab({
   apiResults: ApiResult[];
   sendCommand: (cmd: string, data?: Record<string, unknown>) => void;
   bookId?: string;
+  authInfo?: AuthInfo;
 }) {
   const [pageIntervalInput, setPageIntervalInput] = useState("30");
 
@@ -1252,6 +1276,148 @@ function NpcsTab({
             })}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function AuthTab({ authInfo, apiUrl }: { authInfo?: AuthInfo; apiUrl: string }) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const truncateToken = (token: string | null | undefined) => {
+    if (!token) return "Not available";
+    if (token.length <= 20) return token;
+    return `${token.slice(0, 10)}...${token.slice(-10)}`;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Auth Status */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${authInfo?.isAuthenticated ? "bg-green-400" : "bg-red-400"}`} />
+          Authentication Status
+        </h3>
+        <div className="p-4 rounded-lg border border-border bg-muted/10 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Kinde Auth</span>
+            <span className={`text-xs font-medium ${authInfo?.isAuthenticated ? "text-green-400" : "text-red-400"}`}>
+              {authInfo?.isAuthenticated ? "Authenticated" : "Not Authenticated"}
+            </span>
+          </div>
+          {authInfo?.userEmail && (
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Email</span>
+              <span className="text-xs font-mono text-foreground">{authInfo.userEmail}</span>
+            </div>
+          )}
+          {authInfo?.userName && (
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Name</span>
+              <span className="text-xs text-foreground">{authInfo.userName}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Tokens & IDs */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-blue-400" />
+          Tokens & Identifiers
+        </h3>
+        <div className="space-y-3">
+          {/* Librarian ID */}
+          <div className="p-3 rounded-lg border border-border bg-muted/10">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-muted-foreground">Librarian ID</span>
+              {authInfo?.librarianId && (
+                <button
+                  onClick={() => copyToClipboard(authInfo.librarianId!, "librarian")}
+                  className="text-[10px] text-primary hover:text-primary/80 transition-colors"
+                >
+                  {copied === "librarian" ? "Copied!" : "Copy"}
+                </button>
+              )}
+            </div>
+            <p className="text-xs font-mono text-foreground break-all">
+              {authInfo?.librarianId || "Not set"}
+            </p>
+          </div>
+
+          {/* Access Token */}
+          <div className="p-3 rounded-lg border border-border bg-muted/10">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-muted-foreground">Access Token</span>
+              {authInfo?.accessToken && (
+                <button
+                  onClick={() => copyToClipboard(authInfo.accessToken!, "token")}
+                  className="text-[10px] text-primary hover:text-primary/80 transition-colors"
+                >
+                  {copied === "token" ? "Copied!" : "Copy Full"}
+                </button>
+              )}
+            </div>
+            <p className="text-xs font-mono text-foreground/70">
+              {truncateToken(authInfo?.accessToken)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* API Connection */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-purple-400" />
+          API Connection
+        </h3>
+        <div className="p-3 rounded-lg border border-border bg-muted/10">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-muted-foreground">API URL</span>
+            <button
+              onClick={() => copyToClipboard(apiUrl, "api")}
+              className="text-[10px] text-primary hover:text-primary/80 transition-colors"
+            >
+              {copied === "api" ? "Copied!" : "Copy"}
+            </button>
+          </div>
+          <p className="text-xs font-mono text-foreground">{apiUrl}</p>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-400" />
+          Quick Actions
+        </h3>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              localStorage.clear();
+              window.location.reload();
+            }}
+            className="px-3 py-1.5 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded transition-colors"
+          >
+            Clear LocalStorage & Reload
+          </button>
+          <button
+            onClick={() => {
+              const key = `raunch_librarian_id_${new URL(apiUrl).host}`;
+              localStorage.removeItem(key);
+              window.location.reload();
+            }}
+            className="px-3 py-1.5 text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 rounded transition-colors"
+          >
+            Reset Librarian ID
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -96,13 +96,13 @@ const PERSONALITY_SUGGESTIONS = [
 
 // Get librarian ID from localStorage
 function getLibrarianId(apiUrl: string): string | null {
-  // Try the server-specific key first
-  const serverKey = `raunch_librarian:${apiUrl}`;
-  const serverId = localStorage.getItem(serverKey);
-  if (serverId) return serverId;
-
-  // Fall back to the generic key
-  return localStorage.getItem("raunch_librarian_id");
+  try {
+    const url = new URL(apiUrl);
+    const key = `raunch_librarian_id_${url.host}`;
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
 export function CharacterWizard({ apiUrl, bookId, onCharacterAdded, onClose, existingCharacters, npcs: propNpcs = [] }: Props) {
@@ -296,11 +296,13 @@ export function CharacterWizard({ apiUrl, bookId, onCharacterAdded, onClose, exi
         headers["X-Librarian-ID"] = librarianId;
       }
 
+      console.log("[CharacterWizard] Sending:", char);
       const res = await fetch(`${apiUrl}/api/v1/books/${bookId}/characters`, {
         method: "POST",
         headers,
         body: JSON.stringify(char),
       });
+      console.log("[CharacterWizard] Response:", res.status);
 
       if (!res.ok) {
         const data = await res.json();

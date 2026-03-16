@@ -17,7 +17,7 @@ class WorldState:
         self.world_id: str = uuid.uuid4().hex[:8]
         self.world_name: str = name or f"world-{self.world_id}"
         self.created_at: str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        self.tick_count: int = 0
+        self.page_count: int = 0
         self.world_time: str = "Dawn of the First Day"
         self.mood: str = "anticipation"
         self.locations: Dict[str, Dict[str, Any]] = {
@@ -34,7 +34,7 @@ class WorldState:
     def snapshot(self) -> str:
         """Produce a text summary of current world state for agents."""
         lines = [
-            f"[WORLD STATE — Tick {self.tick_count}]",
+            f"[WORLD STATE — Page {self.page_count}]",
             f"Time: {self.world_time}",
             f"Mood: {self.mood}",
         ]
@@ -46,7 +46,7 @@ class WorldState:
             themes = ", ".join(self.scenario.get("themes", []))
             if themes:
                 lines.append(f"Themes: {themes}")
-            if self.tick_count <= 1:
+            if self.page_count <= 1:
                 lines.append(f"Opening: {self.scenario.get('opening_situation', '')}")
             # Include NPCs from scenario for narrator to introduce
             npcs = self.scenario.get("npcs", [])
@@ -73,7 +73,7 @@ class WorldState:
             lines.append("")
             lines.append("Recent events:")
             for entry in self.event_log[-5:]:
-                lines.append(f"  [{entry['tick']}] {entry['event']}")
+                lines.append(f"  [{entry.get('page', entry.get('tick', '?'))}] {entry['event']}")
 
         return "\n".join(lines)
 
@@ -87,7 +87,7 @@ class WorldState:
 
         # Log events
         for event in narrator_result.get("events", []):
-            self.event_log.append({"tick": self.tick_count, "event": event})
+            self.event_log.append({"page": self.page_count, "event": event})
 
         self.active_events = narrator_result.get("events", self.active_events)
 
@@ -113,7 +113,7 @@ class WorldState:
             "world_id": self.world_id,
             "world_name": self.world_name,
             "created_at": self.created_at,
-            "tick_count": self.tick_count,
+            "page_count": self.page_count,
             "world_time": self.world_time,
             "mood": self.mood,
             "characters": char_count,
@@ -126,7 +126,7 @@ class WorldState:
             "world_id": self.world_id,
             "world_name": self.world_name,
             "created_at": self.created_at,
-            "tick_count": self.tick_count,
+            "page_count": self.page_count,
             "world_time": self.world_time,
             "mood": self.mood,
             "locations": self.locations,
@@ -150,7 +150,8 @@ class WorldState:
         self.world_id = data.get("world_id", self.world_id)
         self.world_name = data.get("world_name", self.world_name)
         self.created_at = data.get("created_at", self.created_at)
-        self.tick_count = data["tick_count"]
+        # Backwards compat: accept both page_count and old tick_count
+        self.page_count = data.get("page_count", data.get("tick_count", 0))
         self.world_time = data["world_time"]
         self.mood = data["mood"]
         self.locations = data["locations"]

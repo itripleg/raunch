@@ -10,6 +10,9 @@ from raunch.agents.character import Character
 
 router = APIRouter(prefix="/api/v1/books/{book_id}/characters", tags=["characters"])
 
+# Additional router for global endpoints (backwards compatibility)
+global_router = APIRouter(tags=["characters"])
+
 
 def get_librarian_id(x_librarian_id: str = Header(..., alias="X-Librarian-ID")) -> str:
     """Extract and validate librarian ID from header."""
@@ -214,3 +217,38 @@ async def grab_character(
         species="Human",
         message=f"NPC '{request.name}' promoted to character",
     )
+
+
+# Global endpoint for potential characters (backwards compatibility)
+class PotentialCharacter(BaseModel):
+    name: str
+    description: Optional[str] = None
+    first_page: int
+    promoted: bool = False
+
+
+@global_router.get("/api/v1/potential-characters", response_model=List[PotentialCharacter])
+async def get_potential_characters():
+    """List detected but not-yet-promoted characters across all books.
+
+    For backwards compatibility - finds the first active book and returns its potential characters.
+    """
+    library = get_library()
+
+    # Find first active book with an orchestrator
+    for book in library._books.values():
+        if book.orchestrator and book.orchestrator.world:
+            world_id = book.orchestrator.world.world_id
+            if world_id:
+                potential = db.get_potential_characters(world_id, include_promoted=False)
+                return [
+                    PotentialCharacter(
+                        name=p["name"],
+                        description=p.get("description"),
+                        first_page=p["first_page"],
+                        promoted=p.get("promoted", False),
+                    )
+                    for p in potential
+                ]
+
+    return []

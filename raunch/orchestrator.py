@@ -25,8 +25,14 @@ def _parse_newchar_tags(narration: str) -> List[Dict[str, str]]:
 
 
 def _strip_newchar_tags(narration: str) -> str:
-    """Remove [[NewChar: ...]] tags from display text."""
-    return re.sub(r'\[\[NewChar:[^\]]+\]\]', '', narration).strip()
+    """Remove [[NewChar: ...]] tags and similar markers from display text."""
+    # Remove [[NewChar: ...]] tags (case insensitive)
+    text = re.sub(r'\[\[NewChar:[^\]]+\]\]', '', narration, flags=re.IGNORECASE)
+    # Remove [[NEW_CHAR: ...]] variant
+    text = re.sub(r'\[\[NEW_CHAR:[^\]]+\]\]', '', text, flags=re.IGNORECASE)
+    # Remove any remaining [[...]] tags that might be LLM artifacts
+    text = re.sub(r'\[\[[^\]]{0,100}\]\]', '', text)
+    return text.strip()
 
 
 def _extract_narration_from_raw(raw: str) -> str:
@@ -154,10 +160,14 @@ class Orchestrator:
         # Page interval (can be changed at runtime, 0 = manual mode)
         self.page_interval = BASE_PAGE_SECONDS
 
-        # Streaming support
-        self.streaming_enabled = True
+        # Streaming support - disabled by default, use progressive rendering instead
+        self.streaming_enabled = False
         self._stream_callback: Optional[Callable[[int, str, str, str], None]] = None
         self._stream_lock = threading.Lock()  # Protects _stream_callback from race conditions
+
+        # Progressive rendering callbacks (for non-streaming mode)
+        self._narrator_callback: Optional[Callable[[int, str, str], None]] = None  # (page, narration, mood)
+        self._character_callback: Optional[Callable[[int, str, dict], None]] = None  # (page, name, data)
 
         # Turn-based multiplayer support
         self.turn_timeout: int = 60  # Seconds before timeout triggers page (0 = no timeout)
@@ -470,6 +480,14 @@ class Orchestrator:
 
             results["narration"] = narration
             results["events"] = narrator_result.get("events", [])
+
+            # Call narrator callback for progressive rendering (non-streaming mode)
+            if not self.streaming_enabled and self._narrator_callback:
+                try:
+                    self._narrator_callback(page_num, narration, self.world.mood or "")
+                except Exception as cb_e:
+                    logger.error(f"Narrator callback error: {cb_e}")
+
         except Exception as e:
             logger.error(f"Narrator page failed: {e}", exc_info=True)
             results["narration"] = f"[Narrator error: {e}]"
@@ -504,6 +522,14 @@ class Orchestrator:
                 try:
                     char_name, char_result = future.result()
                     results["characters"][char_name] = char_result
+
+                    # Call character callback for progressive rendering (non-streaming mode)
+                    if not self.streaming_enabled and self._character_callback:
+                        try:
+                            self._character_callback(page_num, char_name, char_result)
+                        except Exception as cb_e:
+                            logger.error(f"Character callback error for {char_name}: {cb_e}")
+
                 except Exception as e:
                     logger.error(f"Character {name} processing failed: {e}")
                     results["characters"][name] = {"inner_thoughts": f"[Error: {e}]", "action": None}
@@ -748,6 +774,14 @@ class Orchestrator:
     def set_stream_callback(self, callback: Optional[Callable[[int, str, str, str], None]]) -> None:
         """Set callback for streaming: callback(page_num, source, event_type, data)."""
         self._stream_callback = callback
+
+    def set_narrator_callback(self, callback: Optional[Callable[[int, str, str], None]]) -> None:
+        """Set callback for narrator completion (non-streaming): callback(page_num, narration, mood)."""
+        self._narrator_callback = callback
+
+    def set_character_callback(self, callback: Optional[Callable[[int, str, dict], None]]) -> None:
+        """Set callback for character completion (non-streaming): callback(page_num, name, data)."""
+        self._character_callback = callback
 
     @property
     def is_paused(self) -> bool:

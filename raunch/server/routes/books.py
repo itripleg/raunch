@@ -9,6 +9,9 @@ from raunch import db
 
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
+# Backwards compatibility router for /api/v1/world
+compat_router = APIRouter(tags=["backwards-compat"])
+
 
 def get_librarian_id(x_librarian_id: str = Header(..., alias="X-Librarian-ID")) -> str:
     """Extract and validate librarian ID from header."""
@@ -214,6 +217,45 @@ async def update_settings(
         raise HTTPException(status_code=404, detail="Book not found")
 
     if request.page_interval is not None and book.orchestrator:
-        book.orchestrator.set_tick_interval(request.page_interval)
+        book.orchestrator.set_page_interval(request.page_interval)
 
     return {"updated": True}
+
+
+# Backwards compatibility: /api/v1/world returns first active book's world state
+class WorldResponse(BaseModel):
+    running: bool
+    world_id: Optional[str] = None
+    world_name: Optional[str] = None
+    page_count: int = 0
+    world_time: Optional[str] = None
+    mood: Optional[str] = None
+    characters: List[str] = []
+    multiplayer: bool = False
+
+
+@compat_router.get("/api/v1/world", response_model=WorldResponse)
+async def get_world_compat():
+    """Get current world state (backwards compatibility).
+
+    Returns the first active book's world state.
+    """
+    library = get_library()
+
+    # Find first active book with an orchestrator
+    for book in library._books.values():
+        if book.orchestrator and book.orchestrator._running:
+            orch = book.orchestrator
+            world = orch.world
+            return WorldResponse(
+                running=True,
+                world_id=world.world_id,
+                world_name=world.world_name,
+                page_count=world.page_count,
+                world_time=world.world_time,
+                mood=world.mood,
+                characters=list(orch.characters.keys()),
+                multiplayer=world.multiplayer,
+            )
+
+    return WorldResponse(running=False)

@@ -68,18 +68,20 @@ function clearStoredLibrarianId(apiUrl: string): void {
   }
 }
 
-export function useLibrary(apiUrl: string, accessToken?: string | null): UseLibraryReturn {
+export function useLibrary(apiUrl: string, accessToken?: string | null, kindeUserId?: string | null): UseLibraryReturn {
   const [librarianId, setLibrarianId] = useState<string | null>(() => getStoredLibrarianId(apiUrl));
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [books, setBooks] = useState<BookInfo[]>([]);
-  const [currentBook, setCurrentBook] = useState<BookInfo | null>(null);
+  const [currentBook, setCurrentBookState] = useState<BookInfo | null>(null);
 
   // Track if we're currently creating a librarian to prevent duplicate requests
   const creatingLibrarianRef = useRef(false);
+  const restoringBookRef = useRef(false);
+  const lastActiveBookIdRef = useRef<string | null>(null);
 
   // Create a new librarian
-  const createLibrarian = useCallback(async (): Promise<string> => {
+  const createLibrarian = useCallback(async (kindeId?: string | null): Promise<string> => {
     if (creatingLibrarianRef.current) {
       // Wait for existing creation to complete
       while (creatingLibrarianRef.current) {
@@ -106,7 +108,10 @@ export function useLibrary(apiUrl: string, accessToken?: string | null): UseLibr
       const response = await fetch(`${apiUrl}/api/v1/librarians`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ nickname }),
+        body: JSON.stringify({
+          nickname,
+          kinde_user_id: kindeId || undefined,  // Only include if provided
+        }),
       });
 
       if (!response.ok) {
@@ -126,6 +131,38 @@ export function useLibrary(apiUrl: string, accessToken?: string | null): UseLibr
     }
   }, [apiUrl, accessToken]);
 
+  // Lookup librarian by Kinde user ID
+  const lookupLibrarianByKinde = useCallback(async (kindeId: string): Promise<string | null> => {
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch(`${apiUrl}/api/v1/librarians/by-kinde/${encodeURIComponent(kindeId)}`, {
+        method: "GET",
+        headers,
+      });
+
+      if (response.status === 404) {
+        return null;  // No librarian for this Kinde user yet
+      }
+
+      if (!response.ok) {
+        console.error("Failed to lookup librarian by Kinde ID:", response.status);
+        return null;
+      }
+
+      const data = await response.json();
+      return data.librarian_id;
+    } catch (err) {
+      console.error("Failed to lookup librarian by Kinde ID:", err);
+      return null;
+    }
+  }, [apiUrl, accessToken]);
+
   // Handle 401 errors by creating a new librarian and retrying
   const fetchWithRetry = useCallback(async (
     endpoint: string,
@@ -135,7 +172,7 @@ export function useLibrary(apiUrl: string, accessToken?: string | null): UseLibr
 
     // If no librarian ID, create one first
     if (!currentLibrarianId) {
-      currentLibrarianId = await createLibrarian();
+      currentLibrarianId = await createLibrarian(kindeUserId);
     }
 
     const headers: Record<string, string> = {
@@ -160,7 +197,7 @@ export function useLibrary(apiUrl: string, accessToken?: string | null): UseLibr
     // If 401, clear stored ID, create new librarian, and retry
     if (response.status === 401) {
       clearStoredLibrarianId(apiUrl);
-      currentLibrarianId = await createLibrarian();
+      currentLibrarianId = await createLibrarian(kindeUserId);
       headers["X-Librarian-ID"] = currentLibrarianId;
 
       response = await fetch(`${apiUrl}${endpoint}`, {
@@ -170,15 +207,116 @@ export function useLibrary(apiUrl: string, accessToken?: string | null): UseLibr
     }
 
     return response;
-  }, [apiUrl, librarianId, createLibrarian, accessToken]);
+  }, [apiUrl, librarianId, createLibrarian, kindeUserId, accessToken]);
 
   // Auto-create librarian on mount if none exists
   useEffect(() => {
-    const storedId = getStoredLibrarianId(apiUrl);
-    if (storedId) {
-      setLibrarianId(storedId);
+    const initLibrarian = async () => {
+      // First check localStorage
+      const storedId = getStoredLibrarianId(apiUrl);
+      if (storedId) {
+        setLibrarianId(storedId);
+        return;
+      }
+
+      // If we have a Kinde user ID, try to find their existing librarian
+      if (kindeUserId) {
+        const existingId = await lookupLibrarianByKinde(kindeUserId);
+        if (existingId) {
+          setStoredLibrarianId(apiUrl, existingId);
+          setLibrarianId(existingId);
+          return;
+        }
+      }
+
+      // No existing librarian found, create a new one (linked to Kinde if available)
+      try {
+        const newId = await createLibrarian(kindeUserId);
+        // createLibrarian already stores and sets the ID
+      } catch (err) {
+        console.error("Failed to auto-create librarian:", err);
+      }
+    };
+
+    initLibrarian();
+  }, [apiUrl, kindeUserId, createLibrarian, lookupLibrarianByKinde]);
+
+  // Restore last active book from server after librarian is loaded
+  useEffect(() => {
+    const restoreLastActiveBook = async () => {
+      if (restoringBookRef.current || !librarianId || currentBook) return;
+
+      restoringBookRef.current = true;
+      try {
+        // Fetch librarian to get last_active_book_id
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (accessToken) {
+          headers["Authorization"] = `Bearer ${accessToken}`;
+        }
+
+        const response = await fetch(`${apiUrl}/api/v1/librarians/${encodeURIComponent(librarianId)}`, {
+          method: "GET",
+          headers,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          lastActiveBookIdRef.current = data.last_active_book_id;
+
+          if (data.last_active_book_id) {
+            // Fetch the book details
+            const bookResponse = await fetch(`${apiUrl}/api/v1/books/${encodeURIComponent(data.last_active_book_id)}`, {
+              method: "GET",
+              headers: {
+                ...headers,
+                "X-Librarian-ID": librarianId,
+              },
+            });
+
+            if (bookResponse.ok) {
+              const bookData = await bookResponse.json();
+              setCurrentBookState(bookData);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to restore last active book:", err);
+      } finally {
+        restoringBookRef.current = false;
+      }
+    };
+
+    restoreLastActiveBook();
+  }, [apiUrl, librarianId, accessToken, currentBook]);
+
+  // Wrapper to update server when current book changes
+  const setCurrentBook = useCallback(async (book: BookInfo | null) => {
+    setCurrentBookState(book);
+
+    // Update server with new last active book
+    if (librarianId && book?.book_id !== lastActiveBookIdRef.current) {
+      lastActiveBookIdRef.current = book?.book_id ?? null;
+      try {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "X-Librarian-ID": librarianId,
+        };
+        if (accessToken) {
+          headers["Authorization"] = `Bearer ${accessToken}`;
+        }
+
+        await fetch(`${apiUrl}/api/v1/librarians/me/last-active-book`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ book_id: book?.book_id ?? null }),
+        });
+      } catch (err) {
+        console.error("Failed to update last active book:", err);
+      }
     }
-  }, [apiUrl]);
+  }, [apiUrl, librarianId, accessToken]);
 
   // Create a new book
   const createBook = useCallback(async (

@@ -55,8 +55,11 @@ class WSManager:
     async def broadcast(self, book_id: str, data: Dict[str, Any], exclude: Optional[str] = None) -> None:
         """Broadcast message to all clients in a book."""
         if book_id not in self.clients:
+            logger.warning(f"[BROADCAST] No clients registered for book {book_id}")
             return
 
+        client_count = len(self.clients[book_id])
+        logger.info(f"[BROADCAST] Sending to {client_count} client(s) for book {book_id}: type={data.get('type')}")
         for client_id, client in list(self.clients[book_id].items()):
             if client_id != exclude:
                 try:
@@ -138,17 +141,48 @@ def _ensure_orchestrator(book) -> bool:
 
     orch.set_stream_callback(stream_callback)
 
-    # Set up page callback to broadcast completed pages
-    def page_callback(results: dict):
+    # Set up narrator callback for progressive rendering (non-streaming mode)
+    def narrator_callback(page: int, narration: str, mood: str):
         if main_loop is None:
             return
         try:
             asyncio.run_coroutine_threadsafe(
-                _broadcast_page(book.book_id, results),
+                _broadcast_narrator_ready(book.book_id, page, narration, mood),
                 main_loop
             )
         except Exception as e:
-            logger.debug(f"Page callback error: {e}")
+            logger.debug(f"Narrator callback error: {e}")
+
+    orch.set_narrator_callback(narrator_callback)
+
+    # Set up character callback for progressive rendering (non-streaming mode)
+    def character_callback(page: int, name: str, data: dict):
+        if main_loop is None:
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(
+                _broadcast_character_ready(book.book_id, page, name, data),
+                main_loop
+            )
+        except Exception as e:
+            logger.debug(f"Character callback error: {e}")
+
+    orch.set_character_callback(character_callback)
+
+    # Set up page callback to broadcast completed pages
+    def page_callback(results: dict):
+        logger.info(f"[CALLBACK] page_callback fired for book {book.book_id}, page {results.get('page')}, main_loop={main_loop is not None}")
+        if main_loop is None:
+            logger.warning(f"[CALLBACK] main_loop is None, cannot broadcast page {results.get('page')}")
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                _broadcast_page(book.book_id, results),
+                main_loop
+            )
+            logger.info(f"[CALLBACK] Scheduled broadcast for page {results.get('page')}")
+        except Exception as e:
+            logger.error(f"Page callback error: {e}")
 
     orch.add_page_callback(page_callback)
 
@@ -183,9 +217,41 @@ async def _broadcast_stream(book_id: str, page: int, source: str, event: str, co
         })
 
 
+async def _broadcast_narrator_ready(book_id: str, page: int, narration: str, mood: str):
+    """Broadcast narrator completion for progressive rendering (non-streaming mode)."""
+    from datetime import datetime
+    logger.info(f"[PROGRESSIVE] narrator_ready for page {page}, narration length: {len(narration)}")
+    await ws_manager.broadcast(book_id, {
+        "type": "narrator_ready",
+        "page": page,
+        "narration": narration,
+        "mood": mood,
+        "created_at": datetime.utcnow().isoformat() + "Z",
+    })
+
+
+async def _broadcast_character_ready(book_id: str, page: int, name: str, data: dict):
+    """Broadcast character completion for progressive rendering (non-streaming mode)."""
+    logger.info(f"[PROGRESSIVE] character_ready for page {page}, character: {name}")
+    await ws_manager.broadcast(book_id, {
+        "type": "character_ready",
+        "page": page,
+        "character": name,
+        "data": {
+            "action": data.get("action"),
+            "dialogue": data.get("dialogue"),
+            "emotional_state": data.get("emotional_state"),
+            "inner_thoughts": data.get("inner_thoughts"),
+            "desires_update": data.get("desires_update"),
+        },
+    })
+
+
 async def _broadcast_page(book_id: str, results: dict):
     """Broadcast completed page to all clients."""
     from datetime import datetime
+
+    logger.info(f"[BROADCAST] _broadcast_page called for book {book_id}, page {results.get('page')}")
 
     # Handle error results
     if "error" in results:
@@ -206,7 +272,7 @@ async def _broadcast_page(book_id: str, results: dict):
         "narration": results.get("narration", ""),
         "events": results.get("events", []),
         "characters": {},
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat() + "Z",
     }
 
     # Add character data
@@ -219,7 +285,9 @@ async def _broadcast_page(book_id: str, results: dict):
                 "inner_thoughts": cdata.get("inner_thoughts"),
             }
 
+    logger.info(f"[BROADCAST] Broadcasting page {page_msg.get('page')} to book {book_id}")
     await ws_manager.broadcast(book_id, page_msg)
+    logger.info(f"[BROADCAST] Broadcast complete for page {page_msg.get('page')}")
 
 
 async def handle_websocket(websocket: WebSocket, book_id: str):
@@ -258,7 +326,9 @@ async def handle_websocket(websocket: WebSocket, book_id: str):
     # Get recent history from database
     history = []
     try:
+        logger.info(f"[History] Looking up pages for book_id={book_id}, world.world_id={world.world_id}")
         history_data = db.get_page_history(book_id, limit=20)
+        logger.info(f"[History] Loaded {len(history_data)} pages for book {book_id}")
         for h in history_data:
             history.append({
                 "page": h["page"],

@@ -28,8 +28,10 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(librarians.router)
     app.include_router(books.router)
+    app.include_router(books.compat_router)  # Backwards compatibility for /api/v1/world
     app.include_router(readers.router)
     app.include_router(characters.router)
+    app.include_router(characters.global_router)  # Backwards compatibility for /api/v1/potential-characters
     app.include_router(scenarios.router)
     app.include_router(pages.router)
 

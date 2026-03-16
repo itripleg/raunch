@@ -8,7 +8,6 @@ import { Sidebar } from "./Sidebar";
 import { ActionBar } from "./ActionBar";
 import { TurnStateUI } from "./TurnStateUI";
 import { PlayerPresence } from "./PlayerPresence";
-import { DebugPanel } from "./DebugPanel";
 
 type GameState = {
   world: Record<string, unknown> | null;
@@ -56,6 +55,7 @@ type Actions = {
   submitDirectorGuidance?: (text: string) => void;
   ready?: () => void;
   sendCommand?: (cmd: string, data?: Record<string, unknown>) => void;
+  injectMockPage?: () => void;
 };
 
 type Props = {
@@ -66,30 +66,52 @@ type Props = {
   onDeleteCharacter?: (name: string) => Promise<void>;
   onStopWorld?: () => void;
   onBackToDashboard?: () => void;
+  onOpenDebug?: () => void;
 };
 
-export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteCharacter, onStopWorld, onBackToDashboard: _onBackToDashboard }: Props) {
+export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteCharacter, onStopWorld, onBackToDashboard: _onBackToDashboard, onOpenDebug }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [autoScroll, _setAutoScroll] = useState(true);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [focusedPageNum, setFocusedPageNum] = useState<number | null>(null);
   const [previewCharacter, setPreviewCharacter] = useState<string | null>(null);
-  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [nextClicked, setNextClicked] = useState(false);
   const [waitingForPage, setWaitingForPage] = useState(false);
+  // Debug mode: persisted in localStorage, app-wide
+  const [mockMode, setMockMode] = useState(() => {
+    try {
+      return localStorage.getItem('raunch-mock-mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // Persist mock mode changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('raunch-mock-mode', mockMode ? 'true' : 'false');
+    } catch {
+      // ignore
+    }
+  }, [mockMode]);
   const feedRef = useRef<HTMLDivElement>(null);
 
   // Handle next button click with animation
   const handleNextClick = useCallback(() => {
-    if (actions.triggerPage) {
-      setNextClicked(true);
+    setNextClicked(true);
+
+    if (mockMode && actions.injectMockPage) {
+      // Debug mode: inject mock page directly (no intermission)
+      actions.injectMockPage();
+    } else {
       setWaitingForPage(true);
-      actions.triggerPage();
-      // Reset button animation after short delay
-      setTimeout(() => setNextClicked(false), 600);
+      actions.triggerPage?.();
     }
-  }, [actions]);
+
+    // Reset button animation after short delay
+    setTimeout(() => setNextClicked(false), 600);
+  }, [actions, mockMode]);
 
   // Clear waiting state when streaming starts or new page arrives
   const pageCount = game.pages.length;
@@ -150,11 +172,45 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
     return focusedPage?.characters[displayedCharacterName] ?? undefined;
   }, [displayedCharacterName, focusedPage]);
 
-  // Fetch character list and recent history on mount
+  // Fetch character list on mount (history comes with welcome message)
   useEffect(() => {
     actions.listCharacters();
-    actions.getHistory(20);
   }, [actions]);
+
+  // Debug: Ctrl+Shift+M to toggle mock mode (for UI testing without AI)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "M") {
+        e.preventDefault();
+        setMockMode(m => {
+          const newMode = !m;
+          console.log(`[Debug] Mock mode ${newMode ? "ENABLED" : "DISABLED"} - Next button will ${newMode ? "inject mock pages" : "call AI"}`);
+          return newMode;
+        });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Auto-inject mock pages when in mock mode + auto mode + not paused
+  useEffect(() => {
+    if (!mockMode || game.manualMode || game.paused || !actions.injectMockPage) return;
+
+    const interval = (game.pageInterval || 10) * 1000; // Use page interval or default 10s
+    console.log(`[Mock Auto] Starting auto-inject every ${interval/1000}s`);
+
+    const timer = setInterval(() => {
+      console.log("[Mock Auto] Injecting mock page");
+      setWaitingForPage(true);
+      setTimeout(() => {
+        actions.injectMockPage?.();
+        setWaitingForPage(false);
+      }, 1500); // Show intermission briefly
+    }, interval);
+
+    return () => clearInterval(timer);
+  }, [mockMode, game.manualMode, game.paused, game.pageInterval, actions]);
 
   // Check if user is near bottom of scroll
   const handleScroll = useCallback(() => {
@@ -180,31 +236,28 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
   }, []);
 
   // Preview a character (hover on desktop, tap on mobile)
+  // Preview a character (hover on desktop, tap on mobile)
+  // Only allow hover preview if a panel is already open (to avoid layout shift)
   const handlePreviewCharacter = useCallback((name: string | null) => {
-    setPreviewCharacter(name);
-  }, []);
-
-  // Tap on character name (mobile) - preview and open panel
-  const handleTapCharacter = useCallback((name: string) => {
-    if (window.innerWidth < 1024) {
+    // Only allow hover if right panel is already open (attached or director mode)
+    if (game.attachedTo || game.directorMode || previewCharacter) {
       setPreviewCharacter(name);
-      setCharacterPanelOpen(true);
     }
-  }, []);
+  }, [game.attachedTo, game.directorMode, previewCharacter]);
 
-  // Smart auto-scroll: only if user is near bottom AND autoScroll is on
-  useEffect(() => {
-    if (autoScroll && isNearBottom && feedRef.current) {
-      // Smooth scroll to bottom after a small delay for animation
-      const timer = setTimeout(() => {
-        feedRef.current?.scrollTo({
-          top: feedRef.current.scrollHeight,
-          behavior: "smooth"
-        });
-      }, 100);
-      return () => clearTimeout(timer);
+  // Click on character name - only works if panel already open (to avoid layout shift)
+  const handleTapCharacter = useCallback((name: string) => {
+    // Only allow if right panel is already open
+    if (game.attachedTo || game.directorMode || previewCharacter) {
+      setPreviewCharacter(name);
+      // On mobile, also open the overlay panel
+      if (window.innerWidth < 1024) {
+        setCharacterPanelOpen(true);
+      }
     }
-  }, [game.pages.length, autoScroll, isNearBottom]);
+  }, [game.attachedTo, game.directorMode, previewCharacter]);
+
+  // Auto-scroll now handled by PageFeed (scrolls to actual page element)
 
   return (
     <div className="h-screen relative bg-background overflow-hidden">
@@ -287,7 +340,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
                 >
                   <path d="M8 5v14l11-7z" />
                 </motion.svg>
-                <span>Next</span>
+                <span>{game.pages.length === 0 ? "Begin" : "Next"}</span>
               </motion.button>
             )
           ) : (
@@ -321,7 +374,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
 
           {/* Debug button */}
           <button
-            onClick={() => setDebugPanelOpen(true)}
+            onClick={onOpenDebug}
             className="p-1.5 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
             title="Debug Panel"
           >
@@ -330,11 +383,27 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
             </svg>
           </button>
 
+          {/* Mock/Live mode toggle */}
+          <button
+            onClick={() => setMockMode(m => !m)}
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide transition-colors ${
+              mockMode
+                ? "bg-fuchsia-500/20 text-fuchsia-400 hover:bg-fuchsia-500/30"
+                : "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
+            }`}
+            title={mockMode ? "Mock mode - click for Live (Ctrl+Shift+M)" : "Live mode - click for Mock (Ctrl+Shift+M)"}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${mockMode ? "bg-fuchsia-400 animate-pulse" : "bg-emerald-400"}`} />
+            {mockMode ? "Mock" : "Live"}
+          </button>
+
           {/* Status LED with hover tooltip - desktop only */}
           <div className="relative group hidden sm:block">
             <span
               className={`block w-2.5 h-2.5 rounded-full shadow-sm cursor-default transition-colors ${
-                game.paused
+                mockMode
+                  ? "bg-fuchsia-500 shadow-fuchsia-500/50"
+                  : game.paused
                   ? "bg-amber-500 shadow-amber-500/30"
                   : game.manualMode
                   ? "bg-sky-400 shadow-sky-400/30"
@@ -342,7 +411,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
               }`}
             />
             <div className="absolute right-0 top-full mt-2 px-2 py-1 bg-popover border border-border rounded text-xs text-popover-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-              {game.paused ? "Simulation paused" : game.manualMode ? "Manual mode" : "Auto-advancing"}
+              {mockMode ? "Mock mode (Ctrl+Shift+M to toggle)" : game.paused ? "Simulation paused" : game.manualMode ? "Manual mode" : "Auto-advancing"}
               {!game.manualMode && game.pageInterval && ` · ${game.pageInterval}s intervals`}
             </div>
           </div>
@@ -448,7 +517,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
         <main className="flex-1 flex flex-col overflow-hidden">
           <div
             ref={feedRef}
-            className="flex-1 overflow-y-auto scroll-smooth pt-14"
+            className="flex-1 overflow-y-auto pt-14"
             onScroll={handleScroll}
           >
             <PageFeed
@@ -506,7 +575,29 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
               className="hidden lg:block overflow-hidden shrink-0 h-full"
             >
               <AnimatePresence mode="wait" initial={false}>
-                {game.directorMode ? (
+                {/* Preview character takes precedence, then director mode, then attached */}
+                {previewCharacter ? (
+                  <motion.div
+                    key={`character-${previewCharacter}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="h-full"
+                  >
+                    <CharacterPanel
+                      name={previewCharacter}
+                      data={focusedPage?.characters[previewCharacter] ?? undefined}
+                      isPreview={true}
+                      pendingInfluence={null}
+                      streamingText={
+                        game.streaming?.isStreaming
+                          ? game.streaming.characters[previewCharacter]
+                          : undefined
+                      }
+                    />
+                  </motion.div>
+                ) : game.directorMode ? (
                   <motion.div
                     key="director"
                     initial={{ opacity: 0 }}
@@ -534,7 +625,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
                     <CharacterPanel
                       name={displayedCharacterName!}
                       data={displayedCharacterData}
-                      isPreview={!!previewCharacter}
+                      isPreview={false}
                       pendingInfluence={
                         game.pendingInfluence?.character === displayedCharacterName
                           ? game.pendingInfluence.text
@@ -577,7 +668,24 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
                 transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
                 className="absolute right-0 top-0 h-full w-[320px] max-w-[90vw]"
               >
-                {game.directorMode ? (
+                {/* Preview character takes precedence, then director mode */}
+                {previewCharacter ? (
+                  <CharacterPanel
+                    name={previewCharacter}
+                    data={focusedPage?.characters[previewCharacter] ?? undefined}
+                    isPreview={true}
+                    pendingInfluence={null}
+                    streamingText={
+                      game.streaming?.isStreaming
+                        ? game.streaming.characters[previewCharacter]
+                        : undefined
+                    }
+                    onClose={() => {
+                      setCharacterPanelOpen(false);
+                      setPreviewCharacter(null);
+                    }}
+                  />
+                ) : game.directorMode ? (
                   <DirectorPanel
                     pageData={focusedPage}
                     pendingGuidance={game.pendingDirectorGuidance}
@@ -589,7 +697,7 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
                   <CharacterPanel
                     name={displayedCharacterName!}
                     data={displayedCharacterData}
-                    isPreview={!!previewCharacter}
+                    isPreview={false}
                     pendingInfluence={
                       game.pendingInfluence?.character === displayedCharacterName
                         ? game.pendingInfluence.text
@@ -622,14 +730,6 @@ export function GameLayout({ game, actions, apiUrl, onAddCharacter, onDeleteChar
         </div>
       )}
 
-      {/* Debug panel */}
-      <DebugPanel
-        isOpen={debugPanelOpen}
-        onClose={() => setDebugPanelOpen(false)}
-        sendCommand={actions.sendCommand ?? (() => {})}
-        bookId={game.world?.world_id as string | undefined}
-        apiUrl={apiUrl}
-      />
     </div>
   );
 }

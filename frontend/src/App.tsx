@@ -14,6 +14,7 @@ import { NicknamePrompt } from "./components/NicknamePrompt";
 import { CharacterWizard } from "./components/CharacterWizard";
 import { WizardPage } from "./components/WizardPage";
 import { ScenarioSelector } from "./components/ScenarioSelector";
+import { DebugPanel } from "./components/DebugPanel";
 
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
 const HAS_PLAYED_KEY = "raunch_has_played";
@@ -88,14 +89,6 @@ function setHasPlayed(): void {
   }
 }
 
-// Helper to check admin status from localStorage
-function getStoredAdmin(): boolean {
-  try {
-    return localStorage.getItem("raunch_admin") === "true";
-  } catch {
-    return false;
-  }
-}
 
 // Error boundary to catch rendering crashes
 class ErrorBoundary extends Component<
@@ -145,7 +138,7 @@ function App() {
   const [apiUrl] = useState(DEFAULT_API_URL);
 
   // Kinde authentication
-  const { isAuthenticated, isLoading: authLoading, login, register, getToken } = useKindeAuth();
+  const { isAuthenticated, isLoading: authLoading, login, register, getToken, user } = useKindeAuth();
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   // Fetch access token when authenticated
@@ -161,13 +154,13 @@ function App() {
     }
   }, [isAuthenticated, getToken]);
 
-  const library = useLibrary(apiUrl, accessToken);
+  const library = useLibrary(apiUrl, accessToken, user?.id);
   const { wsState, game, actions } = useGame(apiUrl, library.currentBook?.book_id);
 
   // View state (new alpha dashboard flow)
   const [view, setView] = useState<AppView>("splash");
-  const [isAdmin, setIsAdmin] = useState(() => getStoredAdmin());
   const [showSettings, setShowSettings] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   // Nickname state with localStorage persistence
   const [nickname, setNickname] = useState<string>(() => getStoredNickname() ?? "");
@@ -290,12 +283,12 @@ function App() {
     }
   }, [wsState, actions]);
 
-  // Send join command only in multiplayer mode after nickname confirmed
+  // Send join command after nickname confirmed (both solo and multiplayer)
   useEffect(() => {
-    if (wsState === "connected" && nicknameConfirmed && isMultiplayer) {
+    if (wsState === "connected" && nicknameConfirmed) {
       actions.join(nickname);
     }
-  }, [wsState, nicknameConfirmed, isMultiplayer, nickname, actions]);
+  }, [wsState, nicknameConfirmed, nickname, actions]);
 
   // Update game sub-view when connected and world is loaded
   useEffect(() => {
@@ -410,7 +403,7 @@ function App() {
           >
             <AlphaDashboard
               onNavigate={handleNavigate}
-              isAdmin={isAdmin}
+              isAdmin={isAuthenticated}
               onOpenSettings={() => setShowSettings(true)}
               apiUrl={apiUrl}
             />
@@ -427,7 +420,7 @@ function App() {
           >
             <FeedbackKanban
               onBack={handleBackToDashboard}
-              isAdmin={isAdmin}
+              isAdmin={isAuthenticated}
               apiUrl={apiUrl}
             />
           </motion.div>
@@ -443,7 +436,7 @@ function App() {
           >
             <VotingPolls
               onBack={handleBackToDashboard}
-              isAdmin={isAdmin}
+              isAdmin={isAuthenticated}
               apiUrl={apiUrl}
             />
           </motion.div>
@@ -459,7 +452,7 @@ function App() {
           >
             <AboutPage
               onBack={handleBackToDashboard}
-              isAdmin={isAdmin}
+              isAdmin={isAuthenticated}
               apiUrl={apiUrl}
             />
           </motion.div>
@@ -634,6 +627,7 @@ function App() {
                   onDeleteCharacter={handleDeleteCharacter}
                   onStopWorld={handleStopWorld}
                   onBackToDashboard={handleBackToDashboard}
+                  onOpenDebug={() => setShowDebugPanel(true)}
                 />
               </ErrorBoundary>
             )}
@@ -658,9 +652,23 @@ function App() {
       <AdminSettings
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
-        isAdmin={isAdmin}
-        onAdminChange={setIsAdmin}
+        onOpenDebug={() => setShowDebugPanel(true)}
+      />
+
+      {/* Debug panel - available from any view */}
+      <DebugPanel
+        isOpen={showDebugPanel}
+        onClose={() => setShowDebugPanel(false)}
+        sendCommand={actions.sendCommand ?? (() => {})}
+        bookId={library.currentBook?.book_id}
         apiUrl={apiUrl}
+        authInfo={{
+          isAuthenticated,
+          userEmail: user?.email ?? undefined,
+          userName: user?.given_name ? `${user.given_name} ${user.family_name ?? ""}`.trim() : undefined,
+          accessToken,
+          librarianId: library.librarianId,
+        }}
       />
     </>
   );

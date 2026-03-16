@@ -136,7 +136,9 @@ type Action =
   | { type: "JOINED"; player_id: string; nickname: string }
   | { type: "PLAYERS"; players: Player[] }
   | { type: "WORLD_LOADED"; world_id: string; name: string; characters: string[] }
-  | { type: "TURN_STATE"; countdown: number; waiting_for: string[]; all_ready: boolean };
+  | { type: "TURN_STATE"; countdown: number; waiting_for: string[]; all_ready: boolean }
+  // Debug/Mock mode
+  | { type: "INJECT_MOCK_PAGE" };
 
 const initial: State = {
   world: null,
@@ -178,6 +180,7 @@ function reducer(state: State, action: Action): State {
       return { ...initial, world: action.world, characterNames: action.characters, multiplayer: action.multiplayer };
     case "PAGE": {
       // Clear pending influence/director and streaming when page arrives
+      console.log("[PAGE] Adding page:", action.data.page, "existing pages:", state.pages.map(p => p.page));
       const existingIndex = state.pages.findIndex(p => p.page === action.data.page);
       if (existingIndex !== -1) {
         // Update existing partial page with full data (characters, etc.)
@@ -197,9 +200,17 @@ function reducer(state: State, action: Action): State {
           pageGenerating: null,
         };
       }
+      // Add new page, ensuring no duplicates
+      const newPages = [...state.pages.slice(-100), action.data];
+      const seen = new Set<number>();
+      const deduped = newPages.filter(p => {
+        if (seen.has(p.page)) return false;
+        seen.add(p.page);
+        return true;
+      });
       return {
         ...state,
-        pages: [...state.pages.slice(-100), action.data],
+        pages: deduped,
         pendingInfluence: null,
         pendingDirectorGuidance: null,
         streaming: { ...initial.streaming },
@@ -212,6 +223,23 @@ function reducer(state: State, action: Action): State {
     case "NARRATOR_READY": {
       // Add partial page with just narration (non-streaming mode)
       // This allows typewriter to start before characters are done
+      console.log("[NARRATOR_READY] Page:", action.page, "current pages.length:", state.pages.length);
+      // Check if page already exists (avoid duplicates)
+      const existingNarrIdx = state.pages.findIndex(p => p.page === action.page);
+      if (existingNarrIdx !== -1) {
+        // Update existing page with narration
+        const updatedPages = [...state.pages];
+        updatedPages[existingNarrIdx] = {
+          ...updatedPages[existingNarrIdx],
+          narration: action.narration,
+          created_at: action.created_at,
+        };
+        return {
+          ...state,
+          pages: updatedPages,
+          pageGenerating: null,
+        };
+      }
       const partialPage: PageData = {
         page: action.page,
         narration: action.narration,
@@ -265,6 +293,8 @@ function reducer(state: State, action: Action): State {
       // Convert history pages to PageData, merging with existing live pages
       // History has full character data from DB; live pages may have partial data
       // (only attached character's inner_thoughts). We need to merge, not replace.
+      console.log("[HISTORY] Before - state.pages:", state.pages.map(p => p.page));
+      console.log("[HISTORY] Incoming history:", action.pages.map((p: { page: number }) => p.page));
       const existingPageMap = new Map(state.pages.map(p => [p.page, p]));
 
       const historyAsPages: PageData[] = action.pages.map(h => {
@@ -314,7 +344,16 @@ function reducer(state: State, action: Action): State {
       const merged = [...historyAsPages, ...nonHistoryPages];
       merged.sort((a, b) => a.page - b.page);
 
-      return { ...state, pages: merged, history: action.pages };
+      // Deduplicate by page number (keep first occurrence)
+      const seen = new Set<number>();
+      const deduped = merged.filter(p => {
+        if (seen.has(p.page)) return false;
+        seen.add(p.page);
+        return true;
+      });
+
+      console.log("[HISTORY] After merge & dedupe:", deduped.map(p => p.page));
+      return { ...state, pages: deduped, history: action.pages };
     }
     case "CHARACTER_HISTORY":
       return { ...state, characterHistory: { name: action.character, pages: action.pages } };
@@ -402,6 +441,55 @@ function reducer(state: State, action: Action): State {
       };
     case "RESET":
       return initial;
+    case "INJECT_MOCK_PAGE": {
+      // Generate mock page for UI debugging without AI calls
+      const nextPageNum = state.pages.length > 0
+        ? Math.max(...state.pages.map(p => p.page)) + 1
+        : 1;
+      const mockNarrations = [
+        `The morning sun cast long shadows across the cobblestone streets as *tension* filled the air. "We need to talk," she said, her voice barely above a whisper. The market bustled around them, oblivious to the **intensity** building between the two figures.`,
+        `Rain drummed against the windowpane as they sat in silence. The fire crackled softly, casting dancing shadows on the walls. "I never meant for things to end this way," he murmured, staring into the flames. She reached out, her fingers brushing against his hand.`,
+        `The tavern was crowded tonight, filled with laughter and the clinking of mugs. But in the corner booth, a different conversation was taking place. "The map shows a passage through the mountains," she said, ***urgently*** tapping the parchment. "But we'll need supplies."`,
+        `Moonlight filtered through the canopy as they made their way through the forest. Every snap of a twig made them freeze. "Do you hear that?" she whispered. The sound came again—closer this time. Something was following them.`,
+      ];
+      const mockDialogues = [
+        "I've been thinking about what you said, and... maybe you're right.",
+        "This isn't over. Not by a long shot.",
+        "You always know exactly what to say, don't you?",
+        "I'll meet you at midnight. Don't be late.",
+        "Perhaps there's another way. Let me think...",
+      ];
+      const mockCharacters = state.characterNames.length > 0
+        ? state.characterNames
+        : ["Elena", "Marcus"];
+
+      const mockPage: PageData = {
+        page: nextPageNum,
+        narration: mockNarrations[nextPageNum % mockNarrations.length],
+        events: ["[Mock event for debugging]"],
+        characters: Object.fromEntries(
+          mockCharacters.map((name, i) => [
+            name,
+            {
+              dialogue: mockDialogues[(nextPageNum + i) % mockDialogues.length],
+              action: "shifts thoughtfully",
+              emotional_state: "contemplative",
+              inner_thoughts: "I wonder what will happen next...",
+            }
+          ])
+        ),
+        attached_to: state.attachedTo,
+        created_at: new Date().toISOString(),
+      };
+
+      return {
+        ...state,
+        pages: [...state.pages.slice(-100), mockPage],
+        world: state.world || { world_name: "Mock World (Debug Mode)", world_id: "mock-debug" },
+        characterNames: mockCharacters,
+        pageGenerating: null,
+      };
+    }
     default:
       return state;
   }
@@ -450,6 +538,7 @@ export function useGame(apiUrl: string, bookId?: string | null) {
     setOnMessage((msg: ServerMessage) => {
       // Handle welcome message synchronously to avoid race condition
       if (msg.type === "welcome") {
+        console.log("[useGame] WELCOME received, dispatching...");
         dispatch({
           type: "WELCOME",
           world: msg.world as WorldInfo,
@@ -457,6 +546,7 @@ export function useGame(apiUrl: string, bookId?: string | null) {
           multiplayer: ((msg.world as WorldInfo & { multiplayer?: boolean })?.multiplayer) ?? false,
         });
         if (msg.history && Array.isArray(msg.history)) {
+          console.log("[useGame] WELCOME has history, dispatching HISTORY with", msg.history.length, "pages");
           dispatch({ type: "HISTORY", pages: msg.history as HistoryPage[] });
         }
         if (typeof msg.page_interval === "number") {
@@ -515,6 +605,8 @@ export function useGame(apiUrl: string, bookId?: string | null) {
     if (!lastMessage) return;
     const msg = lastMessage as ServerMessage;
 
+    console.log("[useGame] Processing message:", msg.type, msg);
+
     // Skip messages handled in sync callback
     if (msg.type === "page_start" || msg.type === "stream_delta" || msg.type === "stream_done" || msg.type === "welcome") {
       return;
@@ -522,6 +614,7 @@ export function useGame(apiUrl: string, bookId?: string | null) {
 
     switch (msg.type) {
       case "page":
+        console.log("[useGame] Dispatching PAGE action:", msg);
         dispatch({ type: "PAGE", data: msg as unknown as PageData });
         break;
       case "page_generating":
@@ -530,6 +623,7 @@ export function useGame(apiUrl: string, bookId?: string | null) {
         break;
       case "narrator_ready":
         // Non-streaming mode: narrator finished, show narration before characters are done
+        console.log("[useGame] Dispatching NARRATOR_READY:", msg.page, "narration length:", (msg.narration as string)?.length);
         dispatch({
           type: "NARRATOR_READY",
           page: msg.page as number,
@@ -625,7 +719,6 @@ export function useGame(apiUrl: string, bookId?: string | null) {
         break;
       case "debug":
         // Dispatch custom event for DebugPanel to receive
-        console.log("[useGame] Received debug data, dispatching event", msg.stats);
         window.dispatchEvent(new CustomEvent("raunch-debug-data", { detail: msg }));
         break;
       // page_start, stream_delta, stream_done handled synchronously above
@@ -675,6 +768,7 @@ export function useGame(apiUrl: string, bookId?: string | null) {
       },
       // Debug
       fetchDebug: (limit = 50) => send({ cmd: "debug", limit, include_raw: true }),
+      injectMockPage: () => dispatch({ type: "INJECT_MOCK_PAGE" }),
       // Raw send for custom commands
       sendCommand: (cmd: string, data?: Record<string, unknown>) => send({ cmd, ...data }),
     }),

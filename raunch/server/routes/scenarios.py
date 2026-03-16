@@ -7,6 +7,7 @@ from typing import Optional, List
 from raunch.wizard import (
     list_scenarios,
     load_scenario,
+    delete_scenario,
     random_scenario,
     generate_scenario,
     save_scenario,
@@ -137,5 +138,42 @@ async def wizard_generate(request: WizardGenerateRequest):
                 CharacterDetail(**c) for c in scenario.get("characters", [])
             ],
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/api/v1/scenarios/{name}")
+async def remove_scenario(name: str):
+    """Delete a scenario."""
+    # Prevent deleting test scenarios
+    if name.startswith("test_"):
+        raise HTTPException(status_code=403, detail="Cannot delete test scenarios")
+
+    deleted = delete_scenario(name)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Scenario '{name}' not found")
+
+    return {"deleted": True, "name": name}
+
+
+class ScenarioSaveResponse(BaseModel):
+    saved_to: str
+
+
+@router.post("/api/v1/scenarios/save", response_model=ScenarioSaveResponse)
+async def save_scenario_endpoint(scenario: ScenarioDetail):
+    """Save a generated scenario to disk."""
+    try:
+        scenario_dict = {
+            "scenario_name": scenario.scenario_name,
+            "setting": scenario.setting,
+            "premise": scenario.premise,
+            "themes": scenario.themes,
+            "opening_situation": scenario.opening_situation,
+            "characters": [c.model_dump() for c in scenario.characters],
+            "multiplayer": scenario.multiplayer,
+        }
+        path = save_scenario(scenario_dict)
+        return ScenarioSaveResponse(saved_to=path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

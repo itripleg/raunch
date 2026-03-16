@@ -30,7 +30,27 @@
       "Bash(git log:*)",
       "WebFetch(domain:raunch.onrender.com)",
       "WebFetch(domain:raunch.motherhaven.net)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(git mv:*)",
+      "Bash(git fetch:*)",
+      "Bash(powershell -c \"\\(Get-Content ''C:\\\\dev\\\\raunch\\\\raunch\\\\api.py''\\).Count\")",
+      "Bash(sqlite3:*)",
+      "Bash(dir saves scenarios)",
+      "Bash(ren saves saves_old)",
+      "Bash(ren:*)",
+      "Bash(powershell -c \"Rename-Item saves saves_old; Rename-Item scenarios scenarios_old; mkdir saves; mkdir scenarios\")",
+      "Bash(powershell -c:*)",
+      "Bash(dir:*)",
+      "Bash(npm install:*)",
+      "Bash(grep:*)",
+      "Bash(git worktree:*)",
+      "Bash(git -C \"C:/dev/raunch/.auto-claude/worktrees/tasks/003-parallelize-character-llm-calls-in-run-page\" log --oneline -10)",
+      "Bash(git -C \"C:/dev/raunch/.auto-claude/worktrees/tasks/003-parallelize-character-llm-calls-in-run-page\" status)",
+      "Bash(git -C \"C:/dev/raunch/.auto-claude/worktrees/tasks/003-parallelize-character-llm-calls-in-run-page\" diff HEAD~5..HEAD --name-only)",
+      "Bash(git -C \"C:/dev/raunch/.auto-claude/worktrees/tasks/003-parallelize-character-llm-calls-in-run-page\" diff HEAD~5..HEAD raunch/orchestrator.py)",
+      "Bash(git -C \"C:/dev/raunch/.auto-claude/worktrees/tasks/003-parallelize-character-llm-calls-in-run-page\" log --oneline -1 HEAD)",
+      "Bash(git -C \"C:/dev/raunch/.auto-claude/worktrees/tasks/001-review-multiplayer-api-design-specification\" diff HEAD~3..HEAD --name-only)",
+      "Bash(git -C \"C:/dev/raunch\" log --oneline -5)"
     ]
   }
 }
