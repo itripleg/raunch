@@ -300,12 +300,29 @@ export function WizardPage({ apiUrl, librarianId, onBack }: Props) {
     setRolling(false);
   };
 
-  // Fetch options on mount
+  // Shuffle array helper
+  const shuffle = <T,>(arr: T[]): T[] => {
+    const shuffled = [...arr];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
+  // Fetch options on mount and shuffle them
   useEffect(() => {
     setLoading(true);
     fetch(`${apiUrl}/api/v1/wizard/options`)
       .then((r) => r.json())
-      .then(setOptions)
+      .then((data: WizardOptions) => {
+        setOptions({
+          settings: shuffle(data.settings),
+          pairings: shuffle(data.pairings),
+          kinks: shuffle(data.kinks),
+          vibes: shuffle(data.vibes),
+        });
+      })
       .catch((e) => setError(`Failed to load options: ${e.message}`))
       .finally(() => setLoading(false));
   }, [apiUrl]);
