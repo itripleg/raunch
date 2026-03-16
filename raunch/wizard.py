@@ -326,22 +326,50 @@ def load_scenario(name: str) -> Optional[Dict[str, Any]]:
 
 
 def list_scenarios() -> List[Dict[str, Any]]:
-    """List all saved scenarios with summary info."""
+    """List all saved scenarios with summary info (files + database)."""
     results = []
-    for fname in sorted(os.listdir(SCENARIOS_DIR)):
-        if not fname.endswith(".json"):
-            continue
-        path = os.path.join(SCENARIOS_DIR, fname)
-        try:
-            with open(path) as f:
-                data = json.load(f)
+
+    # Load file-based scenarios
+    try:
+        for fname in sorted(os.listdir(SCENARIOS_DIR)):
+            if not fname.endswith(".json"):
+                continue
+            path = os.path.join(SCENARIOS_DIR, fname)
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+                results.append({
+                    "file": fname,
+                    "name": data.get("scenario_name", "?"),
+                    "setting": (data.get("setting", "")[:80] + "...") if len(data.get("setting", "")) > 80 else data.get("setting", ""),
+                    "characters": len(data.get("characters", [])),
+                    "themes": data.get("themes", []),
+                    "source": "file",
+                })
+            except (json.JSONDecodeError, KeyError):
+                continue
+    except FileNotFoundError:
+        # scenarios directory doesn't exist (e.g., on Render)
+        pass
+
+    # Load public database scenarios
+    try:
+        from . import db
+        db_scenarios = db.list_public_scenarios()
+        for s in db_scenarios:
+            data = s.get("data", {})
             results.append({
-                "file": fname,
-                "name": data.get("scenario_name", "?"),
-                "setting": (data.get("setting", "")[:80] + "...") if len(data.get("setting", "")) > 80 else data.get("setting", ""),
+                "id": s["id"],
+                "name": s.get("name", data.get("scenario_name", "?")),
+                "setting": (s.get("setting", "")[:80] + "...") if len(s.get("setting", "") or "") > 80 else s.get("setting", ""),
                 "characters": len(data.get("characters", [])),
                 "themes": data.get("themes", []),
+                "source": "db",
+                "public": s.get("public", True),
+                "owner_id": s.get("owner_id"),
             })
-        except (json.JSONDecodeError, KeyError):
-            continue
+    except Exception:
+        # DB not available
+        pass
+
     return results
