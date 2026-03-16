@@ -11,9 +11,10 @@ import click
 from rich.console import Console
 from rich.panel import Panel
 
+from .client import RemoteClient, LocalClient, Page
 from .orchestrator import Orchestrator, _extract_narration_from_raw, _clean_narration
 from .agents.character import Character
-from .server import GameServer
+from .tcp_server import GameServer
 from .ws_server import WebSocketServer, WS_PORT
 from .display import (
     render_page, render_character_list, render_world_state, render_character_history,
@@ -889,6 +890,375 @@ def status(host, port):
             )
         )
     sock.close()
+
+
+# ---------------------------------------------------------------------------
+# CONNECT — connect to a remote Living Library server
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.argument("host")
+@click.option("--port", default=8000, type=int, help="Server port (default: 8000)")
+@click.option("--bookmark", default=None, help="Book bookmark to join")
+@click.option("--nickname", default=None, help="Your display name")
+def connect(host, port, bookmark, nickname):
+    """Connect to a remote Living Library server.
+
+    Examples:
+        raunch connect localhost
+        raunch connect raunch.example.com --port 8000
+        raunch connect my-server.com --bookmark MILK-1234
+    """
+    # Build server URL
+    if not host.startswith("http"):
+        host = f"http://{host}"
+    if port != 80 and port != 443:
+        server_url = f"{host}:{port}"
+    else:
+        server_url = host
+
+    # Get nickname
+    if not nickname:
+        nickname = os.environ.get("USER", os.environ.get("USERNAME", "Anonymous"))
+
+    console.print(f"[cyan]Connecting to {server_url}...[/cyan]")
+
+    try:
+        client = RemoteClient(server_url, nickname=nickname)
+        console.print(f"[green]Connected as {nickname}[/green]")
+        console.print(f"[dim]Librarian ID: {client.librarian_id}[/dim]")
+    except Exception as e:
+        console.print(f"[red]Failed to connect: {e}[/red]")
+        return
+
+    # If bookmark provided, join that book
+    if bookmark:
+        try:
+            book_id = client.join_book(bookmark)
+            console.print(f"[green]Joined book: {book_id}[/green]")
+        except Exception as e:
+            console.print(f"[red]Failed to join book: {e}[/red]")
+            return
+    else:
+        # List available books or create new one
+        books = client.list_books()
+        if books:
+            console.print("\n[bold]Your Books:[/bold]")
+            for i, book in enumerate(books, 1):
+                console.print(f"  {i}. {book.scenario_name} [{book.bookmark}] - {book.page_count} pages")
+
+            console.print("\n[dim]Enter number to join, 'new' to create, or 'q' to quit[/dim]")
+            try:
+                choice = input("> ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                return
+
+            if choice == 'q':
+                return
+            elif choice == 'new':
+                _connect_create_book(client)
+            elif choice.isdigit() and 1 <= int(choice) <= len(books):
+                book = books[int(choice) - 1]
+                client.join_book(book.bookmark)
+                console.print(f"[green]Joined: {book.scenario_name}[/green]")
+            else:
+                console.print("[red]Invalid choice[/red]")
+                return
+        else:
+            console.print("[dim]No books yet. Creating a new one...[/dim]")
+            _connect_create_book(client)
+
+    # Now we're connected to a book - start interactive session
+    if not client.book_id:
+        console.print("[red]No book selected[/red]")
+        return
+
+    _connect_interactive_loop(client)
+
+
+def _connect_create_book(client: RemoteClient) -> None:
+    """Create a new book on remote server."""
+    from .wizard import list_scenarios
+
+    scenarios = list_scenarios()
+    if not scenarios:
+        console.print("[yellow]No scenarios available on this server[/yellow]")
+        return
+
+    console.print("\n[bold]Available Scenarios:[/bold]")
+    for i, s in enumerate(scenarios, 1):
+        console.print(f"  {i}. {s['name']}")
+
+    try:
+        choice = input("\nChoose scenario > ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+
+    if choice.isdigit() and 1 <= int(choice) <= len(scenarios):
+        scenario = scenarios[int(choice) - 1]
+        book_id, bookmark = client.open_book(scenario['file'].replace('.json', ''))
+        console.print(f"[green]Created book: {bookmark}[/green]")
+        console.print(f"[dim]Share this code with friends to let them join![/dim]")
+
+
+def _connect_interactive_loop(client: RemoteClient) -> None:
+    """Interactive session for remote connection."""
+    # Connect WebSocket
+    try:
+        client.connect_ws()
+        reader = client.join_as_reader(client.nickname)
+        console.print(f"[green]Joined as reader: {reader.nickname}[/green]")
+    except Exception as e:
+        console.print(f"[red]WebSocket error: {e}[/red]")
+        return
+
+    # Register page callback
+    def on_page(page: Page):
+        console.print(f"\n[bold cyan]── Page {page.page_num} ──[/bold cyan]")
+        console.print(page.narration)
+        for name, char in page.characters.items():
+            if char.dialogue:
+                console.print(f"  [bold]{name}:[/bold] \"{char.dialogue}\"")
+
+    client.on_page(on_page)
+
+    # Show help
+    console.print(
+        Panel(
+            "[bold]Commands:[/bold]\n"
+            "  [bold]c[/bold], [bold]characters[/bold]  List characters\n"
+            "  [bold]a[/bold] <name>        Attach to character\n"
+            "  [bold]d[/bold]               Detach\n"
+            "  [bold]w[/bold] <text>        Whisper to attached character\n"
+            "  [bold]>[/bold] <text>        Submit action\n"
+            "  [bold]q[/bold]               Quit",
+            title="Remote Session",
+            border_style="cyan",
+        )
+    )
+
+    # Input loop
+    try:
+        while True:
+            try:
+                cmd = input("> ").strip()
+            except EOFError:
+                break
+
+            if not cmd:
+                continue
+
+            parts = cmd.split(None, 1)
+            cmd_name = parts[0].lower()
+            cmd_arg = parts[1] if len(parts) > 1 else ""
+
+            if cmd_name in ('q', 'quit', 'exit'):
+                break
+            elif cmd_name in ('c', 'chars', 'characters'):
+                chars = client.list_characters()
+                for c in chars:
+                    attached = " [attached]" if c.name == client._attached_to else ""
+                    console.print(f"  {c.name}{attached}")
+            elif cmd_name in ('a', 'attach'):
+                if not cmd_arg:
+                    console.print("[red]Usage: a <character_name>[/red]")
+                else:
+                    try:
+                        client.attach(cmd_arg)
+                        console.print(f"[green]Attached to {cmd_arg}[/green]")
+                    except Exception as e:
+                        console.print(f"[red]{e}[/red]")
+            elif cmd_name in ('d', 'detach'):
+                client.detach()
+                console.print("[dim]Detached[/dim]")
+            elif cmd_name in ('w', 'whisper'):
+                if not cmd_arg:
+                    console.print("[red]Usage: w <whisper text>[/red]")
+                else:
+                    try:
+                        client.whisper(cmd_arg)
+                        console.print("[dim]Whispered[/dim]")
+                    except Exception as e:
+                        console.print(f"[red]{e}[/red]")
+            elif cmd_name.startswith('>'):
+                # Action - include the > in the text if needed
+                action_text = cmd[1:].strip() if cmd.startswith('>') else cmd_arg
+                if action_text:
+                    try:
+                        client.action(action_text)
+                        console.print("[dim]Action submitted[/dim]")
+                    except Exception as e:
+                        console.print(f"[red]{e}[/red]")
+            else:
+                # Treat as action
+                try:
+                    client.action(cmd)
+                    console.print("[dim]Action submitted[/dim]")
+                except Exception as e:
+                    console.print(f"[red]{e}[/red]")
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        client.disconnect()
+        console.print("[dim]Disconnected[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# PLAY — local single-player mode using LocalClient
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.argument("scenario")
+@click.option("--name", "nickname", default=None, help="Your display name")
+def play(scenario, nickname):
+    """Play a scenario locally (single-player mode).
+
+    This runs the game entirely on your machine without a server.
+
+    Examples:
+        raunch play milk_money
+        raunch play my_scenario --name "Boss"
+    """
+    if not nickname:
+        nickname = os.environ.get("USER", os.environ.get("USERNAME", "Player"))
+
+    console.print(f"[cyan]Loading scenario: {scenario}[/cyan]")
+
+    try:
+        client = LocalClient(nickname=nickname)
+        book_id, bookmark = client.open_book(scenario)
+        console.print(f"[green]Book opened: {bookmark}[/green]")
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return
+    except Exception as e:
+        console.print(f"[red]Failed to start: {e}[/red]")
+        return
+
+    # Show characters
+    chars = client.list_characters()
+    console.print(f"\n[bold]Characters:[/bold]")
+    for c in chars:
+        console.print(f"  * {c.name} ({c.species})")
+
+    # Register page callback
+    def on_page(page: Page):
+        console.print(f"\n[bold bright_magenta]--- Page {page.page_num} ---[/bold bright_magenta]")
+        console.print(f"[dim]{page.mood} | {page.world_time}[/dim]\n")
+        console.print(page.narration)
+        console.print()
+        for name, char in page.characters.items():
+            if char.action or char.dialogue:
+                action_text = char.action or ""
+                dialogue_text = f'"{char.dialogue}"' if char.dialogue else ""
+                console.print(f"  [bold]{name}[/bold] {action_text} {dialogue_text}")
+
+    client.on_page(on_page)
+
+    # Show help
+    console.print(
+        Panel(
+            "[bold]Commands:[/bold]\n"
+            "  [bold]n[/bold], Enter       Next page (manual mode)\n"
+            "  [bold]p[/bold]              Pause/resume\n"
+            "  [bold]t[/bold] <seconds>    Set page interval (0=manual)\n"
+            "  [bold]c[/bold]              List characters\n"
+            "  [bold]a[/bold] <name>       Attach to character\n"
+            "  [bold]d[/bold]              Detach\n"
+            "  [bold]w[/bold] <text>       Whisper to character\n"
+            "  [bold]>[/bold] <text>       Submit action\n"
+            "  [bold]q[/bold]              Quit",
+            title="Local Play",
+            border_style="bright_magenta",
+        )
+    )
+
+    # Start orchestrator
+    client.start()
+    console.print("[green]Game started! Press Enter to advance pages.[/green]")
+
+    # Input loop
+    try:
+        while True:
+            try:
+                cmd = input("> ").strip()
+            except EOFError:
+                break
+
+            parts = cmd.split(None, 1)
+            cmd_name = parts[0].lower() if parts else ""
+            cmd_arg = parts[1] if len(parts) > 1 else ""
+
+            if cmd_name in ('q', 'quit', 'exit'):
+                break
+            elif not cmd or cmd_name in ('n', 'next'):
+                if client.trigger_page():
+                    console.print("[dim]Generating page...[/dim]")
+                else:
+                    console.print("[yellow]Cannot generate page (already running or paused)[/yellow]")
+            elif cmd_name in ('p', 'pause'):
+                book = client.get_book()
+                if book and book.paused:
+                    client.resume()
+                    console.print("[green]Resumed[/green]")
+                else:
+                    client.pause()
+                    console.print("[yellow]Paused[/yellow]")
+            elif cmd_name in ('t', 'timer', 'interval'):
+                if cmd_arg:
+                    try:
+                        seconds = int(cmd_arg)
+                        client.set_page_interval(seconds)
+                        if seconds == 0:
+                            console.print("[green]Manual mode[/green]")
+                        else:
+                            console.print(f"[green]Interval: {seconds}s[/green]")
+                    except ValueError:
+                        console.print("[red]Usage: t <seconds>[/red]")
+            elif cmd_name in ('c', 'chars', 'characters'):
+                chars = client.list_characters()
+                for c in chars:
+                    attached = " [attached]" if c.name == client._attached_to else ""
+                    console.print(f"  {c.name} ({c.species}){attached}")
+            elif cmd_name in ('a', 'attach'):
+                if not cmd_arg:
+                    console.print("[red]Usage: a <character_name>[/red]")
+                else:
+                    try:
+                        client.attach(cmd_arg)
+                        console.print(f"[green]Attached to {cmd_arg}[/green]")
+                    except Exception as e:
+                        console.print(f"[red]{e}[/red]")
+            elif cmd_name in ('d', 'detach'):
+                client.detach()
+                console.print("[dim]Detached[/dim]")
+            elif cmd_name in ('w', 'whisper'):
+                if not cmd_arg:
+                    console.print("[red]Usage: w <whisper text>[/red]")
+                else:
+                    try:
+                        client.whisper(cmd_arg)
+                        console.print("[dim]Whispered[/dim]")
+                    except Exception as e:
+                        console.print(f"[red]{e}[/red]")
+            elif cmd_name.startswith('>') or cmd_arg:
+                # Action
+                action_text = cmd[1:].strip() if cmd.startswith('>') else cmd
+                if action_text:
+                    try:
+                        client.action(action_text)
+                        console.print("[dim]Action submitted[/dim]")
+                    except Exception as e:
+                        console.print(f"[red]{e}[/red]")
+            else:
+                console.print("[dim]Unknown command. Type 'q' to quit.[/dim]")
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        client.stop()
+        console.print("[dim]Game ended.[/dim]")
 
 
 # ---------------------------------------------------------------------------
