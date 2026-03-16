@@ -2,8 +2,10 @@
 
 import json
 import os
+import random
 import re
 import sqlite3
+import string
 import threading
 import uuid
 from typing import Dict, Any, List, Optional
@@ -982,3 +984,154 @@ def get_librarian(librarian_id: str) -> Optional[Dict[str, Any]]:
         "nickname": row["nickname"],
         "created_at": row["created_at"],
     }
+
+
+def _generate_bookmark() -> str:
+    """Generate a bookmark in ABCD-1234 format."""
+    letters = ''.join(random.choices(string.ascii_uppercase, k=4))
+    digits = ''.join(random.choices(string.digits, k=4))
+    return f"{letters}-{digits}"
+
+
+def _get_unique_bookmark() -> str:
+    """Generate a unique bookmark, checking for collisions."""
+    conn = _get_conn()
+    for _ in range(100):  # Max attempts
+        bookmark = _generate_bookmark()
+        existing = conn.execute(
+            "SELECT 1 FROM books WHERE bookmark = ?", (bookmark,)
+        ).fetchone()
+        if existing is None:
+            return bookmark
+    raise RuntimeError("Failed to generate unique bookmark")
+
+
+def create_book(scenario_name: str, owner_id: str, private: bool = False) -> Dict[str, Any]:
+    """Create a new book and return its data."""
+    conn = _get_conn()
+    book_id = str(uuid.uuid4())[:8]
+    bookmark = _get_unique_bookmark()
+
+    conn.execute(
+        """INSERT INTO books (id, bookmark, scenario_name, owner_id, private, last_active)
+           VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+        (book_id, bookmark, scenario_name, owner_id, 1 if private else 0)
+    )
+
+    # Also add owner to book_access
+    conn.execute(
+        "INSERT INTO book_access (book_id, librarian_id, role) VALUES (?, ?, 'owner')",
+        (book_id, owner_id)
+    )
+
+    conn.commit()
+    return get_book(book_id)
+
+
+def get_book(book_id: str) -> Optional[Dict[str, Any]]:
+    """Get a book by ID."""
+    conn = _get_conn()
+    row = conn.execute(
+        """SELECT id, bookmark, scenario_name, owner_id, private,
+                  created_at, last_active, page_count
+           FROM books WHERE id = ?""",
+        (book_id,)
+    ).fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "id": row["id"],
+        "bookmark": row["bookmark"],
+        "scenario_name": row["scenario_name"],
+        "owner_id": row["owner_id"],
+        "private": bool(row["private"]),
+        "created_at": row["created_at"],
+        "last_active": row["last_active"],
+        "page_count": row["page_count"],
+    }
+
+
+def get_book_by_bookmark(bookmark: str) -> Optional[Dict[str, Any]]:
+    """Get a book by bookmark (case-insensitive)."""
+    conn = _get_conn()
+    row = conn.execute(
+        """SELECT id, bookmark, scenario_name, owner_id, private,
+                  created_at, last_active, page_count
+           FROM books WHERE UPPER(bookmark) = UPPER(?)""",
+        (bookmark,)
+    ).fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "id": row["id"],
+        "bookmark": row["bookmark"],
+        "scenario_name": row["scenario_name"],
+        "owner_id": row["owner_id"],
+        "private": bool(row["private"]),
+        "created_at": row["created_at"],
+        "last_active": row["last_active"],
+        "page_count": row["page_count"],
+    }
+
+
+def count_books_for_librarian(librarian_id: str) -> int:
+    """Count books owned by a librarian."""
+    conn = _get_conn()
+    result = conn.execute(
+        "SELECT COUNT(*) FROM book_access WHERE librarian_id = ? AND role = 'owner'",
+        (librarian_id,)
+    ).fetchone()
+    return result[0] if result else 0
+
+
+def list_books_for_librarian(librarian_id: str) -> List[Dict[str, Any]]:
+    """List all books accessible to a librarian."""
+    conn = _get_conn()
+    rows = conn.execute(
+        """SELECT b.id, b.bookmark, b.scenario_name, b.owner_id, b.private,
+                  b.created_at, b.last_active, b.page_count, ba.role
+           FROM books b
+           JOIN book_access ba ON b.id = ba.book_id
+           WHERE ba.librarian_id = ?
+           ORDER BY b.last_active DESC""",
+        (librarian_id,)
+    ).fetchall()
+
+    return [
+        {
+            "id": row["id"],
+            "bookmark": row["bookmark"],
+            "scenario_name": row["scenario_name"],
+            "owner_id": row["owner_id"],
+            "private": bool(row["private"]),
+            "created_at": row["created_at"],
+            "last_active": row["last_active"],
+            "page_count": row["page_count"],
+            "role": row["role"],
+        }
+        for row in rows
+    ]
+
+
+def delete_book(book_id: str) -> bool:
+    """Delete a book and its access records."""
+    conn = _get_conn()
+    conn.execute("DELETE FROM book_access WHERE book_id = ?", (book_id,))
+    result = conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
+    conn.commit()
+    return result.rowcount > 0
+
+
+def grant_book_access(book_id: str, librarian_id: str, role: str = "reader") -> None:
+    """Grant a librarian access to a book."""
+    conn = _get_conn()
+    conn.execute(
+        """INSERT OR IGNORE INTO book_access (book_id, librarian_id, role)
+           VALUES (?, ?, ?)""",
+        (book_id, librarian_id, role)
+    )
+    conn.commit()

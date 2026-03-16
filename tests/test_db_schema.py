@@ -117,3 +117,71 @@ def test_get_librarian_not_found(temp_db):
 
     result = db.get_librarian("nonexistent-id")
     assert result is None
+
+
+def test_create_book(temp_db):
+    """Should create a book with bookmark and return it."""
+    from raunch import db
+    db.init_db()
+
+    librarian = db.create_librarian("Owner")
+    book = db.create_book("milk_money", librarian["id"])
+
+    assert book["id"] is not None
+    assert book["bookmark"] is not None
+    assert len(book["bookmark"]) == 9  # ABCD-1234 format
+    assert book["scenario_name"] == "milk_money"
+    assert book["owner_id"] == librarian["id"]
+
+
+def test_get_book(temp_db):
+    """Should retrieve a book by ID."""
+    from raunch import db
+    db.init_db()
+
+    librarian = db.create_librarian("Owner")
+    created = db.create_book("milk_money", librarian["id"])
+    fetched = db.get_book(created["id"])
+
+    assert fetched is not None
+    assert fetched["id"] == created["id"]
+    assert fetched["bookmark"] == created["bookmark"]
+
+
+def test_get_book_by_bookmark(temp_db):
+    """Should retrieve a book by bookmark."""
+    from raunch import db
+    db.init_db()
+
+    librarian = db.create_librarian("Owner")
+    created = db.create_book("milk_money", librarian["id"])
+    fetched = db.get_book_by_bookmark(created["bookmark"])
+
+    assert fetched is not None
+    assert fetched["id"] == created["id"]
+
+
+def test_list_books_for_librarian(temp_db):
+    """Should list books owned by or accessible to a librarian."""
+    from raunch import db
+    db.init_db()
+
+    owner = db.create_librarian("Owner")
+    db.create_book("scenario1", owner["id"])
+    db.create_book("scenario2", owner["id"])
+
+    books = db.list_books_for_librarian(owner["id"])
+    assert len(books) == 2
+
+
+def test_delete_book(temp_db):
+    """Should delete a book."""
+    from raunch import db
+    db.init_db()
+
+    librarian = db.create_librarian("Owner")
+    book = db.create_book("milk_money", librarian["id"])
+
+    db.delete_book(book["id"])
+
+    assert db.get_book(book["id"]) is None
