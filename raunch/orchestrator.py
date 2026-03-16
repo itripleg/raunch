@@ -157,6 +157,7 @@ class Orchestrator:
         # Streaming support
         self.streaming_enabled = True
         self._stream_callback: Optional[Callable[[int, str, str, str], None]] = None
+        self._stream_lock = threading.Lock()  # Protects _stream_callback from race conditions
 
         # Turn-based multiplayer support
         self.turn_timeout: int = 60  # Seconds before timeout triggers page (0 = no timeout)
@@ -362,16 +363,22 @@ class Orchestrator:
             if self.streaming_enabled and self._stream_callback:
                 # Don't send "start" for characters - only narrator gets page_start
                 # This preserves the narrator content in the frontend streaming state
-                char_result = char.page_stream(
-                    char_input,
-                    on_delta=lambda chunk, n=name: self._stream_callback(page_num, n, "delta", chunk)
-                )
-                self._stream_callback(page_num, name, "done", "")
+                def safe_delta(chunk, n=name):
+                    with self._stream_lock:
+                        if self._stream_callback:
+                            self._stream_callback(page_num, n, "delta", chunk)
+
+                char_result = char.page_stream(char_input, on_delta=safe_delta)
+
+                with self._stream_lock:
+                    if self._stream_callback:
+                        self._stream_callback(page_num, name, "done", "")
             else:
                 # Non-streaming mode - send done event for CLI progressive rendering
                 char_result = char.page(char_input)
-                if self._stream_callback:
-                    self._stream_callback(page_num, name, "done", "")
+                with self._stream_lock:
+                    if self._stream_callback:
+                        self._stream_callback(page_num, name, "done", "")
             return (name, char_result)
         except Exception as e:
             logger.error(f"Character {name} page failed: {e}")
@@ -408,19 +415,32 @@ class Orchestrator:
         try:
             if self.streaming_enabled and self._stream_callback:
                 # Streaming mode
-                self._stream_callback(page_num, "narrator", "start", "")
+                with self._stream_lock:
+                    if self._stream_callback:
+                        self._stream_callback(page_num, "narrator", "start", "")
+
                 def on_chunk(chunk):
-                    self._stream_callback(page_num, "narrator", "delta", chunk)
+                    with self._stream_lock:
+                        if self._stream_callback:
+                            self._stream_callback(page_num, "narrator", "delta", chunk)
+
                 narrator_result = self.narrator.page_stream(narrator_input, on_delta=on_chunk)
-                self._stream_callback(page_num, "narrator", "done", "")
+
+                with self._stream_lock:
+                    if self._stream_callback:
+                        self._stream_callback(page_num, "narrator", "done", "")
             else:
                 # Non-streaming mode - send start/done events for CLI animation
                 # but no content deltas (frontend uses typewriter on final page)
-                if self._stream_callback:
-                    self._stream_callback(page_num, "narrator", "start", "")
+                with self._stream_lock:
+                    if self._stream_callback:
+                        self._stream_callback(page_num, "narrator", "start", "")
+
                 narrator_result = self.narrator.page(narrator_input)
-                if self._stream_callback:
-                    self._stream_callback(page_num, "narrator", "done", "")
+
+                with self._stream_lock:
+                    if self._stream_callback:
+                        self._stream_callback(page_num, "narrator", "done", "")
 
             self.world.apply_narrator_update(narrator_result)
             # Extract narration, cleaning up any raw JSON fallback
