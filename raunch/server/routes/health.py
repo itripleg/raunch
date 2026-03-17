@@ -1,8 +1,15 @@
 """Health check and introspection endpoints."""
 
+import logging
+
 from fastapi import APIRouter, Request
 
 router = APIRouter()
+
+# Suppress health check request logs — they're too noisy
+logging.getLogger("uvicorn.access").addFilter(
+    type("HealthFilter", (), {"filter": staticmethod(lambda r: "/health" not in r.getMessage())})()
+)
 
 # Server identification
 SERVER_TYPE = "raunch"

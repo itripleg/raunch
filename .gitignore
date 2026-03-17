@@ -42,3 +42,13 @@ frontend/dist/
 
 # Auto Claude data directory
 .auto-claude/
+
+# Firebase service account keys
+*firebase-adminsdk*
+gameplace-761d0-firebase-adminsdk-x5e8h-727cd57e2f.json
+
+# Saves directory (entire directory)
+saves/
+
+# Database files (global)
+*.db

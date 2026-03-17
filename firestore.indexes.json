@@ -1,0 +1,86 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "pages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "world_id", "order": "ASCENDING" },
+        { "fieldPath": "page_num", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "character_pages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "world_id", "order": "ASCENDING" },
+        { "fieldPath": "page_num", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "character_pages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "world_id", "order": "ASCENDING" },
+        { "fieldPath": "character_name", "order": "ASCENDING" },
+        { "fieldPath": "page_num", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "character_pages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "character_name", "order": "ASCENDING" },
+        { "fieldPath": "page_num", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "potential_characters",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "world_id", "order": "ASCENDING" },
+        { "fieldPath": "promoted", "order": "ASCENDING" },
+        { "fieldPath": "times_mentioned", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scenarios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "owner_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scenarios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "public", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scenarios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "name_upper", "order": "ASCENDING" },
+        { "fieldPath": "public", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "access",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "librarian_id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "access",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "librarian_id", "order": "ASCENDING" },
+        { "fieldPath": "role", "order": "ASCENDING" }
+      ]
+    }
+  ]
+}
