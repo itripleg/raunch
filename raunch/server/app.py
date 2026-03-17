@@ -47,10 +47,11 @@ def create_app() -> FastAPI:
     async def start_keep_alive():
         asyncio.create_task(_keep_alive())
 
-    # CORS
+    # CORS — allow_credentials=True is incompatible with allow_origins=["*"]
+    # so we use allow_origin_regex to match everything instead
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure properly for production
+        allow_origin_regex=r".*",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

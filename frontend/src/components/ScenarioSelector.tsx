@@ -19,12 +19,13 @@ type Props = {
   librarianId: string | null;
   onScenarioSelected: (scenario: string) => void;
   isLoading?: boolean;
+  externalError?: string | null;
   onBack?: () => void;
   onOpenWizard?: () => void;
   initialTab?: "my" | "public";
 };
 
-export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLoading, onBack, onOpenWizard, initialTab }: Props) {
+export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLoading, externalError, onBack, onOpenWizard, initialTab }: Props) {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -397,15 +398,15 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
 
         {/* Error */}
         <AnimatePresence>
-          {error && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="text-xs text-destructive/70 mb-4"
+          {(error || externalError) && (
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+              className="w-full max-w-xs mb-4 px-4 py-3 rounded-xl border border-destructive/30 bg-destructive/5 text-center"
             >
-              {error}
-            </motion.p>
+              <p className="text-sm text-destructive/90">{externalError || error}</p>
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -418,7 +419,16 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
           disabled={!selectedScenario || isLoading}
           className="w-full max-w-xs px-8 py-3 text-base text-primary/80 hover:text-primary border border-primary/20 hover:border-primary/40 rounded-full transition-all hover:shadow-[0_0_30px_oklch(0.65_0.22_340_/_0.12)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isLoading ? "loading..." : "start"}
+          {isLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <motion.span
+                className="inline-block w-1.5 h-1.5 rounded-full bg-primary/60"
+                animate={{ opacity: [0.3, 1, 0.3] }}
+                transition={{ duration: 1.2, repeat: Infinity }}
+              />
+              creating book...
+            </span>
+          ) : "start"}
         </motion.button>
 
         {selectedData && (

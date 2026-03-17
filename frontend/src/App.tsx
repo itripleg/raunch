@@ -180,6 +180,7 @@ function App() {
 
   // Scenario selection loading state
   const [scenarioLoading, setScenarioLoading] = useState(false);
+  const [scenarioError, setScenarioError] = useState<string | null>(null);
   // Which tab to open in ScenarioSelector (reset after use)
   const [scenarioInitialTab, setScenarioInitialTab] = useState<"my" | "public">("public");
 
@@ -299,6 +300,7 @@ function App() {
   // Handle scenario selection
   const handleScenarioSelected = useCallback(async (scenario: string) => {
     setScenarioLoading(true);
+    setScenarioError(null);
     try {
       const { bookId } = await library.createBook(scenario);
       const book = await library.getBook(bookId);
@@ -310,6 +312,8 @@ function App() {
       setView("game");
     } catch (err) {
       console.error("Failed to create book:", err);
+      const msg = err instanceof Error ? err.message : "Failed to create book";
+      setScenarioError(msg.includes("fetch") ? "Server unreachable — is the backend running?" : msg);
     } finally {
       setScenarioLoading(false);
     }
@@ -581,6 +585,7 @@ function App() {
               librarianId={library.librarianId}
               onScenarioSelected={handleScenarioSelected}
               isLoading={scenarioLoading}
+              externalError={scenarioError}
               onBack={handleBackToDashboard}
               onOpenWizard={() => setView("wizard")}
               initialTab={scenarioInitialTab}
