@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, ShieldCheck, Bug, LogOut, Key, Plus, Trash2, Check, Loader2, RefreshCw } from "lucide-react";
+import { X, ShieldCheck, Bug, LogOut, Key, Plus, Trash2, Check, Loader2, RefreshCw, ExternalLink, Copy } from "lucide-react";
 import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 
 const ADMIN_EMAIL = "joshua.bell.828@gmail.com";
@@ -32,6 +32,12 @@ export function AdminSettings({ isOpen, onClose, onOpenDebug, apiUrl = "http://l
   const [newTokenValue, setNewTokenValue] = useState("");
   const [checkingToken, setCheckingToken] = useState<string | null>(null);
 
+  // OAuth flow state
+  const [oauthState, setOauthState] = useState<string | null>(null);
+  const [oauthCode, setOauthCode] = useState("");
+  const [oauthStatus, setOauthStatus] = useState<"idle" | "waiting" | "exchanging" | "success" | "error">("idle");
+  const [oauthMessage, setOauthMessage] = useState("");
+
   const fetchTokens = useCallback(async () => {
     try {
       const res = await fetch(`${apiUrl}/api/v1/auth/tokens`);
@@ -50,17 +56,6 @@ export function AdminSettings({ isOpen, onClose, onOpenDebug, apiUrl = "http://l
     }
   }, [isOpen, isAdmin, fetchTokens]);
 
-  // Listen for OAuth callback messages
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === "oauth-callback") {
-        fetchTokens();
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [fetchTokens]);
-
   const handleLogout = () => {
     logout();
     onClose();
@@ -68,12 +63,63 @@ export function AdminSettings({ isOpen, onClose, onOpenDebug, apiUrl = "http://l
 
   const handleOpenDebug = () => {
     onClose();
-    // Small delay to let AdminSettings unmount before opening debug panel
     setTimeout(() => onOpenDebug?.(), 100);
   };
 
-  const handleOAuthLogin = () => {
-    window.open(`${apiUrl}/oauth/start`, "oauth", "width=600,height=700");
+  const handleOAuthStart = async () => {
+    setOauthStatus("waiting");
+    setOauthMessage("");
+    setOauthCode("");
+    try {
+      const res = await fetch(`${apiUrl}/oauth/start`);
+      if (!res.ok) {
+        setOauthStatus("error");
+        setOauthMessage("Failed to start OAuth flow");
+        return;
+      }
+      const data = await res.json();
+      setOauthState(data.state);
+      // Open Claude auth in new tab
+      window.open(data.auth_url, "_blank");
+    } catch (err) {
+      console.error("OAuth start failed:", err);
+      setOauthStatus("error");
+      setOauthMessage("Failed to start OAuth flow");
+    }
+  };
+
+  const handleOAuthExchange = async () => {
+    if (!oauthCode.trim() || !oauthState) return;
+    setOauthStatus("exchanging");
+    try {
+      const res = await fetch(`${apiUrl}/oauth/exchange`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: oauthCode.trim(), state: oauthState }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOauthStatus("success");
+        setOauthMessage(data.message);
+        setOauthCode("");
+        setOauthState(null);
+        fetchTokens();
+      } else {
+        setOauthStatus("error");
+        setOauthMessage(data.message);
+      }
+    } catch (err) {
+      console.error("OAuth exchange failed:", err);
+      setOauthStatus("error");
+      setOauthMessage("Exchange request failed");
+    }
+  };
+
+  const handleOAuthCancel = () => {
+    setOauthStatus("idle");
+    setOauthState(null);
+    setOauthCode("");
+    setOauthMessage("");
   };
 
   const handleAddToken = async () => {
@@ -247,7 +293,7 @@ export function AdminSettings({ isOpen, onClose, onOpenDebug, apiUrl = "http://l
                         )}
                       </div>
 
-                      {/* Add Token */}
+                      {/* Add Token Manually */}
                       <div className="px-3 py-2 bg-muted/10 border-t border-border flex gap-2">
                         <input
                           type="text"
@@ -273,14 +319,67 @@ export function AdminSettings({ isOpen, onClose, onOpenDebug, apiUrl = "http://l
                       </div>
                     </div>
 
-                    {/* OAuth Login Button */}
-                    <button
-                      onClick={handleOAuthLogin}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-600/20 to-orange-600/20 border border-amber-500/30 rounded-lg text-sm text-amber-400 hover:border-amber-400 transition-colors"
-                    >
-                      <Key className="w-4 h-4" />
-                      Login with Claude Max
-                    </button>
+                    {/* OAuth Flow */}
+                    {oauthStatus === "idle" || oauthStatus === "success" || oauthStatus === "error" ? (
+                      <div className="space-y-2">
+                        <button
+                          onClick={handleOAuthStart}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-600/20 to-orange-600/20 border border-amber-500/30 rounded-lg text-sm text-amber-400 hover:border-amber-400 transition-colors"
+                        >
+                          <Key className="w-4 h-4" />
+                          Login with Claude Max
+                          <ExternalLink className="w-3 h-3 opacity-50" />
+                        </button>
+                        {oauthStatus === "success" && (
+                          <p className="text-xs text-green-400 text-center">{oauthMessage}</p>
+                        )}
+                        {oauthStatus === "error" && (
+                          <p className="text-xs text-destructive text-center">{oauthMessage}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-3 p-3 border border-amber-500/30 rounded-lg bg-amber-500/5">
+                        <div className="flex items-start gap-2">
+                          <Copy className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                          <div className="space-y-1">
+                            <p className="text-xs text-amber-400 font-medium">Paste the authorization code</p>
+                            <p className="text-[10px] text-muted-foreground leading-relaxed">
+                              A new tab opened to Claude. Sign in, authorize, then copy the code shown on the page and paste it below.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={oauthCode}
+                            onChange={(e) => setOauthCode(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleOAuthExchange()}
+                            placeholder="Paste authorization code..."
+                            autoFocus
+                            className="flex-1 px-2 py-1.5 text-xs bg-background border border-border rounded font-mono"
+                          />
+                          <button
+                            onClick={handleOAuthExchange}
+                            disabled={!oauthCode.trim() || oauthStatus === "exchanging"}
+                            className="px-3 py-1.5 bg-amber-500 text-black text-xs font-medium rounded disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {oauthStatus === "exchanging" ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              "Submit"
+                            )}
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={handleOAuthCancel}
+                          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

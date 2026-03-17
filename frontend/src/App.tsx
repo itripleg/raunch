@@ -194,31 +194,22 @@ function App() {
   const handlePresplashComplete = useCallback(() => {
     // Mark as played so presplash never shows again
     setHasPlayed();
-    // After presplash, go to login if not authenticated, else normal splash flow
+    // After presplash, go to login if not authenticated, else dashboard
     if (!isAuthenticated) {
       setView("splash"); // use "splash" as a sentinel meaning "show login"
-    } else if (hasPlayedBefore()) {
-      if (library.currentBook) {
-        setGameSubView("connecting");
-        setView("game");
-      } else {
-        setView("scenario");
-      }
+    } else if (library.currentBook) {
+      setGameSubView("connecting");
+      setView("game");
     } else {
       setView("dashboard");
     }
   }, [isAuthenticated, library.currentBook]);
 
-  // Handle splash completion - skip to game if user has played before
+  // Handle splash completion - go to dashboard (or game if book exists)
   const handleSplashComplete = useCallback(() => {
-    if (hasPlayedBefore()) {
-      // Skip dashboard, go to scenario selection (or game if book exists)
-      if (library.currentBook) {
-        setGameSubView("connecting");
-        setView("game");
-      } else {
-        setView("scenario");
-      }
+    if (library.currentBook) {
+      setGameSubView("connecting");
+      setView("game");
     } else {
       setView("dashboard");
     }

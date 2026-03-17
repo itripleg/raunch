@@ -20,7 +20,6 @@ import {
   Heart,
   Sparkles,
   Send,
-  Terminal,
   Shield,
   RotateCcw,
   Globe,
@@ -1023,7 +1022,6 @@ function DebugTab({
     setDebugSubTab(tab);
     try { localStorage.setItem("raunch_dash_debug_tab", tab); } catch {}
   };
-  const [pageIntervalInput, setPageIntervalInput] = useState("30");
   const [discoveredRoutes, setDiscoveredRoutes] = useState<RouteInfo[]>([]);
   const [routesLoading, setRoutesLoading] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
@@ -1323,8 +1321,6 @@ function DebugTab({
           selectedScenario={selectedScenario}
           setSelectedScenario={setSelectedScenario}
           apiResults={apiResults}
-          pageIntervalInput={pageIntervalInput}
-          setPageIntervalInput={setPageIntervalInput}
           apiUrl={apiUrl}
         />
       )}
@@ -1364,8 +1360,7 @@ function ApiSubTab({
   selectedScenario,
   setSelectedScenario,
   apiResults,
-  pageIntervalInput,
-  setPageIntervalInput,
+  apiUrl,
 }: {
   routeGroups: Record<string, RouteInfo[]>;
   routesLoading: boolean;
@@ -1379,8 +1374,6 @@ function ApiSubTab({
   selectedScenario: string;
   setSelectedScenario: (s: string) => void;
   apiResults: ApiResult[];
-  pageIntervalInput: string;
-  setPageIntervalInput: (s: string) => void;
   apiUrl: string;
 }) {
   const [paramInputs, setParamInputs] = useState<Record<string, string>>({});
@@ -1424,12 +1417,6 @@ function ApiSubTab({
   const allResults = [...apiResults, ...wsResults]
     .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
     .slice(0, 30);
-
-  // Extract param placeholders from a path
-  const getParams = (path: string): string[] => {
-    const matches = path.match(/\{(\w+)\}/g);
-    return matches ? matches.map((m) => m.slice(1, -1)) : [];
-  };
 
   // Resolve a path with user-provided params
   const resolveWithParams = (path: string): string => {
