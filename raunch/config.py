@@ -21,10 +21,21 @@ CHARACTER_PAGE_MULTIPLIER = 1  # Characters react every page
 # Database backend: "sqlite" (default) or "firestore"
 DB_BACKEND = os.environ.get("DB_BACKEND", "sqlite")
 FIREBASE_PROJECT_ID = "gameplace-761d0"
-GOOGLE_APPLICATION_CREDENTIALS = os.environ.get(
-    "GOOGLE_APPLICATION_CREDENTIALS",
-    os.path.join(PROJECT_ROOT, "gameplace-761d0-firebase-adminsdk-x5e8h-727cd57e2f.json")
-)
+
+# Firebase credentials: either a file path (local dev) or JSON string (Render env var)
+_firebase_creds_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+if _firebase_creds_json:
+    # Render: write JSON env var to a temp file so firebase-admin can read it
+    import tempfile, json as _json
+    _tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+    _tmp.write(_firebase_creds_json)
+    _tmp.close()
+    GOOGLE_APPLICATION_CREDENTIALS = _tmp.name
+else:
+    GOOGLE_APPLICATION_CREDENTIALS = os.environ.get(
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        os.path.join(PROJECT_ROOT, "gameplace-761d0-firebase-adminsdk-x5e8h-727cd57e2f.json")
+    )
 
 # Server
 SERVER_HOST = "0.0.0.0"  # Bind inside container
