@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In — Raunch</title>
+  <meta name="description" content="Sign in to Raunch, adult interactive fiction." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Design tokens ── */
+    :root {
+      --bg:        oklch(0.07 0.015 320);
+      --fg:        oklch(0.92 0.01  320);
+      --muted:     oklch(0.55 0.02  320);
+      --primary:   oklch(0.65 0.22  340);
+      --primary-2: oklch(0.70 0.20  350);
+      --secondary: oklch(0.16 0.035 320);
+      --border:    oklch(0.20 0.04  320);
+      --radius:    0.75rem;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Ambient glows ── */
+    .glow {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      animation: breathe 12s ease-in-out infinite;
+    }
+    .glow-1 {
+      width: 500px; height: 500px;
+      top: 10%; right: 5%;
+      background: oklch(0.65 0.22 340 / 0.06);
+      animation-delay: 0s;
+    }
+    .glow-2 {
+      width: 380px; height: 380px;
+      bottom: 10%; left: 5%;
+      background: oklch(0.55 0.20 290 / 0.04);
+      animation-delay: 3s;
+      animation-duration: 15s;
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1);   opacity: 0.7; }
+      50%       { transform: scale(1.1); opacity: 1;   }
+    }
+
+    /* ── Card ── */
+    .card {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 400px;
+      padding: 0 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2.5rem;
+      animation: fadein 0.6s ease-out both;
+    }
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+
+    /* ── Logo ── */
+    .logo {
+      text-align: center;
+    }
+    .logo h1 {
+      font-family: "DM Sans", sans-serif;
+      font-size: clamp(3rem, 12vw, 5rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      background: linear-gradient(
+        135deg,
+        oklch(0.65 0.22 340),
+        oklch(0.75 0.20 350),
+        oklch(0.65 0.22 340)
+      );
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 40px oklch(0.65 0.22 340 / 0.35));
+    }
+    .logo p {
+      margin-top: 0.5rem;
+      font-size: 0.65rem;
+      letter-spacing: 0.4em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── Divider ── */
+    .divider {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+    }
+
+    /* ── Buttons ── */
+    .actions {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 0.85rem 1.5rem;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Primary — Sign In */
+    .btn-primary {
+      background: linear-gradient(135deg, oklch(0.65 0.22 340), oklch(0.60 0.25 320));
+      color: #fff;
+      box-shadow: 0 4px 24px oklch(0.65 0.22 340 / 0.3);
+    }
+    .btn-primary::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%);
+      transition: opacity 0.2s;
+      opacity: 0;
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 32px oklch(0.65 0.22 340 / 0.45); }
+    .btn-primary:hover::after { opacity: 1; }
+    .btn-primary:active { transform: translateY(0); }
+
+    /* Secondary — Create Account */
+    .btn-secondary {
+      background: var(--secondary);
+      color: oklch(0.80 0.01 320);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: oklch(0.20 0.04 320); border-color: oklch(0.30 0.06 320); transform: translateY(-1px); }
+    .btn-secondary:active { transform: translateY(0); }
+
+    /* ── Footer note ── */
+    .note {
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.5;
+      opacity: 0.7;
+    }
+
+    /* ── Error notice ── */
+    #error-notice {
+      display: none;
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      background: oklch(0.55 0.22 25 / 0.15);
+      border: 1px solid oklch(0.55 0.22 25 / 0.4);
+      color: oklch(0.75 0.18 25);
+      font-size: 0.8rem;
+      text-align: center;
+    }
+    #error-notice.visible { display: block; }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient background glows -->
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+
+  <!-- Main card -->
+  <div class="card">
+
+    <!-- Logo -->
+    <div class="logo">
+      <h1>RAUNCH</h1>
+      <p>Adult Interactive Fiction</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Error notice (shown if Kinde passes error param) -->
+    <div id="error-notice"></div>
+
+    <!-- Auth buttons -->
+    <div class="actions">
+      <a id="btn-signin" class="btn btn-primary" href="#">Sign In</a>
+      <a id="btn-register" class="btn btn-secondary" href="#">Create Account</a>
+    </div>
+
+    <!-- Disclaimer -->
+    <p class="note">
+      By continuing you confirm you are 18+ years old.<br />
+      Your session is secured by Kinde.
+    </p>
+
+  </div>
+
+  <script>
+    /**
+     * Kinde "bring your own screens" — custom login page.
+     *
+     * HOW TO CONFIGURE:
+     * 1. Go to your Kinde dashboard → Settings → Authentication
+     * 2. Click your auth method (e.g. "Email + Password") → copy the Connection ID
+     * 3. Paste it into SIGN_IN_CONNECTION_ID below.
+     *    If you have a separate "Sign up" connection, also fill REGISTER_CONNECTION_ID.
+     * 4. In Settings → Applications → your app → Authentication experience,
+     *    set the custom sign-in URL to wherever this file is hosted
+     *    (e.g. https://raunch.app/login.html).
+     *
+     * KINDE DOMAIN — must match main.tsx KindeProvider domain prop.
+     */
+    const KINDE_DOMAIN         = "https://jbuild.kinde.com";
+    const SIGN_IN_CONNECTION_ID  = "YOUR_SIGN_IN_CONNECTION_ID";   // ← replace
+    const REGISTER_CONNECTION_ID = "YOUR_REGISTER_CONNECTION_ID";  // ← replace (can be same)
+
+    // Kinde passes these params when it redirects here — we must forward them exactly.
+    const params = new URLSearchParams(window.location.search);
+
+    function kindeAuthUrl(connectionId) {
+      const q = new URLSearchParams(params); // copy all Kinde-supplied params
+      q.set("connection_id", connectionId);
+      return `${KINDE_DOMAIN}/oauth2/auth?${q.toString()}`;
+    }
+
+    // Wire up buttons
+    document.getElementById("btn-signin").href   = kindeAuthUrl(SIGN_IN_CONNECTION_ID);
+    document.getElementById("btn-register").href = kindeAuthUrl(REGISTER_CONNECTION_ID);
+
+    // Show error message if Kinde passes one
+    const error = params.get("error_description") || params.get("error");
+    if (error) {
+      const el = document.getElementById("error-notice");
+      el.textContent = decodeURIComponent(error.replace(/\+/g, " "));
+      el.classList.add("visible");
+    }
+  </script>
+
+</body>
+</html>
