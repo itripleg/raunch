@@ -12,11 +12,16 @@ SERVER_VERSION = "1.0.0"
 @router.get("/health")
 async def health_check():
     """Health check endpoint with server identification."""
-    return {
+    from ..app import _last_ping
+    result = {
         "status": "ok",
         "server": SERVER_TYPE,
         "version": SERVER_VERSION,
     }
+    if _last_ping.get("time"):
+        result["last_ping"] = _last_ping["time"]
+        result["ping_status"] = _last_ping["status"]
+    return result
 
 
 @router.get("/api/v1/routes")

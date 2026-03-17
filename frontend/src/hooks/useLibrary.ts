@@ -209,14 +209,27 @@ export function useLibrary(apiUrl: string, accessToken?: string | null, kindeUse
     return response;
   }, [apiUrl, librarianId, createLibrarian, kindeUserId, accessToken]);
 
-  // Auto-create librarian on mount if none exists
+  // Auto-create librarian on mount if none exists, or validate cached one
   useEffect(() => {
     const initLibrarian = async () => {
       // First check localStorage
       const storedId = getStoredLibrarianId(apiUrl);
       if (storedId) {
-        setLibrarianId(storedId);
-        return;
+        // Validate the cached librarian still exists on the server
+        try {
+          const res = await fetch(`${apiUrl}/api/v1/librarians/${encodeURIComponent(storedId)}`);
+          if (res.ok) {
+            setLibrarianId(storedId);
+            return;
+          }
+          // Server returned 404 or other error — cached ID is stale
+          console.warn("Cached librarian ID is stale, recreating...");
+          clearStoredLibrarianId(apiUrl);
+        } catch {
+          // Server unreachable — use cached ID optimistically
+          setLibrarianId(storedId);
+          return;
+        }
       }
 
       // If we have a Kinde user ID, try to find their existing librarian
@@ -280,6 +293,11 @@ export function useLibrary(apiUrl: string, accessToken?: string | null, kindeUse
               setCurrentBookState(bookData);
             }
           }
+        } else if (response.status === 404) {
+          // Librarian was wiped (e.g. Render ephemeral disk reset)
+          // Clear cached ID so initLibrarian recreates it
+          clearStoredLibrarianId(apiUrl);
+          setLibrarianId(null);
         }
       } catch (err) {
         console.error("Failed to restore last active book:", err);

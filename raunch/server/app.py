@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 SELF_PING_INTERVAL = 14 * 60  # 14 minutes
 
 
+_last_ping: dict = {"time": None, "status": None}
+
+
 async def _keep_alive():
     """Ping own health endpoint to prevent Render free-tier sleep."""
     url = os.environ.get("RENDER_EXTERNAL_URL")
@@ -30,8 +33,13 @@ async def _keep_alive():
             await asyncio.sleep(SELF_PING_INTERVAL)
             try:
                 r = await client.get(ping_url, timeout=10)
-                logger.debug(f"Self-ping: {r.status_code}")
+                from datetime import datetime, timezone
+                _last_ping["time"] = datetime.now(timezone.utc).isoformat()
+                _last_ping["status"] = r.status_code
+                logger.info(f"🏓 Self-ping: {r.status_code}")
             except Exception as e:
+                _last_ping["time"] = None
+                _last_ping["status"] = f"failed: {e}"
                 logger.warning(f"Self-ping failed: {e}")
 
 
