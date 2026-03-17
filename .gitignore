@@ -18,6 +18,7 @@ scenarios/*.json
 # But allow test scenarios and milk_money for demos
 !scenarios/test_*.json
 !scenarios/milk_money.json
+!scenarios/midnight_library.json
 
 # Old data (pre-migration backup)
 saves_old/
