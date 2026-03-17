@@ -16,7 +16,7 @@ from raunch.auth_db import (
     get_active_token_name,
     set_active_token_name,
 )
-from raunch.db import _get_conn
+from raunch import db as raunch_db
 from raunch.llm import reload_client
 
 logger = logging.getLogger(__name__)
@@ -173,31 +173,35 @@ async def cleanup_invalid_books(req: AdminEmailRequest):
     if req.admin_email.lower() != ADMIN_EMAIL.lower():
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    conn = _get_conn()
-
-    invalid = conn.execute('''
-        SELECT id, scenario_name, bookmark FROM books
-        WHERE LENGTH(scenario_name) <= 12
-        AND scenario_name NOT LIKE '%.json'
-        AND scenario_name NOT LIKE '%scenario%'
-        AND scenario_name NOT LIKE '%library%'
-        AND scenario_name NOT LIKE '%salvation%'
-        AND scenario_name NOT LIKE '%gambit%'
-    ''').fetchall()
-
-    deleted_books = [f"{row[2]} ({row[1]})" for row in invalid]
-
-    if invalid:
-        conn.execute('''
-            DELETE FROM books
-            WHERE LENGTH(scenario_name) <= 12
-            AND scenario_name NOT LIKE '%.json'
-            AND scenario_name NOT LIKE '%scenario%'
-            AND scenario_name NOT LIKE '%library%'
-            AND scenario_name NOT LIKE '%salvation%'
-            AND scenario_name NOT LIKE '%gambit%'
-        ''')
-        conn.commit()
+    # Find books with short hex-like scenario names (invalid/test artifacts)
+    valid_keywords = ["scenario", "library", "salvation", "gambit", ".json"]
+    all_books = raunch_db.list_books_for_librarian("")  # empty string won't match, use direct query
+    # Fall back to checking all librarians' books — just iterate known books
+    deleted_books = []
+    try:
+        # Use SQLite raw path if available, otherwise skip cleanup on Firestore
+        from raunch.config import DB_BACKEND
+        if DB_BACKEND == "sqlite":
+            from raunch.db_sqlite import _get_conn
+            conn = _get_conn()
+            invalid = conn.execute('''
+                SELECT id, scenario_name, bookmark FROM books
+                WHERE LENGTH(scenario_name) <= 12
+                AND scenario_name NOT LIKE '%.json'
+                AND scenario_name NOT LIKE '%scenario%'
+                AND scenario_name NOT LIKE '%library%'
+                AND scenario_name NOT LIKE '%salvation%'
+                AND scenario_name NOT LIKE '%gambit%'
+            ''').fetchall()
+            deleted_books = [f"{row[2]} ({row[1]})" for row in invalid]
+            if invalid:
+                for row in invalid:
+                    raunch_db.delete_book(row[0])
+        else:
+            # Firestore: not applicable (no stale data from ephemeral SQLite)
+            pass
+    except Exception as e:
+        logger.warning(f"Cleanup error: {e}")
 
     logger.info(f"Admin cleanup: deleted {len(deleted_books)} invalid books")
 
