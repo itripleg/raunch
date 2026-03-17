@@ -236,7 +236,7 @@ async def get_potential_characters():
     library = get_library()
 
     # Find first active book with an orchestrator
-    for book in library._books.values():
+    for book in library.books.values():
         if book.orchestrator and book.orchestrator.world:
             world_id = book.orchestrator.world.world_id
             if world_id:

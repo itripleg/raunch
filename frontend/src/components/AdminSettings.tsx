@@ -18,11 +18,13 @@ type Props = {
   onClose: () => void;
   onOpenDebug?: () => void;
   apiUrl?: string;
+  overrideEmail?: string;
 };
 
-export function AdminSettings({ isOpen, onClose, onOpenDebug, apiUrl = "http://localhost:8000" }: Props) {
+export function AdminSettings({ isOpen, onClose, onOpenDebug, apiUrl = "http://localhost:8000", overrideEmail }: Props) {
   const { user, logout } = useKindeAuth();
-  const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const email = overrideEmail || user?.email;
+  const isAdmin = email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
   const [tokens, setTokens] = useState<TokenInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -66,7 +68,8 @@ export function AdminSettings({ isOpen, onClose, onOpenDebug, apiUrl = "http://l
 
   const handleOpenDebug = () => {
     onClose();
-    onOpenDebug?.();
+    // Small delay to let AdminSettings unmount before opening debug panel
+    setTimeout(() => onOpenDebug?.(), 100);
   };
 
   const handleOAuthLogin = () => {

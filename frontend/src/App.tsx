@@ -14,7 +14,7 @@ import { NicknamePrompt } from "./components/NicknamePrompt";
 import { CharacterWizard } from "./components/CharacterWizard";
 import { WizardPage } from "./components/WizardPage";
 import { ScenarioSelector } from "./components/ScenarioSelector";
-import { DebugPanel } from "./components/DebugPanel";
+import { UserDashboard as DebugPanel } from "./components/UserDashboard";
 
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
 const HAS_PLAYED_KEY = "raunch_has_played";
@@ -137,14 +137,26 @@ class ErrorBoundary extends Component<
 function App() {
   const [apiUrl] = useState(DEFAULT_API_URL);
 
+  // LOCAL DEMO MODE: bypass Kinde auth
+  const LOCAL_DEMO = import.meta.env.VITE_LOCAL_DEMO === "true";
+
   // Kinde authentication
-  const { isAuthenticated, isLoading: authLoading, login, register, getToken, user } = useKindeAuth();
+  const kindeAuth = useKindeAuth();
+  const isAuthenticated = LOCAL_DEMO ? true : kindeAuth.isAuthenticated;
+  const authLoading = LOCAL_DEMO ? false : kindeAuth.isLoading;
+  const login = kindeAuth.login;
+  const register = kindeAuth.register;
+  const user = LOCAL_DEMO ? { id: "local-demo-user", email: "joshua.bell.828@gmail.com" } : kindeAuth.user;
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   // Fetch access token when authenticated
   useEffect(() => {
-    if (isAuthenticated && getToken) {
-      getToken().then((token: string | undefined) => {
+    if (LOCAL_DEMO) {
+      setAccessToken("local-demo-token");
+      return;
+    }
+    if (isAuthenticated && kindeAuth.getToken) {
+      kindeAuth.getToken().then((token: string | undefined) => {
         setAccessToken(token || null);
       }).catch((err: Error) => {
         console.error("Failed to get token:", err);
@@ -152,13 +164,13 @@ function App() {
     } else {
       setAccessToken(null);
     }
-  }, [isAuthenticated, getToken]);
+  }, [isAuthenticated, kindeAuth.getToken, LOCAL_DEMO]);
 
   const library = useLibrary(apiUrl, accessToken, user?.id);
   const { wsState, game, actions } = useGame(apiUrl, library.currentBook?.book_id);
 
-  // View state (new alpha dashboard flow)
-  const [view, setView] = useState<AppView>("presplash");
+  // View state — skip presplash if user has played before
+  const [view, setView] = useState<AppView>(() => hasPlayedBefore() ? "splash" : "presplash");
   const [showSettings, setShowSettings] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
@@ -180,6 +192,8 @@ function App() {
 
   // Handle presplash (pre-auth splash) completion
   const handlePresplashComplete = useCallback(() => {
+    // Mark as played so presplash never shows again
+    setHasPlayed();
     // After presplash, go to login if not authenticated, else normal splash flow
     if (!isAuthenticated) {
       setView("splash"); // use "splash" as a sentinel meaning "show login"
@@ -748,6 +762,7 @@ function App() {
         onClose={() => setShowSettings(false)}
         onOpenDebug={() => setShowDebugPanel(true)}
         apiUrl={apiUrl}
+        overrideEmail={user?.email}
       />
 
       {/* Debug panel - available from any view */}
@@ -763,6 +778,13 @@ function App() {
           userName: user?.givenName ? `${user.givenName} ${user.familyName ?? ""}`.trim() : undefined,
           accessToken,
           librarianId: library.librarianId,
+        }}
+        onSelectBook={async (bookId) => {
+          const book = await library.getBook(bookId);
+          library.setCurrentBook(book);
+          setShowDebugPanel(false);
+          setGameSubView("connecting");
+          setView("game");
         }}
       />
     </>

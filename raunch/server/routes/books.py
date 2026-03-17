@@ -271,7 +271,7 @@ async def get_world_compat():
     library = get_library()
 
     # Find first active book with an orchestrator
-    for book in library._books.values():
+    for book in library.books.values():
         if book.orchestrator and book.orchestrator._running:
             orch = book.orchestrator
             world = orch.world

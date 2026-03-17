@@ -602,6 +602,9 @@ export function useGame(apiUrl: string, bookId?: string | null) {
 
     console.log("[useGame] Processing message:", msg.type, msg);
 
+    // Emit for debug dashboard WS traffic panel
+    window.dispatchEvent(new CustomEvent("raunch-ws-message", { detail: msg }));
+
     // Skip messages handled in sync callback
     if (msg.type === "page_start" || msg.type === "stream_delta" || msg.type === "stream_done" || msg.type === "welcome") {
       return;
