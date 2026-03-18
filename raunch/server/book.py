@@ -63,7 +63,7 @@ class Book:
         """Get the orchestrator, if loaded."""
         return self._orchestrator
 
-    def set_orchestrator(self, orch: "Orchestrator") -> None:
+    def set_orchestrator(self, orch: Optional["Orchestrator"]) -> None:
         """Set the orchestrator for this book."""
         self._orchestrator = orch
         self._last_activity = time.time()

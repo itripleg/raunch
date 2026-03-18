@@ -1,70 +1,17 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { PageData, StreamingState } from "@/hooks/useGame";
+import type { PageData } from "@/hooks/useGame";
+import { parseTimestamp, extractCharacterFromRaw } from "@/lib/utils";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PREMIUM NARRATION FEED - Immersive storytelling experience
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Extract character fields from raw unparsed JSON */
-function extractCharacterFromRaw(data: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-  if (!data) return undefined;
-
-  // If data is already parsed, return as-is
-  if (data.inner_thoughts || data.action || data.dialogue) {
-    return data;
-  }
-
-  // Check for raw field that needs parsing
-  const raw = data.raw as string | undefined;
-  if (!raw || typeof raw !== "string") return data;
-
-  const extracted: Record<string, unknown> = { ...data };
-
-  try {
-    let text = raw;
-    if (text.includes("```json")) text = text.split("```json")[1] || text;
-    if (text.includes("```")) text = text.split("```")[0] || text;
-
-    const first = text.indexOf("{");
-    const last = text.lastIndexOf("}");
-    if (first !== -1 && last !== -1) {
-      const parsed = JSON.parse(text.slice(first, last + 1));
-      Object.assign(extracted, parsed);
-    }
-  } catch {
-    // Regex fallback
-    const extractField = (field: string): string | undefined => {
-      const match = raw.match(new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`, "s"));
-      return match?.[1]?.replace(/\\n/g, "\n").replace(/\\"/g, '"');
-    };
-    extracted.inner_thoughts = extractField("inner_thoughts");
-    extracted.action = extractField("action");
-    extracted.dialogue = extractField("dialogue");
-    extracted.emotional_state = extractField("emotional_state");
-  }
-
-  return extracted;
-}
-
 /** Format timestamp elegantly - relative for recent, time for older */
 function formatTimestamp(timestamp?: string | number): string {
   if (!timestamp) return "";
 
-  let date: Date;
-  if (typeof timestamp === "string") {
-    // Ensure UTC parsing: add Z if ISO format without explicit timezone
-    let ts = timestamp;
-    if (ts.includes("T") && !/[Z+-]/.test(ts.slice(-6))) {
-      ts = ts + "Z";
-    } else if (!ts.includes("T")) {
-      ts = ts.replace(" ", "T") + "Z";
-    }
-    date = new Date(ts);
-  } else {
-    date = new Date(timestamp);
-  }
-
+  const date = parseTimestamp(timestamp);
   if (isNaN(date.getTime())) return "";
 
   const now = new Date();
@@ -99,6 +46,12 @@ const INTENSITY_GLOW: Record<IntensityLevel, string> = {
   warm: "0 0 8px rgba(253, 186, 116, 0.4)",
   hot: "0 0 10px rgba(251, 191, 36, 0.5)",
   primal: "0 0 12px rgba(251, 113, 133, 0.6)",
+};
+
+// Page number words for display
+const PAGE_WORDS: Record<number, string> = {
+  1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five",
+  6: "Six", 7: "Seven", 8: "Eight", 9: "Nine", 10: "Ten",
 };
 
 // Mood-based accent colors for atmosphere
@@ -242,45 +195,28 @@ function IntensityPhrase({ content, level, animate = false }: { content: string;
   );
 }
 
-/** Sequences character dialogues one at a time */
+/** Renders all character dialogues (appear together after narration completes) */
 function CharacterDialogueSequence({
   characters,
-  useTypewriter,
   characterNames,
   onHoverCharacter,
   onTapCharacter,
 }: {
   characters: Record<string, unknown>;
-  useTypewriter: boolean;
   characterNames: string[];
   onHoverCharacter?: (name: string | null) => void;
   onTapCharacter?: (name: string) => void;
 }) {
   const entries = Object.entries(characters);
-  const [completedCount, setCompletedCount] = useState(useTypewriter ? 0 : entries.length);
-
-  // Reset when characters change
-  useEffect(() => {
-    if (!useTypewriter) {
-      setCompletedCount(entries.length);
-    }
-  }, [entries.length, useTypewriter]);
-
-  const handleComplete = useCallback(() => {
-    setCompletedCount(c => c + 1);
-  }, []);
 
   return (
     <div className="space-y-3 pl-3 mt-4">
       <AnimatePresence mode="popLayout">
-        {entries.slice(0, completedCount + 1).map(([name, rawData], index) => (
+        {entries.map(([name, rawData]) => (
           <CharacterDialogueEntry
             key={name}
             name={name}
             rawData={rawData as Record<string, unknown>}
-            useTypewriter={useTypewriter}
-            isActive={index === completedCount}
-            onComplete={handleComplete}
             characterNames={characterNames}
             onHoverCharacter={onHoverCharacter}
             onTapCharacter={onTapCharacter}
@@ -291,31 +227,33 @@ function CharacterDialogueSequence({
   );
 }
 
-/** Character dialogue entry with typewriter */
+/** Character dialogue entry */
 function CharacterDialogueEntry({
   name,
   rawData,
-  useTypewriter,
-  isActive,
-  onComplete,
   characterNames,
   onHoverCharacter,
   onTapCharacter,
 }: {
   name: string;
   rawData: Record<string, unknown>;
-  useTypewriter: boolean;
-  isActive: boolean;
-  onComplete?: () => void;
   characterNames: string[];
   onHoverCharacter?: (name: string | null) => void;
   onTapCharacter?: (name: string) => void;
 }) {
   const data = extractCharacterFromRaw(rawData);
-  if (!data?.dialogue) return null;
-
   const colors = getCharacterColor(name, characterNames);
-  const dialogue = data.dialogue as string;
+  let dialogue = data?.dialogue as string | undefined;
+
+  // If no explicit dialogue, extract quoted speech from action text
+  if (!dialogue && data?.action) {
+    const action = data.action as string;
+    // Match single or double quoted speech
+    const match = action.match(/["'\u2018\u2019\u201C\u201D]([^"'\u2018\u2019\u201C\u201D]{2,})["'\u2018\u2019\u201C\u201D]/);
+    if (match) dialogue = match[1];
+  }
+
+  if (!dialogue) return null;
 
   return (
     <motion.div
@@ -328,59 +266,19 @@ function CharacterDialogueEntry({
       onMouseLeave={() => onHoverCharacter?.(null)}
       onClick={() => onTapCharacter?.(name)}
     >
-      {/* Character name with distinct color */}
       <span
         className={`text-xs font-semibold ${colors.text}`}
         style={{ textShadow: `0 0 12px currentColor` }}
       >
         {name}
       </span>
-
-      {/* Dialogue with typewriter */}
       <span className="text-muted-foreground/50 mx-1">—</span>
       <span className={`italic ${colors.quote}`}>
         <span className="text-muted-foreground/30 not-italic">"</span>
-        {useTypewriter && isActive ? (
-          <TypewriterDialogue text={dialogue} onComplete={onComplete} />
-        ) : (
-          dialogue
-        )}
+        {dialogue}
         <span className="text-muted-foreground/30 not-italic">"</span>
       </span>
     </motion.div>
-  );
-}
-
-/** Simple character-by-character typewriter for dialogue */
-function TypewriterDialogue({
-  text,
-  onComplete,
-  className
-}: {
-  text: string;
-  onComplete?: () => void;
-  className?: string;
-}) {
-  const [visibleCount, setVisibleCount] = useState(0);
-
-  useEffect(() => {
-    if (visibleCount < text.length) {
-      const timer = setTimeout(() => {
-        setVisibleCount(v => v + 1);
-      }, 25); // Fast character reveal
-      return () => clearTimeout(timer);
-    } else if (onComplete) {
-      onComplete();
-    }
-  }, [visibleCount, text.length, onComplete]);
-
-  return (
-    <span className={className}>
-      {text.slice(0, visibleCount)}
-      {visibleCount < text.length && (
-        <span className="animate-pulse">▌</span>
-      )}
-    </span>
   );
 }
 
@@ -574,7 +472,7 @@ function PageHeader({ pageNum, isFirst }: { pageNum: number; isFirst: boolean })
       className="text-center mb-6"
     >
       <div className="text-xs uppercase tracking-[0.4em] text-primary/50 font-medium">
-        Page {pageNum === 1 ? "One" : pageNum === 2 ? "Two" : pageNum === 3 ? "Three" : pageNum}
+        {pageNum === 1 ? "The Beginning" : `Page ${PAGE_WORDS[pageNum] ?? pageNum}`}
       </div>
     </motion.div>
   );
@@ -625,11 +523,7 @@ function PageIntermission({ pageNum }: { pageNum: number }) {
   const [messageIndex, setMessageIndex] = useState(0);
   const [dots, setDots] = useState(1);
 
-  // Format page number as word for low numbers
-  const pageWord = pageNum === 1 ? "One" : pageNum === 2 ? "Two" : pageNum === 3 ? "Three" :
-                   pageNum === 4 ? "Four" : pageNum === 5 ? "Five" : pageNum === 6 ? "Six" :
-                   pageNum === 7 ? "Seven" : pageNum === 8 ? "Eight" : pageNum === 9 ? "Nine" :
-                   pageNum === 10 ? "Ten" : String(pageNum);
+  const pageWord = PAGE_WORDS[pageNum] ?? String(pageNum);
 
   // Animate dots
   useEffect(() => {
@@ -837,12 +731,9 @@ function IntermissionWrapper({ pageNum }: { pageNum: number }) {
 
 type Props = {
   pages: PageData[];
-  attachedTo: string | null;
-  autoScroll?: boolean;
   focusedPage?: number | null;
   onPageFocus?: (pageNum: number) => void;
   containerRef?: React.RefObject<HTMLDivElement | null>;
-  streaming?: StreamingState;
   onHoverCharacter?: (name: string | null) => void;
   onTapCharacter?: (name: string) => void;
   wideMode?: boolean;
@@ -851,9 +742,7 @@ type Props = {
   nextPageNum?: number;
 };
 
-export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, focusedPage, onPageFocus, containerRef, streaming, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
-  void _autoScroll; // Reserved for future use
-  const endRef = useRef<HTMLDivElement>(null);
+export function PageFeed({ pages, focusedPage, onPageFocus, containerRef, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
   const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
 
   // Track newest page synchronously (not in effect) so isNew works on first render
@@ -984,7 +873,7 @@ export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, f
   }, [pages.length]);
 
   // Empty state - show centered "Your story awaits" when no pages and not waiting
-  if (pages.length === 0 && !waitingForPage && !streaming?.isStreaming) {
+  if (pages.length === 0 && !waitingForPage) {
     return (
       <div className="h-full flex items-center justify-center">
         <motion.div
@@ -1023,7 +912,6 @@ export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, f
               <PageHeader pageNum={pageItem.page} isFirst={isFirst} />
               <PageEntry
                 pageItem={pageItem}
-                attachedTo={attachedTo}
                 isFocused={focusedPage === pageItem.page}
                 isNew={isNewest}
                 onHoverCharacter={onHoverCharacter}
@@ -1072,26 +960,19 @@ export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, f
         })}
       </AnimatePresence>
 
-      {/* Intermission while waiting for generation - fixed height container to prevent CLS */}
+      {/* Intermission while waiting for generation */}
       <AnimatePresence mode="wait">
-        {waitingForPage && !streaming?.isStreaming && (
+        {waitingForPage && (
           <IntermissionWrapper key="intermission" pageNum={nextPageNum} />
         )}
       </AnimatePresence>
 
-      {/* Currently streaming page */}
-      {streaming?.isStreaming && (
-        <StreamingPageEntry streaming={streaming} characterNames={allCharacterNames} />
-      )}
-
-      <div ref={endRef} />
     </div>
   );
 }
 
 type PageEntryProps = {
   pageItem: PageData;
-  attachedTo: string | null;
   isFocused: boolean;
   isNew: boolean;
   onHoverCharacter?: (name: string | null) => void;
@@ -1103,26 +984,12 @@ type PageEntryProps = {
 /** Check if a timestamp is within the last N seconds */
 function isRecentTimestamp(timestamp?: string | number, maxAgeSeconds = 60): boolean {
   if (!timestamp) return false;
-  let date: Date;
-  if (typeof timestamp === "string") {
-    // Ensure UTC parsing: add Z if ISO format without explicit timezone
-    // Backend sends "2026-03-16T10:30:00" (UTC but no Z suffix)
-    let ts = timestamp;
-    if (ts.includes("T") && !/[Z+-]/.test(ts.slice(-6))) {
-      ts = ts + "Z";
-    } else if (!ts.includes("T")) {
-      ts = ts.replace(" ", "T") + "Z";
-    }
-    date = new Date(ts);
-  } else {
-    date = new Date(timestamp);
-  }
+  const date = parseTimestamp(timestamp);
   if (isNaN(date.getTime())) return false;
-  const diffMs = Date.now() - date.getTime();
-  return diffMs < maxAgeSeconds * 1000;
+  return Date.now() - date.getTime() < maxAgeSeconds * 1000;
 }
 
-function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, onHoverCharacter, onTapCharacter, characterNames, moodStyle }: PageEntryProps) {
+function PageEntry({ pageItem, isFocused, isNew, onHoverCharacter, onTapCharacter, characterNames, moodStyle }: PageEntryProps) {
   // Use typewriter for recent pages (created < 1 min ago)
   const useTypewriter = isNew && isRecentTimestamp(pageItem.created_at, 60);
 
@@ -1177,204 +1044,17 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, onHove
         />
       </div>
 
-      {/* Character dialogue - wait for narration, then sequence one at a time */}
+      {/* Character dialogue - wait for narration to finish, then show */}
       {Object.keys(pageItem.characters).length > 0 && (narrationComplete || !useTypewriter) && (
         <CharacterDialogueSequence
           characters={pageItem.characters}
-          useTypewriter={useTypewriter && !typewriterSkipped}
           characterNames={characterNames}
           onHoverCharacter={onHoverCharacter}
           onTapCharacter={onTapCharacter}
         />
       )}
 
-      {/* Events removed - viewable in director panel */}
     </div>
   );
 }
 
-/** Extract narration text from partial or complete JSON stream */
-function extractNarrationFromStream(raw: string): string {
-  if (!raw || typeof raw !== "string") return "";
-
-  try {
-    // Strip markdown code fences (```json ... ``` or just ```)
-    let text = raw
-      .replace(/^[\s\S]*?```json\s*/i, "")  // Strip everything up to and including ```json
-      .replace(/```[\s\S]*$/i, "")           // Strip ``` and everything after
-      .trim();
-
-    // If no fences were found, use original
-    if (text === raw.trim()) {
-      text = raw.trim();
-    }
-
-    // Try to parse as complete JSON first (most reliable when narrator is done)
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed && typeof parsed.narration === "string") {
-        return parsed.narration;
-      }
-    } catch {
-      // Not complete JSON yet, fall through to regex
-    }
-
-    // Regex for partial JSON: "narration": "content...
-    // Use DOTALL-like matching with [\s\S] to handle newlines in pretty-printed JSON
-    const match = text.match(/"narration"\s*:\s*"((?:[^"\\]|\\[\s\S])*)(?:"|$)/);
-    if (match && match[1]) {
-      return match[1]
-        .replace(/\\n/g, "\n")
-        .replace(/\\t/g, "\t")
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, "\\");
-    }
-  } catch {
-    // Extraction failed
-  }
-  return "";
-}
-
-/** Extract dialogue from character's streaming JSON */
-function extractDialogueFromStream(raw: string): string | null {
-  if (!raw || typeof raw !== "string") return null;
-  try {
-    // Try complete JSON parse first
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed.dialogue === "string") {
-        return parsed.dialogue;
-      }
-    } catch { /* fall through */ }
-
-    // Regex for partial/complete
-    const match = raw.match(/"dialogue"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/);
-    if (match && match[1]) {
-      return match[1]
-        .replace(/\\n/g, "\n")
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, "\\");
-    }
-  } catch { /* extraction failed */ }
-  return null;
-}
-
-/** Enhanced streaming cursor with glow effect */
-function StreamingCursor() {
-  return (
-    <span
-      className="inline-block w-0.5 h-4 ml-0.5 align-middle rounded-sm"
-      style={{
-        background: "linear-gradient(to bottom, hsl(var(--primary)), hsl(var(--primary) / 0.6))",
-        animation: "streaming-pulse 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-        boxShadow: "0 0 12px hsl(var(--primary) / 0.6), 0 0 24px hsl(var(--primary) / 0.3)",
-      }}
-    />
-  );
-}
-
-/** Streaming page entry - smooth word-by-word display */
-function StreamingPageEntry({ streaming, characterNames = [] }: { streaming: StreamingState; characterNames?: string[] }) {
-  // Defensive checks to prevent crashes
-  if (!streaming || !streaming.isStreaming || !streaming.page) return null;
-
-  // Extract narration continuously
-  const cleanNarration = extractNarrationFromStream(streaming.narrator || "");
-
-  // Extract dialogue from completed characters
-  const completedDialogues = useMemo(() => {
-    const dialogues: Array<{ name: string; dialogue: string }> = [];
-    for (const charName of streaming.charactersDone) {
-      const rawText = streaming.characters[charName];
-      if (rawText) {
-        const dialogue = extractDialogueFromStream(rawText);
-        if (dialogue) {
-          dialogues.push({ name: charName, dialogue });
-        }
-      }
-    }
-    return dialogues;
-  }, [streaming.charactersDone, streaming.characters]);
-
-  const isNarratorDone = streaming.narratorDone;
-
-  return (
-    <motion.article
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-3"
-    >
-      {/* Header with streaming indicator - enhanced pulsing dots */}
-      <div className="flex items-center gap-2">
-        {!isNarratorDone ? (
-          <div className="flex gap-1.5 items-center">
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-lg shadow-primary/50" />
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-lg shadow-primary/40 [animation-delay:200ms]" />
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-lg shadow-primary/30 [animation-delay:400ms]" />
-            <span className="text-[10px] text-muted-foreground/40 ml-2 uppercase tracking-wider">
-              narrating
-            </span>
-          </div>
-        ) : (
-          <span className="text-[10px] font-mono text-muted-foreground/60">
-            just now
-          </span>
-        )}
-      </div>
-
-      {/* Narration - with color formatting and enhanced cursor */}
-      {cleanNarration && (
-        <div className="text-sm leading-relaxed text-foreground/90 pl-3 border-l-2 border-primary/30 whitespace-pre-wrap">
-          <NarrationText text={cleanNarration} isNew={false} />
-          {!isNarratorDone && <StreamingCursor />}
-        </div>
-      )}
-
-      {/* Character dialogue - shown as each completes with character colors */}
-      {completedDialogues.length > 0 && (
-        <div className="space-y-3 pl-3 mt-4">
-          {completedDialogues.map(({ name, dialogue }) => {
-            const colors = getCharacterColor(name, characterNames);
-            return (
-              <motion.div
-                key={name}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3 }}
-                className="text-sm"
-              >
-                <span
-                  className={`text-xs font-semibold ${colors.text}`}
-                  style={{ textShadow: `0 0 12px currentColor` }}
-                >
-                  {name}
-                </span>
-                <span className="text-muted-foreground/50 mx-1">—</span>
-                <span className={`italic ${colors.quote}`}>
-                  <span className="text-muted-foreground/30 not-italic">"</span>
-                  {dialogue}
-                  <span className="text-muted-foreground/30 not-italic">"</span>
-                </span>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Still processing characters indicator */}
-      {streaming.narratorDone && streaming.charactersDone.length === 0 && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex items-center gap-2 pl-3 mt-3"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-violet-400/60 animate-pulse shadow-sm shadow-violet-400/30" />
-          <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wide">
-            characters responding...
-          </span>
-        </motion.div>
-      )}
-    </motion.article>
-  );
-}

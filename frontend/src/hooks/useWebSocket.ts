@@ -52,12 +52,18 @@ export function useWebSocket(baseUrl: string, bookId?: string | null) {
     };
 
     ws.onclose = () => {
-      setState("disconnected");
-      wsRef.current = null;
+      // Only update state if this is still the active WebSocket
+      // (avoids race condition when disconnect + reconnect happens quickly)
+      if (wsRef.current === ws) {
+        setState("disconnected");
+        wsRef.current = null;
+      }
     };
 
     ws.onerror = () => {
-      setState("disconnected");
+      if (wsRef.current === ws) {
+        setState("disconnected");
+      }
     };
   }, [url]);
 

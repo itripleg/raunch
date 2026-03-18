@@ -61,21 +61,16 @@ type Actions = {
 type Props = {
   game: GameState;
   actions: Actions;
-  apiUrl: string;
   onAddCharacter?: () => void;
   onDeleteCharacter?: (name: string) => Promise<void>;
   onResetBook?: () => void;
   onStopWorld?: () => void;
-  onBackToDashboard?: () => void;
   onOpenDebug?: () => void;
 };
 
-export function GameLayout({ game, actions, apiUrl: _apiUrl, onAddCharacter, onDeleteCharacter, onResetBook, onStopWorld, onBackToDashboard: _onBackToDashboard, onOpenDebug }: Props) {
-  void _apiUrl; // Reserved for future use
+export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter, onResetBook, onStopWorld, onOpenDebug }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
-  const [autoScroll, _setAutoScroll] = useState(true);
-  const [isNearBottom, setIsNearBottom] = useState(true);
   const [focusedPageNum, setFocusedPageNum] = useState<number | null>(null);
   const [previewCharacter, setPreviewCharacter] = useState<string | null>(null);
   const [nextClicked, setNextClicked] = useState(false);
@@ -115,20 +110,19 @@ export function GameLayout({ game, actions, apiUrl: _apiUrl, onAddCharacter, onD
     setTimeout(() => setNextClicked(false), 600);
   }, [actions, mockMode]);
 
-  // Clear waiting state when streaming starts or new page arrives
+  // Clear waiting state when new page arrives with content
   const pageCount = game.pages.length;
   const prevPageCountRef = useRef(pageCount);
   useEffect(() => {
-    // Clear when streaming starts
-    if (game.streaming?.isStreaming) {
-      setWaitingForPage(false);
-    }
-    // Clear when a new page arrives (non-streaming mode)
+    // Clear when a new page arrives with narration content
     if (pageCount > prevPageCountRef.current) {
-      setWaitingForPage(false);
+      // Small delay so AnimatePresence exit animation can run before new content appears
+      const timer = setTimeout(() => setWaitingForPage(false), 300);
+      prevPageCountRef.current = pageCount;
+      return () => clearTimeout(timer);
     }
     prevPageCountRef.current = pageCount;
-  }, [game.streaming?.isStreaming, pageCount]);
+  }, [pageCount]);
 
   // Also show intermission when backend signals page is generating (CLI-triggered)
   const isWaitingForPage = waitingForPage || game.pageGenerating !== null;
@@ -156,9 +150,8 @@ export function GameLayout({ game, actions, apiUrl: _apiUrl, onAddCharacter, onD
   const displayedCharacterName = previewCharacter ?? game.attachedTo;
 
   // Wide mode when at most one panel is open (narrow only when both are open)
-  const hasSidebarOpen = sidebarOpen;
   const hasRightPanelOpen = !!(game.attachedTo || previewCharacter || game.directorMode);
-  const wideMode = !(hasSidebarOpen && hasRightPanelOpen);
+  const wideMode = !(sidebarOpen && hasRightPanelOpen);
 
   // Get the focused page data
   const focusedPage = useMemo(() => {
@@ -208,15 +201,6 @@ export function GameLayout({ game, actions, apiUrl: _apiUrl, onAddCharacter, onD
     return () => clearInterval(timer);
   }, [mockMode, game.manualMode, game.paused, game.pageInterval, actions]);
 
-  // Check if user is near bottom of scroll
-  const handleScroll = useCallback(() => {
-    if (feedRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = feedRef.current;
-      const nearBottom = scrollHeight - scrollTop - clientHeight < 150;
-      setIsNearBottom(nearBottom);
-    }
-  }, []);
-
   // Handle page focus changes from scroll position
   const handlePageFocus = useCallback((pageNum: number) => {
     setFocusedPageNum(pageNum);
@@ -231,7 +215,6 @@ export function GameLayout({ game, actions, apiUrl: _apiUrl, onAddCharacter, onD
     }
   }, []);
 
-  // Preview a character (hover on desktop, tap on mobile)
   // Preview a character (hover on desktop, tap on mobile)
   // Only allow hover preview if a panel is already open (to avoid layout shift)
   const handlePreviewCharacter = useCallback((name: string | null) => {
@@ -446,15 +429,6 @@ export function GameLayout({ game, actions, apiUrl: _apiUrl, onAddCharacter, onD
             </button>
           )}
 
-          {/* Hidden disconnect button - kept for future remote server features */}
-          {false && (
-            <button
-              onClick={actions.disconnect}
-              className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-            >
-              Disconnect
-            </button>
-          )}
         </div>
       </header>
 
@@ -523,16 +497,12 @@ export function GameLayout({ game, actions, apiUrl: _apiUrl, onAddCharacter, onD
           <div
             ref={feedRef}
             className="flex-1 overflow-y-auto pt-14"
-            onScroll={handleScroll}
           >
             <PageFeed
               pages={game.pages}
-              attachedTo={game.attachedTo}
-              autoScroll={autoScroll && isNearBottom}
               focusedPage={focusedPageNum}
               onPageFocus={handlePageFocus}
               containerRef={feedRef}
-              streaming={game.streaming}
               onHoverCharacter={handlePreviewCharacter}
               onTapCharacter={handleTapCharacter}
               wideMode={wideMode}

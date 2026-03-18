@@ -237,9 +237,10 @@ async def reset_book(
     if book.owner_id != librarian_id:
         raise HTTPException(status_code=403, detail="Only the owner can reset this book")
 
-    # Stop the orchestrator if running
+    # Stop the orchestrator if running and clear it so reconnect creates a fresh one
     if book.orchestrator:
         book.orchestrator.stop()
+        book.set_orchestrator(None)
 
     # Clear all pages and characters from database
     success = db.reset_book(book_id)

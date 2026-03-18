@@ -199,7 +199,7 @@ def start(save_name, world_name, scenario_name, headless, force):
         orch.world.world_name = world_name
 
     if save_name and orch.world.load(save_name):
-        orch.is_loaded_session = True
+
         orch.save_name = save_name
         orch._initial_save_done = True  # Don't re-save immediately for loaded sessions
         console.print(f"[green]Loaded save: {save_name}[/green]")
@@ -213,7 +213,7 @@ def start(save_name, world_name, scenario_name, headless, force):
             if derived_save_name and not save_name:
                 # Try to load existing save for this scenario
                 if orch.world.load(derived_save_name):
-                    orch.is_loaded_session = True
+            
                     orch.save_name = derived_save_name
                     orch._initial_save_done = True
                     console.print(f"[green]Continuing scenario from save: {derived_save_name}[/green]")

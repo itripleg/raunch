@@ -10,6 +10,7 @@ import threading
 import uuid
 from typing import Dict, Any, List, Optional
 
+from .agents.base import _is_refusal
 from .config import SAVES_DIR
 
 
@@ -407,14 +408,7 @@ def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
                 # Check if it's a refusal (raw field contains refusal text)
                 raw_content = raw_parsed.get("raw", "")
                 if isinstance(raw_content, str):
-                    refusal_phrases = [
-                        "I can't roleplay",
-                        "I'm not able to engage",
-                        "I appreciate your interest",
-                        "I cannot continue",
-                        "explicit sexual",
-                    ]
-                    is_refusal = any(phrase.lower() in raw_content.lower() for phrase in refusal_phrases)
+                    is_refusal = _is_refusal(raw_content)
             except json.JSONDecodeError as e:
                 parse_error = str(e)
 

@@ -121,6 +121,12 @@ def _ensure_orchestrator(book) -> bool:
         )
         orch.add_character(char, location=location)
 
+    # Restore page count from database so numbering continues correctly
+    existing_page_count = db.get_page_count(book.book_id)
+    if existing_page_count > 0:
+        orch.world.page_count = existing_page_count
+        logger.info(f"Restored page_count={existing_page_count} for book {book.book_id}")
+
     # Set up streaming callback - capture the event loop for thread-safe calls
     import asyncio
     try:
@@ -176,7 +182,7 @@ def _ensure_orchestrator(book) -> bool:
             logger.warning(f"[CALLBACK] main_loop is None, cannot broadcast page {results.get('page')}")
             return
         try:
-            future = asyncio.run_coroutine_threadsafe(
+            asyncio.run_coroutine_threadsafe(
                 _broadcast_page(book.book_id, results),
                 main_loop
             )
@@ -233,16 +239,18 @@ async def _broadcast_narrator_ready(book_id: str, page: int, narration: str, moo
 async def _broadcast_character_ready(book_id: str, page: int, name: str, data: dict):
     """Broadcast character completion for progressive rendering (non-streaming mode)."""
     logger.info(f"[PROGRESSIVE] character_ready for page {page}, character: {name}")
+    # Use the same extraction logic as DB save to handle raw/unparsed responses
+    extracted = db._extract_character_fields(data)
     await ws_manager.broadcast(book_id, {
         "type": "character_ready",
         "page": page,
         "character": name,
         "data": {
-            "action": data.get("action"),
-            "dialogue": data.get("dialogue"),
-            "emotional_state": data.get("emotional_state"),
-            "inner_thoughts": data.get("inner_thoughts"),
-            "desires_update": data.get("desires_update"),
+            "action": extracted.get("action"),
+            "dialogue": extracted.get("dialogue"),
+            "emotional_state": extracted.get("emotional_state"),
+            "inner_thoughts": extracted.get("inner_thoughts"),
+            "desires_update": extracted.get("desires_update"),
         },
     })
 
@@ -275,14 +283,15 @@ async def _broadcast_page(book_id: str, results: dict):
         "created_at": datetime.utcnow().isoformat() + "Z",
     }
 
-    # Add character data
+    # Add character data (use extraction logic to handle raw/unparsed responses)
     for cname, cdata in results.get("characters", {}).items():
         if isinstance(cdata, dict):
+            extracted = db._extract_character_fields(cdata)
             page_msg["characters"][cname] = {
-                "action": cdata.get("action"),
-                "dialogue": cdata.get("dialogue"),
-                "emotional_state": cdata.get("emotional_state"),
-                "inner_thoughts": cdata.get("inner_thoughts"),
+                "action": extracted.get("action"),
+                "dialogue": extracted.get("dialogue"),
+                "emotional_state": extracted.get("emotional_state"),
+                "inner_thoughts": extracted.get("inner_thoughts"),
             }
 
     logger.info(f"[BROADCAST] Broadcasting page {page_msg.get('page')} to book {book_id}")
