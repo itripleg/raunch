@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { PageData, StreamingState } from "@/hooks/useGame";
+import type { PageData } from "@/hooks/useGame";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PREMIUM NARRATION FEED - Immersive storytelling experience
@@ -242,45 +242,28 @@ function IntensityPhrase({ content, level, animate = false }: { content: string;
   );
 }
 
-/** Sequences character dialogues one at a time */
+/** Renders all character dialogues (appear together after narration completes) */
 function CharacterDialogueSequence({
   characters,
-  useTypewriter,
   characterNames,
   onHoverCharacter,
   onTapCharacter,
 }: {
   characters: Record<string, unknown>;
-  useTypewriter: boolean;
   characterNames: string[];
   onHoverCharacter?: (name: string | null) => void;
   onTapCharacter?: (name: string) => void;
 }) {
   const entries = Object.entries(characters);
-  const [completedCount, setCompletedCount] = useState(useTypewriter ? 0 : entries.length);
-
-  // Reset when characters change
-  useEffect(() => {
-    if (!useTypewriter) {
-      setCompletedCount(entries.length);
-    }
-  }, [entries.length, useTypewriter]);
-
-  const handleComplete = useCallback(() => {
-    setCompletedCount(c => c + 1);
-  }, []);
 
   return (
     <div className="space-y-3 pl-3 mt-4">
       <AnimatePresence mode="popLayout">
-        {entries.slice(0, completedCount + 1).map(([name, rawData], index) => (
+        {entries.map(([name, rawData]) => (
           <CharacterDialogueEntry
             key={name}
             name={name}
             rawData={rawData as Record<string, unknown>}
-            useTypewriter={useTypewriter}
-            isActive={index === completedCount}
-            onComplete={handleComplete}
             characterNames={characterNames}
             onHoverCharacter={onHoverCharacter}
             onTapCharacter={onTapCharacter}
@@ -291,31 +274,33 @@ function CharacterDialogueSequence({
   );
 }
 
-/** Character dialogue entry with typewriter */
+/** Character dialogue entry */
 function CharacterDialogueEntry({
   name,
   rawData,
-  useTypewriter,
-  isActive,
-  onComplete,
   characterNames,
   onHoverCharacter,
   onTapCharacter,
 }: {
   name: string;
   rawData: Record<string, unknown>;
-  useTypewriter: boolean;
-  isActive: boolean;
-  onComplete?: () => void;
   characterNames: string[];
   onHoverCharacter?: (name: string | null) => void;
   onTapCharacter?: (name: string) => void;
 }) {
   const data = extractCharacterFromRaw(rawData);
-  if (!data?.dialogue) return null;
-
   const colors = getCharacterColor(name, characterNames);
-  const dialogue = data.dialogue as string;
+  let dialogue = data?.dialogue as string | undefined;
+
+  // If no explicit dialogue, extract quoted speech from action text
+  if (!dialogue && data?.action) {
+    const action = data.action as string;
+    // Match single or double quoted speech
+    const match = action.match(/["'\u2018\u2019\u201C\u201D]([^"'\u2018\u2019\u201C\u201D]{2,})["'\u2018\u2019\u201C\u201D]/);
+    if (match) dialogue = match[1];
+  }
+
+  if (!dialogue) return null;
 
   return (
     <motion.div
@@ -328,59 +313,19 @@ function CharacterDialogueEntry({
       onMouseLeave={() => onHoverCharacter?.(null)}
       onClick={() => onTapCharacter?.(name)}
     >
-      {/* Character name with distinct color */}
       <span
         className={`text-xs font-semibold ${colors.text}`}
         style={{ textShadow: `0 0 12px currentColor` }}
       >
         {name}
       </span>
-
-      {/* Dialogue with typewriter */}
       <span className="text-muted-foreground/50 mx-1">—</span>
       <span className={`italic ${colors.quote}`}>
         <span className="text-muted-foreground/30 not-italic">"</span>
-        {useTypewriter && isActive ? (
-          <TypewriterDialogue text={dialogue} onComplete={onComplete} />
-        ) : (
-          dialogue
-        )}
+        {dialogue}
         <span className="text-muted-foreground/30 not-italic">"</span>
       </span>
     </motion.div>
-  );
-}
-
-/** Simple character-by-character typewriter for dialogue */
-function TypewriterDialogue({
-  text,
-  onComplete,
-  className
-}: {
-  text: string;
-  onComplete?: () => void;
-  className?: string;
-}) {
-  const [visibleCount, setVisibleCount] = useState(0);
-
-  useEffect(() => {
-    if (visibleCount < text.length) {
-      const timer = setTimeout(() => {
-        setVisibleCount(v => v + 1);
-      }, 25); // Fast character reveal
-      return () => clearTimeout(timer);
-    } else if (onComplete) {
-      onComplete();
-    }
-  }, [visibleCount, text.length, onComplete]);
-
-  return (
-    <span className={className}>
-      {text.slice(0, visibleCount)}
-      {visibleCount < text.length && (
-        <span className="animate-pulse">▌</span>
-      )}
-    </span>
   );
 }
 
@@ -574,7 +519,7 @@ function PageHeader({ pageNum, isFirst }: { pageNum: number; isFirst: boolean })
       className="text-center mb-6"
     >
       <div className="text-xs uppercase tracking-[0.4em] text-primary/50 font-medium">
-        Page {pageNum === 1 ? "One" : pageNum === 2 ? "Two" : pageNum === 3 ? "Three" : pageNum}
+        {pageNum === 1 ? "The Beginning" : `Page ${pageNum === 2 ? "Two" : pageNum === 3 ? "Three" : pageNum}`}
       </div>
     </motion.div>
   );
@@ -842,7 +787,6 @@ type Props = {
   focusedPage?: number | null;
   onPageFocus?: (pageNum: number) => void;
   containerRef?: React.RefObject<HTMLDivElement | null>;
-  streaming?: StreamingState;
   onHoverCharacter?: (name: string | null) => void;
   onTapCharacter?: (name: string) => void;
   wideMode?: boolean;
@@ -851,7 +795,7 @@ type Props = {
   nextPageNum?: number;
 };
 
-export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, focusedPage, onPageFocus, containerRef, streaming, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
+export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, focusedPage, onPageFocus, containerRef, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
   void _autoScroll; // Reserved for future use
   const endRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
@@ -984,7 +928,7 @@ export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, f
   }, [pages.length]);
 
   // Empty state - show centered "Your story awaits" when no pages and not waiting
-  if (pages.length === 0 && !waitingForPage && !streaming?.isStreaming) {
+  if (pages.length === 0 && !waitingForPage) {
     return (
       <div className="h-full flex items-center justify-center">
         <motion.div
@@ -1072,17 +1016,12 @@ export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, f
         })}
       </AnimatePresence>
 
-      {/* Intermission while waiting for generation - fixed height container to prevent CLS */}
+      {/* Intermission while waiting for generation */}
       <AnimatePresence mode="wait">
-        {waitingForPage && !streaming?.isStreaming && (
+        {waitingForPage && (
           <IntermissionWrapper key="intermission" pageNum={nextPageNum} />
         )}
       </AnimatePresence>
-
-      {/* Currently streaming page */}
-      {streaming?.isStreaming && (
-        <StreamingPageEntry streaming={streaming} characterNames={allCharacterNames} />
-      )}
 
       <div ref={endRef} />
     </div>
@@ -1177,11 +1116,10 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, onHove
         />
       </div>
 
-      {/* Character dialogue - wait for narration, then sequence one at a time */}
+      {/* Character dialogue - wait for narration to finish, then show */}
       {Object.keys(pageItem.characters).length > 0 && (narrationComplete || !useTypewriter) && (
         <CharacterDialogueSequence
           characters={pageItem.characters}
-          useTypewriter={useTypewriter && !typewriterSkipped}
           characterNames={characterNames}
           onHoverCharacter={onHoverCharacter}
           onTapCharacter={onTapCharacter}
@@ -1193,188 +1131,3 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, onHove
   );
 }
 
-/** Extract narration text from partial or complete JSON stream */
-function extractNarrationFromStream(raw: string): string {
-  if (!raw || typeof raw !== "string") return "";
-
-  try {
-    // Strip markdown code fences (```json ... ``` or just ```)
-    let text = raw
-      .replace(/^[\s\S]*?```json\s*/i, "")  // Strip everything up to and including ```json
-      .replace(/```[\s\S]*$/i, "")           // Strip ``` and everything after
-      .trim();
-
-    // If no fences were found, use original
-    if (text === raw.trim()) {
-      text = raw.trim();
-    }
-
-    // Try to parse as complete JSON first (most reliable when narrator is done)
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed && typeof parsed.narration === "string") {
-        return parsed.narration;
-      }
-    } catch {
-      // Not complete JSON yet, fall through to regex
-    }
-
-    // Regex for partial JSON: "narration": "content...
-    // Use DOTALL-like matching with [\s\S] to handle newlines in pretty-printed JSON
-    const match = text.match(/"narration"\s*:\s*"((?:[^"\\]|\\[\s\S])*)(?:"|$)/);
-    if (match && match[1]) {
-      return match[1]
-        .replace(/\\n/g, "\n")
-        .replace(/\\t/g, "\t")
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, "\\");
-    }
-  } catch {
-    // Extraction failed
-  }
-  return "";
-}
-
-/** Extract dialogue from character's streaming JSON */
-function extractDialogueFromStream(raw: string): string | null {
-  if (!raw || typeof raw !== "string") return null;
-  try {
-    // Try complete JSON parse first
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed.dialogue === "string") {
-        return parsed.dialogue;
-      }
-    } catch { /* fall through */ }
-
-    // Regex for partial/complete
-    const match = raw.match(/"dialogue"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/);
-    if (match && match[1]) {
-      return match[1]
-        .replace(/\\n/g, "\n")
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, "\\");
-    }
-  } catch { /* extraction failed */ }
-  return null;
-}
-
-/** Enhanced streaming cursor with glow effect */
-function StreamingCursor() {
-  return (
-    <span
-      className="inline-block w-0.5 h-4 ml-0.5 align-middle rounded-sm"
-      style={{
-        background: "linear-gradient(to bottom, hsl(var(--primary)), hsl(var(--primary) / 0.6))",
-        animation: "streaming-pulse 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-        boxShadow: "0 0 12px hsl(var(--primary) / 0.6), 0 0 24px hsl(var(--primary) / 0.3)",
-      }}
-    />
-  );
-}
-
-/** Streaming page entry - smooth word-by-word display */
-function StreamingPageEntry({ streaming, characterNames = [] }: { streaming: StreamingState; characterNames?: string[] }) {
-  // Defensive checks to prevent crashes
-  if (!streaming || !streaming.isStreaming || !streaming.page) return null;
-
-  // Extract narration continuously
-  const cleanNarration = extractNarrationFromStream(streaming.narrator || "");
-
-  // Extract dialogue from completed characters
-  const completedDialogues = useMemo(() => {
-    const dialogues: Array<{ name: string; dialogue: string }> = [];
-    for (const charName of streaming.charactersDone) {
-      const rawText = streaming.characters[charName];
-      if (rawText) {
-        const dialogue = extractDialogueFromStream(rawText);
-        if (dialogue) {
-          dialogues.push({ name: charName, dialogue });
-        }
-      }
-    }
-    return dialogues;
-  }, [streaming.charactersDone, streaming.characters]);
-
-  const isNarratorDone = streaming.narratorDone;
-
-  return (
-    <motion.article
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-3"
-    >
-      {/* Header with streaming indicator - enhanced pulsing dots */}
-      <div className="flex items-center gap-2">
-        {!isNarratorDone ? (
-          <div className="flex gap-1.5 items-center">
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-lg shadow-primary/50" />
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-lg shadow-primary/40 [animation-delay:200ms]" />
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-lg shadow-primary/30 [animation-delay:400ms]" />
-            <span className="text-[10px] text-muted-foreground/40 ml-2 uppercase tracking-wider">
-              narrating
-            </span>
-          </div>
-        ) : (
-          <span className="text-[10px] font-mono text-muted-foreground/60">
-            just now
-          </span>
-        )}
-      </div>
-
-      {/* Narration - with color formatting and enhanced cursor */}
-      {cleanNarration && (
-        <div className="text-sm leading-relaxed text-foreground/90 pl-3 border-l-2 border-primary/30 whitespace-pre-wrap">
-          <NarrationText text={cleanNarration} isNew={false} />
-          {!isNarratorDone && <StreamingCursor />}
-        </div>
-      )}
-
-      {/* Character dialogue - shown as each completes with character colors */}
-      {completedDialogues.length > 0 && (
-        <div className="space-y-3 pl-3 mt-4">
-          {completedDialogues.map(({ name, dialogue }) => {
-            const colors = getCharacterColor(name, characterNames);
-            return (
-              <motion.div
-                key={name}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3 }}
-                className="text-sm"
-              >
-                <span
-                  className={`text-xs font-semibold ${colors.text}`}
-                  style={{ textShadow: `0 0 12px currentColor` }}
-                >
-                  {name}
-                </span>
-                <span className="text-muted-foreground/50 mx-1">—</span>
-                <span className={`italic ${colors.quote}`}>
-                  <span className="text-muted-foreground/30 not-italic">"</span>
-                  {dialogue}
-                  <span className="text-muted-foreground/30 not-italic">"</span>
-                </span>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Still processing characters indicator */}
-      {streaming.narratorDone && streaming.charactersDone.length === 0 && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex items-center gap-2 pl-3 mt-3"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-violet-400/60 animate-pulse shadow-sm shadow-violet-400/30" />
-          <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wide">
-            characters responding...
-          </span>
-        </motion.div>
-      )}
-    </motion.article>
-  );
-}

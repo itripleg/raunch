@@ -115,20 +115,19 @@ export function GameLayout({ game, actions, apiUrl: _apiUrl, onAddCharacter, onD
     setTimeout(() => setNextClicked(false), 600);
   }, [actions, mockMode]);
 
-  // Clear waiting state when streaming starts or new page arrives
+  // Clear waiting state when new page arrives with content
   const pageCount = game.pages.length;
   const prevPageCountRef = useRef(pageCount);
   useEffect(() => {
-    // Clear when streaming starts
-    if (game.streaming?.isStreaming) {
-      setWaitingForPage(false);
-    }
-    // Clear when a new page arrives (non-streaming mode)
+    // Clear when a new page arrives with narration content
     if (pageCount > prevPageCountRef.current) {
-      setWaitingForPage(false);
+      // Small delay so AnimatePresence exit animation can run before new content appears
+      const timer = setTimeout(() => setWaitingForPage(false), 300);
+      prevPageCountRef.current = pageCount;
+      return () => clearTimeout(timer);
     }
     prevPageCountRef.current = pageCount;
-  }, [game.streaming?.isStreaming, pageCount]);
+  }, [pageCount]);
 
   // Also show intermission when backend signals page is generating (CLI-triggered)
   const isWaitingForPage = waitingForPage || game.pageGenerating !== null;
@@ -532,7 +531,6 @@ export function GameLayout({ game, actions, apiUrl: _apiUrl, onAddCharacter, onD
               focusedPage={focusedPageNum}
               onPageFocus={handlePageFocus}
               containerRef={feedRef}
-              streaming={game.streaming}
               onHoverCharacter={handlePreviewCharacter}
               onTapCharacter={handleTapCharacter}
               wideMode={wideMode}

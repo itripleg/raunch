@@ -286,6 +286,7 @@ function App() {
       }
       // Disconnect and reconnect to clear local state
       actions.disconnect();
+      setGameSubView("connecting");
       // Give websocket time to disconnect
       setTimeout(() => {
         // Reconnect - this will fetch fresh world and character data

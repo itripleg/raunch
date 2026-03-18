@@ -27,6 +27,8 @@ REFUSAL_PHRASES = [
     "i am not able to",
     "i cannot participate",
     "i can't participate",
+    "i can't engage",
+    "i cannot engage",
     "as an ai",
     "i'm an ai",
 ]
@@ -98,7 +100,48 @@ class Agent:
             logger.warning(f"[{self.name}] Summary failed, keeping raw: {e}")
             self.summary += f"\n{old_text}"
 
-    def page(self, world_context: str, _retry: bool = False) -> Dict[str, Any]:
+    def _handle_refusal(self, raw: str, world_context: str, _retry: bool, _original_context: str = None) -> Optional[Dict[str, Any]]:
+        """Handle refusal detection and retry. Returns result if refusal, None if not."""
+        if not _is_refusal(raw):
+            return None
+        logger.warning(f"[{self.name}] Detected refusal, {'giving up' if _retry else 'retrying with correction'}")
+        if not _retry:
+            correction = REFUSAL_CORRECTION.format(name=self.name)
+            corrected_context = f"{world_context}\n\n{correction}"
+            return self.page(corrected_context, _retry=True, _original_context=world_context)
+        else:
+            logger.warning(f"[{self.name}] Refusal persisted after retry, not storing in history")
+            return {"raw": raw, "_refusal": True}
+
+    def _store_and_parse(self, raw: str, world_context: str, _original_context: str = None) -> Dict[str, Any]:
+        """Store response in history and parse JSON."""
+        store_context = _original_context if _original_context else world_context
+        self.history.append({"role": "user", "content": store_context})
+        self.history.append({"role": "assistant", "content": raw})
+        self._trim_history()
+        return self._parse_json(raw)
+
+    def _parse_json(self, raw: str) -> Dict[str, Any]:
+        """Try to parse a JSON response, with fallbacks for markdown fences and brace extraction."""
+        try:
+            text = raw.strip()
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                pass
+            fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
+            if fence_match:
+                return json.loads(fence_match.group(1).strip())
+            first = text.find("{")
+            last = text.rfind("}")
+            if first != -1 and last > first:
+                return json.loads(text[first:last + 1])
+        except (json.JSONDecodeError, IndexError):
+            pass
+        logger.debug(f"[{self.name}] Response was not valid JSON, returning raw")
+        return {"raw": raw}
+
+    def page(self, world_context: str, _retry: bool = False, _original_context: str = None) -> Dict[str, Any]:
         """
         Run one page: send world context to the agent, get response.
         Returns parsed JSON response or raw text fallback.
@@ -107,51 +150,18 @@ class Agent:
         client = get_client()
         raw = client.chat(system=self.system_prompt, messages=messages)
 
-        # Check for refusal
-        if _is_refusal(raw):
-            logger.warning(f"[{self.name}] Detected refusal, {'giving up' if _retry else 'retrying with correction'}")
-            if not _retry:
-                # Retry once with correction prompt
-                correction = REFUSAL_CORRECTION.format(name=self.name)
-                corrected_context = f"{world_context}\n\n{correction}"
-                return self.page(corrected_context, _retry=True)
-            else:
-                # Already retried, return refusal but DON'T store in history
-                logger.warning(f"[{self.name}] Refusal persisted after retry, not storing in history")
-                return {"raw": raw, "_refusal": True}
+        refusal = self._handle_refusal(raw, world_context, _retry, _original_context)
+        if refusal is not None:
+            return refusal
 
-        # Store in history (only non-refusals)
-        self.history.append({"role": "user", "content": world_context})
-        self.history.append({"role": "assistant", "content": raw})
-        self._trim_history()
-
-        # Try to parse JSON
-        try:
-            text = raw.strip()
-            # Direct parse
-            try:
-                return json.loads(text)
-            except json.JSONDecodeError:
-                pass
-            # Strip markdown fences
-            fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
-            if fence_match:
-                return json.loads(fence_match.group(1).strip())
-            # Extract { ... } block
-            first = text.find("{")
-            last = text.rfind("}")
-            if first != -1 and last > first:
-                return json.loads(text[first:last + 1])
-            raise json.JSONDecodeError("no json", text, 0)
-        except (json.JSONDecodeError, IndexError):
-            logger.debug(f"[{self.name}] Response was not valid JSON, returning raw")
-            return {"raw": raw}
+        return self._store_and_parse(raw, world_context, _original_context)
 
     def page_stream(
         self,
         world_context: str,
         on_delta: Optional[callable] = None,
-        _retry: bool = False
+        _retry: bool = False,
+        _original_context: str = None
     ) -> Dict[str, Any]:
         """
         Run one page with streaming. Calls on_delta(chunk) for each text chunk.
@@ -168,46 +178,14 @@ class Agent:
                     on_delta(chunk)
         except Exception as e:
             logger.error(f"[{self.name}] Streaming error: {e}")
-            # Fall back to non-streaming
             if not full_response:
                 full_response = client.chat(system=self.system_prompt, messages=messages)
 
-        # Check for refusal
-        if _is_refusal(full_response):
-            logger.warning(f"[{self.name}] Detected refusal in stream, {'giving up' if _retry else 'retrying with correction'}")
-            if not _retry:
-                # Retry once with correction prompt (non-streaming for simplicity)
-                correction = REFUSAL_CORRECTION.format(name=self.name)
-                corrected_context = f"{world_context}\n\n{correction}"
-                # Use non-streaming for retry to avoid double-streaming confusion
-                return self.page(corrected_context, _retry=True)
-            else:
-                # Already retried, return refusal but DON'T store in history
-                logger.warning(f"[{self.name}] Refusal persisted after retry, not storing in history")
-                return {"raw": full_response, "_refusal": True}
+        refusal = self._handle_refusal(full_response, world_context, _retry, _original_context)
+        if refusal is not None:
+            return refusal
 
-        # Store in history (only non-refusals)
-        self.history.append({"role": "user", "content": world_context})
-        self.history.append({"role": "assistant", "content": full_response})
-        self._trim_history()
-
-        # Parse and return final result
-        try:
-            text = full_response.strip()
-            try:
-                return json.loads(text)
-            except json.JSONDecodeError:
-                pass
-            fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
-            if fence_match:
-                return json.loads(fence_match.group(1).strip())
-            first = text.find("{")
-            last = text.rfind("}")
-            if first != -1 and last > first:
-                return json.loads(text[first:last + 1])
-        except (json.JSONDecodeError, IndexError):
-            pass
-        return {"raw": full_response}
+        return self._store_and_parse(full_response, world_context, _original_context)
 
     def get_state(self) -> Dict[str, Any]:
         """Serialize agent state for saving."""

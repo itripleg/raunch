@@ -40,15 +40,15 @@ class Character(Agent):
         self.relationships: Dict[str, str] = {}
         self.pregnancy: Optional[Dict[str, Any]] = None
 
-    def page(self, world_context: str, _retry: bool = False) -> Dict[str, Any]:
+    def page(self, world_context: str, _retry: bool = False, _original_context: str = None) -> Dict[str, Any]:
         """Run a character page — returns inner thoughts + action."""
-        result = super().page(world_context, _retry=_retry)
+        result = super().page(world_context, _retry=_retry, _original_context=_original_context)
         self._update_from_result(result)
         return result
 
-    def page_stream(self, world_context: str, on_delta=None, _retry: bool = False) -> Dict[str, Any]:
+    def page_stream(self, world_context: str, on_delta=None, _retry: bool = False, _original_context: str = None) -> Dict[str, Any]:
         """Run a character page with streaming — returns inner thoughts + action."""
-        result = super().page_stream(world_context, on_delta=on_delta, _retry=_retry)
+        result = super().page_stream(world_context, on_delta=on_delta, _retry=_retry, _original_context=_original_context)
         self._update_from_result(result)
         return result
 
