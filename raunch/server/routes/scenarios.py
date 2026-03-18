@@ -74,7 +74,7 @@ class WizardGenerateRequest(BaseModel):
     kinks: Optional[List[str]] = None
     vibe: Optional[str] = None
     preferences: Optional[str] = None
-    num_characters: int = 3
+    num_characters: int = 2
     save: bool = False
 
 

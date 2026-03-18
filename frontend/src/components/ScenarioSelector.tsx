@@ -109,7 +109,7 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
       const wizardResponse = await fetch(`${apiUrl}/api/v1/wizard/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ save: false, num_characters: 3 }),
+        body: JSON.stringify({ save: false, num_characters: 2 }),
       });
       if (!wizardResponse.ok) throw new Error("Failed to generate scenario");
       const scenarioData = await wizardResponse.json();

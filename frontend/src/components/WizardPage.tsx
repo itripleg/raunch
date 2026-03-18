@@ -255,7 +255,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
   const [selectedVibe, setSelectedVibe] = useState<string>("");
   const [customVibe, setCustomVibe] = useState<string>("");
   const [customPrefs, setCustomPrefs] = useState("");
-  const [numChars, setNumChars] = useState(3);
+  const [numChars, setNumChars] = useState(2);
   const [showRaw, setShowRaw] = useState(false);
   const [rawJson, setRawJson] = useState("");
   const [saving, setSaving] = useState(false);

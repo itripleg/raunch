@@ -152,7 +152,7 @@ VIBES = [
 
 def generate_scenario(
     preferences: Optional[str] = None,
-    num_characters: int = 3,
+    num_characters: int = 2,
     pairings: Optional[List[str]] = None,
     kinks: Optional[List[str]] = None,
     setting_hint: Optional[str] = None,
@@ -232,7 +232,7 @@ def generate_scenario(
     return _parse_json_response(raw)
 
 
-def random_scenario(num_characters: int = 3, debug: bool = False) -> Dict[str, Any]:
+def random_scenario(num_characters: int = 2, debug: bool = False) -> Dict[str, Any]:
     """Generate a fully random scenario.
 
     Args:

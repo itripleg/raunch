@@ -1469,11 +1469,11 @@ def wizard(num_chars, quick, debug):
             return
 
         if not choice:
-            num_chars = rand.choice([1, 2, 2, 3, 3, 3, 4])  # Weighted toward 2-3
+            num_chars = rand.choice([1, 2, 2, 2, 3, 3, 4])  # Weighted toward 2
         elif choice.isdigit():
             num_chars = max(1, min(6, int(choice)))
         else:
-            num_chars = 3  # Default fallback
+            num_chars = 2  # Default fallback
 
         char_desc = {1: "Solo journey", 2: "Duo", 3: "Trio", 4: "Quartet", 5: "Quintet", 6: "Ensemble"}.get(num_chars, f"{num_chars} characters")
         selection_confirm(char_desc, "Cast") if not quick else console.print(f"  [green]Characters: {num_chars}[/]")
@@ -1627,9 +1627,9 @@ def roll(num_chars, quick, debug):
         roll_dice_animation, conjuring_sequence, scenario_reveal, wizard_farewell
     )
 
-    # Random character count if not specified (weighted toward 2-3)
+    # Random character count if not specified (weighted toward 2)
     if num_chars is None:
-        num_chars = rand.choice([1, 2, 2, 3, 3, 3, 4, 4])
+        num_chars = rand.choice([1, 2, 2, 2, 3, 3, 4])
 
     if not quick:
         roll_dice_animation()
