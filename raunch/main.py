@@ -118,8 +118,10 @@ def cli(ctx):
 @click.option("--name", "world_name", default=None, help="Name this world")
 @click.option("--scenario", "scenario_name", default=None, help="Load a scenario (from wizard/roll)")
 @click.option("--headless", is_flag=True, default=False, help="Run without interactive console (for background/daemon mode)")
-def start(save_name, world_name, scenario_name, headless):
-    """Start the world simulation server."""
+@click.option("--serve", is_flag=True, default=False, help="Also start web server on port 8000 (enables frontend connection)")
+@click.option("--port", default=8000, type=int, help="Web server port (default: 8000, only with --serve)")
+def start(save_name, world_name, scenario_name, headless, serve, port):
+    """Start the world simulation with CLI display. Use --serve to also run the web server."""
     orch = Orchestrator()
 
     if world_name:
@@ -247,6 +249,131 @@ def start(save_name, world_name, scenario_name, headless):
                     pass
 
     orch.add_page_callback(on_page)
+
+    # ─── OPTIONAL WEB SERVER ──────────────────────────────────────────────
+    if serve:
+        import asyncio
+        import uvicorn
+        from .server.app import create_app
+        from .server.ws import ws_manager, _broadcast_narrator_ready, _broadcast_character_ready, _broadcast_page
+        from . import db
+
+        # Create a book in the database so the frontend can find it
+        book_id = None
+        scenario_display = scenario_name or world_name or "cli-session"
+        try:
+            librarian = db.create_librarian("CLI Host")
+            book_data = db.create_book(
+                librarian_id=librarian["id"],
+                scenario_name=scenario_display,
+                bookmark=scenario_display.lower().replace(" ", "-")[:30],
+            )
+            book_id = book_data["id"]
+            console.print(f"[dim]Book created: {book_id} (bookmark: {book_data.get('bookmark')})[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]Could not create book for web sync: {e}[/yellow]")
+
+        # Start FastAPI server in background thread
+        fastapi_app = create_app()
+        server_started = threading.Event()
+
+        def _run_server():
+            config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=port, log_level="warning")
+            server = uvicorn.Server(config)
+            server_started.set()
+            server.run()
+
+        server_thread = threading.Thread(target=_run_server, daemon=True)
+        server_thread.start()
+        server_started.wait(timeout=3)
+
+        # Wire orchestrator callbacks to also broadcast via WebSocket
+        if book_id:
+            # Get the event loop from the uvicorn server thread
+            import time as _time
+            _time.sleep(0.5)  # Let uvicorn's event loop start
+
+            # Wrap callbacks to also broadcast to frontend
+            _orig_page_start = on_page_start
+            _orig_narrator_ready = on_narrator_ready
+            _orig_character_ready = on_character_ready
+            _orig_on_page = on_page
+
+            def on_page_start_with_serve(page_num: int):
+                _orig_page_start(page_num)
+                if book_id:
+                    try:
+                        # Broadcast page_generating to frontend
+                        import asyncio as _aio
+                        loop = _aio.new_event_loop()
+                        loop.run_until_complete(ws_manager.broadcast(book_id, {
+                            "type": "page_generating",
+                            "page": page_num,
+                        }))
+                        loop.close()
+                    except Exception:
+                        pass
+
+            def on_narrator_ready_with_serve(page_num: int, narration: str, mood: str):
+                _orig_narrator_ready(page_num, narration, mood)
+                if book_id:
+                    try:
+                        import asyncio as _aio
+                        loop = _aio.new_event_loop()
+                        loop.run_until_complete(
+                            _broadcast_narrator_ready(book_id, page_num, narration, mood)
+                        )
+                        loop.close()
+                    except Exception:
+                        pass
+
+            def on_character_ready_with_serve(page_num: int, name: str, data: dict):
+                _orig_character_ready(page_num, name, data)
+                if book_id:
+                    try:
+                        import asyncio as _aio
+                        loop = _aio.new_event_loop()
+                        loop.run_until_complete(
+                            _broadcast_character_ready(book_id, page_num, name, data)
+                        )
+                        loop.close()
+                    except Exception:
+                        pass
+
+            def on_page_with_serve(results):
+                _orig_on_page(results)
+                if book_id:
+                    try:
+                        import asyncio as _aio
+                        loop = _aio.new_event_loop()
+                        loop.run_until_complete(
+                            _broadcast_page(book_id, results)
+                        )
+                        loop.close()
+                    except Exception:
+                        pass
+                    # Also save to database
+                    try:
+                        db.save_page(
+                            book_id,
+                            results.get("page", 0),
+                            results.get("narration", ""),
+                            results.get("events", []),
+                            orch.world.world_time,
+                            orch.world.mood or "default",
+                        )
+                    except Exception:
+                        pass
+
+            # Replace callbacks
+            orch.set_page_start_callback(on_page_start_with_serve)
+            orch.set_narrator_callback(on_narrator_ready_with_serve)
+            orch.set_character_callback(on_character_ready_with_serve)
+            orch._page_callbacks = [on_page_with_serve]
+
+        console.print(f"[green]Web server running on http://localhost:{port}[/green]")
+        if book_id:
+            console.print(f"[dim]Frontend can connect to this session via bookmark[/dim]")
 
     # ─── ANIMATED STARTUP BANNER ──────────────────────────────────────────
     world = orch.world
