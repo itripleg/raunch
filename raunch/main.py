@@ -38,18 +38,19 @@ def _show_server_commands():
     console.print()
     console.print(
         Panel(
-            "[bold bright_cyan]PLAYBACK[/]\n"
+            "[bold bright_cyan]STORY[/]\n"
             "  [bold]n[/], [bold]next[/], [bold]Enter[/]     Advance to next page (manual mode)\n"
-            "  [bold]p[/], [bold]pause[/]            Pause/resume auto-advance\n"
-            "  [bold]t[/], [bold]timer[/] [dim]<sec>[/]     Set page interval (0=manual, 10+=auto)\n"
+            "  [bold]w[/] [dim]<text>[/]             Whisper (to character if attached, narrator if not)\n"
             "\n"
             "[bold bright_cyan]CHARACTERS[/]\n"
             "  [bold]c[/], [bold]characters[/]       List all characters\n"
             "  [bold]a[/], [bold]attach[/] [dim]<name>[/]   Attach to character's POV\n"
             "  [bold]d[/], [bold]detach[/]           Detach from current character\n"
             "\n"
-            "[bold bright_cyan]WORLD[/]\n"
-            "  [bold]w[/], [bold]world[/]            Show current world state\n"
+            "[bold bright_cyan]PLAYBACK[/]\n"
+            "  [bold]p[/], [bold]pause[/]            Pause/resume auto-advance\n"
+            "  [bold]t[/], [bold]timer[/] [dim]<sec>[/]     Set page interval (0=manual, 10+=auto)\n"
+            "  [bold]world[/]               Show current world state\n"
             "\n"
             "[bold bright_cyan]SYSTEM[/]\n"
             "  [bold]r[/], [bold]refresh[/]          Force OAuth token refresh\n"
@@ -450,7 +451,23 @@ def start(save_name, world_name, scenario_name, headless, serve, port):
                     console.print("[yellow]Paused[/yellow]")
             elif cmd_name in ("c", "chars", "characters"):
                 render_character_list(orch.characters, orch.attached_to)
-            elif cmd_name in ("w", "world"):
+            elif cmd_name in ("w", "whisper"):
+                if not cmd_arg:
+                    console.print("[red]Usage: w <message to whisper>[/red]")
+                    if orch.attached_to:
+                        console.print(f"[dim]Whispers to {orch.attached_to} (attached character)[/dim]")
+                    else:
+                        console.print("[dim]Not attached — whisper will go to the narrator as director guidance[/dim]")
+                elif orch.attached_to:
+                    if orch.submit_influence(orch.attached_to, cmd_arg):
+                        console.print(f"  [dim italic]♥ whispered to {orch.attached_to}: \"{cmd_arg}\"[/dim italic]")
+                    else:
+                        console.print(f"[red]Could not whisper to {orch.attached_to}[/red]")
+                else:
+                    # Not attached — whisper to narrator (director mode)
+                    orch.submit_director_guidance(cmd_arg)
+                    console.print(f"  [dim italic]✧ whispered to the narrator: \"{cmd_arg}\"[/dim italic]")
+            elif cmd_name in ("world",):
                 render_world_state(orch.world.snapshot())
             elif cmd_name in ("a", "attach"):
                 if not cmd_arg:
