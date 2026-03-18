@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
@@ -78,17 +79,32 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
             </svg>
           </button>
         </div>
-        {world ? (
-          <div className="space-y-1.5">
-            <p className="text-sm font-medium">{world.world_name as string}</p>
-            <div className="text-[11px] text-muted-foreground space-y-0.5">
-              <div>Time: {world.world_time as string ?? "?"}</div>
-              <div>Mood: {world.mood as string ?? "?"}</div>
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground/50 italic">Loading...</p>
-        )}
+        <AnimatePresence mode="wait">
+          {world ? (
+            <motion.div
+              key="world-info"
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="space-y-1.5"
+            >
+              <p className="text-sm font-medium">{world.world_name as string}</p>
+              <div className="text-[11px] text-muted-foreground space-y-0.5">
+                <div>Time: {world.world_time as string ?? "?"}</div>
+                <div>Mood: {world.mood as string ?? "?"}</div>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.p
+              key="world-loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-sm text-muted-foreground/50 italic"
+            >
+              Loading...
+            </motion.p>
+          )}
+        </AnimatePresence>
       </div>
 
       <Separator className="bg-border/30" />
@@ -96,8 +112,10 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
       {/* Reset Book button */}
       {onResetBook && (
         <div className="p-4 pb-3">
-          <button
+          <motion.button
             onClick={handleReset}
+            animate={confirmReset ? { scale: [1, 1.02, 1] } : {}}
+            transition={{ duration: 0.3 }}
             className={`w-full text-left px-3 py-2 rounded-lg transition-all text-xs ${
               confirmReset
                 ? "bg-destructive/20 text-destructive border border-destructive/50 font-medium"
@@ -105,7 +123,7 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
             }`}
           >
             {confirmReset ? "Click again to confirm reset" : "Reset Book"}
-          </button>
+          </motion.button>
         </div>
       )}
 
@@ -117,22 +135,24 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
           Characters
         </h2>
         {onAddCharacter && (
-          <button
+          <motion.button
             onClick={onAddCharacter}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 5v14M5 12h14" />
             </svg>
             Add
-          </button>
+          </motion.button>
         )}
       </div>
 
       <ScrollArea className="flex-1 px-4">
         <div className="space-y-1.5 pb-4">
           {/* Narrator - compact entry for director mode */}
-          <button
+          <motion.button
             onClick={() => {
               if (game.directorMode) {
                 actions.toggleDirectorMode?.();
@@ -141,6 +161,8 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
                 actions.toggleDirectorMode?.();
               }
             }}
+            whileTap={{ scale: 0.98 }}
+            layout
             className={`w-full text-left p-2 rounded-lg transition-all duration-200 group ${
               game.directorMode
                 ? "bg-amber-500/15 border border-amber-500/30"
@@ -162,71 +184,102 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
                 Director
               </span>
               {game.directorMode && (
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse ml-auto" />
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse ml-auto"
+                />
               )}
             </div>
-          </button>
+          </motion.button>
 
           <Separator className="bg-border/20 my-2" />
 
-          {game.characterNames.map((name) => {
-            const info = game.characterDetails[name];
-            const isAttached = name === game.attachedTo;
-            // Get live emotional state from latest page
-            const latestPage = game.pages?.[game.pages.length - 1];
-            const liveState = latestPage?.characters?.[name]?.emotional_state;
+          <AnimatePresence mode="popLayout">
+            {game.characterNames.map((name, index) => {
+              const info = game.characterDetails[name];
+              const isAttached = name === game.attachedTo;
+              // Get live emotional state from latest page
+              const latestPage = game.pages?.[game.pages.length - 1];
+              const liveState = latestPage?.characters?.[name]?.emotional_state;
 
-            return (
-              <button
-                key={name}
-                onClick={() => {
-                  if (isAttached) {
-                    actions.detach();
-                  } else {
-                    // Attach - reducer will also exit director mode atomically
-                    actions.attach(name);
-                    onCharacterAttached?.();
-                  }
-                }}
-                className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group ${
-                  isAttached
-                    ? "bg-primary/15 border border-primary/30"
-                    : "hover:bg-secondary/50 border border-transparent"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full shrink-0 ${isAttached ? "bg-primary animate-pulse" : "bg-muted-foreground/30"}`} />
-                  <span className={`text-sm font-medium flex-1 ${isAttached ? "text-primary" : "text-foreground/80 group-hover:text-foreground"}`}>
-                    {name}
-                  </span>
-                  {/* Delete button - shows on hover for any character */}
-                  {onDeleteCharacter && (
-                    <span
-                      onClick={(e) => handleDelete(name, e)}
-                      className={`text-[9px] transition-all ${
-                        confirmDelete === name
-                          ? "text-destructive font-medium opacity-100"
-                          : "opacity-0 group-hover:opacity-100 text-pink-400/70 hover:text-purple-400"
-                      }`}
-                      title={confirmDelete === name ? "Click again to confirm" : "Remove character"}
-                    >
-                      {confirmDelete === name ? "Remove?" : "×"}
+              return (
+                <motion.button
+                  key={name}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  transition={{ duration: 0.2, delay: index * 0.05 }}
+                  layout
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    if (isAttached) {
+                      actions.detach();
+                    } else {
+                      actions.attach(name);
+                      onCharacterAttached?.();
+                    }
+                  }}
+                  className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group ${
+                    isAttached
+                      ? "bg-primary/15 border border-primary/30"
+                      : "hover:bg-secondary/50 border border-transparent"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <motion.div
+                      animate={isAttached ? { scale: [1, 1.3, 1] } : { scale: 1 }}
+                      transition={{ duration: 0.4 }}
+                      className={`w-2 h-2 rounded-full shrink-0 ${isAttached ? "bg-primary animate-pulse" : "bg-muted-foreground/30"}`}
+                    />
+                    <span className={`text-sm font-medium flex-1 ${isAttached ? "text-primary" : "text-foreground/80 group-hover:text-foreground"}`}>
+                      {name}
                     </span>
-                  )}
-                </div>
-                {info && (
-                  <div className="ml-4 mt-1 text-[10px] text-muted-foreground space-y-0.5">
-                    {info.species && !["?", "unknown"].includes(String(info.species).toLowerCase()) ? (
-                      <div className="truncate">{String(info.species)}</div>
-                    ) : null}
-                    {(liveState || info.emotional_state) ? (
-                      <div className="text-amber-400/60 italic truncate">{String(liveState || info.emotional_state)}</div>
-                    ) : null}
+                    {/* Delete button - shows on hover for any character */}
+                    {onDeleteCharacter && (
+                      <span
+                        onClick={(e) => handleDelete(name, e)}
+                        className={`text-[9px] transition-all ${
+                          confirmDelete === name
+                            ? "text-destructive font-medium opacity-100"
+                            : "opacity-0 group-hover:opacity-100 text-pink-400/70 hover:text-purple-400"
+                        }`}
+                        title={confirmDelete === name ? "Click again to confirm" : "Remove character"}
+                      >
+                        {confirmDelete === name ? "Remove?" : "×"}
+                      </span>
+                    )}
                   </div>
-                )}
-              </button>
-            );
-          })}
+                  <AnimatePresence>
+                    {info && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="ml-4 mt-1 text-[10px] text-muted-foreground space-y-0.5 overflow-hidden"
+                      >
+                        {info.species && !["?", "unknown"].includes(String(info.species).toLowerCase()) ? (
+                          <div className="truncate">{String(info.species)}</div>
+                        ) : null}
+                        {(liveState || info.emotional_state) ? (
+                          <motion.div
+                            key={String(liveState || info.emotional_state)}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ duration: 0.4 }}
+                            className="text-amber-400/60 italic truncate"
+                          >
+                            {String(liveState || info.emotional_state)}
+                          </motion.div>
+                        ) : null}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.button>
+              );
+            })}
+          </AnimatePresence>
         </div>
       </ScrollArea>
 
