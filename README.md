@@ -1,89 +1,160 @@
-# Raunch — Multi-Agent Adult Interactive Fiction
+# Raunch — The Living Library
 
-A tick-based autonomous world simulation powered by Claude. Characters think, act, and interact independently. You can observe by "attaching" to any character to see their inner thoughts, or take control of a character in player mode.
+A multi-agent interactive fiction engine powered by Claude. Characters think, feel, and act autonomously. You are the Librarian — the unseen hand that guides the story through whispers.
 
-## Architecture
+## How It Works
 
 ```
-orchestrator.py          World tick loop — coordinates all agents
-  ├── narrator agent     Advances world state, sets scenes, generates events
-  ├── character agents   Autonomous NPCs with inner monologue + actions
-  └── world.py           Single source of truth (locations, time, events)
+Orchestrator          World page loop — coordinates all agents
+  ├── Narrator        Advances the world, sets scenes, generates events
+  ├── Characters      Autonomous NPCs with inner thoughts + actions + dialogue
+  └── World State     Locations, time, mood, events
 ```
 
-**Tick cycle:**
+**Each page:**
 1. Narrator receives world state → produces narration + events + world changes
-2. Each character receives narration → produces inner thoughts + action
+2. Each character receives narration → produces inner thoughts + action + dialogue
 3. World state updates, display renders
-4. Repeat
+4. You can whisper to characters to nudge the story
 
-## Auth
+## Quick Start
 
-Uses your Claude Max OAuth credentials automatically (reads from `~/.claude/.credentials.json`). No API key needed — just be logged into the `claude` CLI.
+### Prerequisites
+- Python 3.10+
+- Node.js 18+ (for the web frontend)
+- Claude Max subscription (OAuth) or Anthropic API key
 
-Fallback: set `ANTHROPIC_API_KEY` env var for pay-per-token.
-
-## Setup
+### Install
 
 ```bash
 pip install -e .
+cd frontend && npm install
 ```
 
-## Usage
+### Configure
 
-### Autonomous mode (watch the world unfold)
+Copy the example env files:
+
 ```bash
-raunch start
+cp .env.example .env                        # Backend — add your Claude token
+cp frontend/.env.example frontend/.env.local # Frontend
 ```
 
-### Player mode (step-by-step, you control a character)
+### Run
+
+**Web UI (recommended):**
 ```bash
-raunch play --as "Lyra"
+# Terminal 1: Backend API server
+python -m raunch.server.app
+
+# Terminal 2: Frontend dev server
+cd frontend && npm run dev
 ```
 
-### Create a character
+**CLI only:**
 ```bash
-raunch create
+raunch start --scenario midnight_library
 ```
 
-### List character templates
+## Authentication
+
+Three options (checked in order):
+1. **Claude Max OAuth** — auto-detected from `~/.claude/.credentials.json` (just be logged into `claude` CLI)
+2. **OAuth token** — set `CLAUDE_CODE_OAUTH_TOKEN` in `.env`
+3. **API key** — set `ANTHROPIC_API_KEY` in `.env` for pay-per-token
+
+The web UI also lets you add/manage OAuth tokens through Settings.
+
+## CLI Commands
+
+### Top-level
+
+| Command | Description |
+|---------|-------------|
+| `raunch start` | Start the world simulation server |
+| `raunch wizard` | Interactive scenario creator with animations |
+| `raunch roll` | Generate a fully random scenario |
+| `raunch play <scenario>` | Local single-player mode |
+| `raunch connect <host>` | Connect to a remote Living Library server |
+| `raunch attach [character]` | Attach to a character on a running server |
+| `raunch status` | Check if a server is running |
+| `raunch scenarios` | List saved scenarios |
+| `raunch create` | Create a character template |
+| `raunch list` | List character templates |
+| `raunch reset <scenario>` | Reset a scenario's save data |
+| `raunch kill` | Stop any running server processes |
+
+### Start options
+
 ```bash
-raunch list
+raunch start [OPTIONS]
+  --scenario <name>    Load a scenario (from wizard/roll/scenarios folder)
+  --load <name>        Resume a saved game
+  --name <name>        Name this world
+  --headless           Run without interactive console
+  --force, -f          Kill any existing server first
 ```
 
-## Commands during simulation
+### Server console (during `raunch start`)
 
 | Key | Action |
 |-----|--------|
-| `a <name>` | Attach to character (see their inner thoughts) |
-| `d` | Detach |
+| `n` / `Enter` | Advance to next page (manual mode) |
+| `p` | Pause / resume |
+| `t <sec>` | Set page interval (0 = manual, 10+ = auto) |
 | `c` | List characters |
+| `a <name>` | Attach to character's POV |
+| `d` | Detach from current character |
 | `w` | Show world state |
-| `p` | Pause/resume |
-| `q` | Quit (autosaves) |
+| `r` | Force OAuth token refresh |
+| `?` | Show all commands |
+| `q` | Save and exit |
+
+## Web Frontend
+
+The frontend connects via WebSocket and provides:
+- Immersive narration feed with typewriter animations
+- Character panel showing inner thoughts of attached character
+- Director mode for narrator guidance
+- Whisper system to influence characters
+- Scenario browser and wizard
+- Multi-book library with dashboard
 
 ## Project Structure
 
 ```
 raunch/
-├── main.py           CLI entry point (Click)
-├── orchestrator.py   World tick loop + agent coordination
-├── world.py          World state management
-├── client.py         Anthropic SDK client with OAuth
-├── display.py        Rich terminal rendering
+├── main.py              CLI entry point (Click)
+├── orchestrator.py      World page loop + agent coordination
+├── world.py             World state management
+├── llm.py               Claude client (OAuth + API key)
+├── display.py           Rich terminal rendering + animations
+├── wizard.py            Scenario generation
+├── wizard_display.py    Animated wizard UI
 ├── agents/
-│   ├── base.py       Base agent (history, summarization, tick)
-│   ├── narrator.py   World narrator
-│   └── character.py  Autonomous NPC
+│   ├── base.py          Base agent (history, summarization, refusal handling)
+│   ├── narrator.py      World narrator
+│   └── character.py     Autonomous NPC
 ├── prompts/
-│   ├── narrator.py   Narrator system prompt
-│   └── character.py  Character prompt template
-saves/                Autosave JSON files
-characters/           Character template JSON files
+│   ├── narrator.py      Narrator system prompt
+│   └── character.py     Character prompt template
+├── server/
+│   ├── app.py           FastAPI server
+│   ├── ws.py            WebSocket handler
+│   └── routes/          API endpoints
+├── db_sqlite.py         SQLite database backend
+├── db_firestore.py      Firestore database backend (cloud deploy)
+frontend/
+├── src/
+│   ├── App.tsx           Main app with auth + routing
+│   ├── components/       UI components
+│   ├── hooks/            useGame, useLibrary, useWebSocket
+│   └── lib/utils.ts      Shared utilities
+scenarios/                Scenario JSON files
+saves/                    Autosave data
+characters/               Character template JSON files
 ```
 
 ## Content
 
-Setting: Future sci-fi fantasy — starships and sorcery.
-Core themes: Breeding, pregnancy, fertility (magic + biotech).
-All content involves consenting adults only.
+All scenarios involve consenting adults. Content and themes are customizable through the wizard or by editing scenario JSON files.
