@@ -114,15 +114,15 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
       if (!wizardResponse.ok) throw new Error("Failed to generate scenario");
       const scenarioData = await wizardResponse.json();
 
-      // Save to database as user scenario
+      // Save to database — try DB first, fall back to file save
+      const saveHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
       if (librarianId) {
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-          "X-Librarian-ID": librarianId,
-        };
+        saveHeaders["X-Librarian-ID"] = librarianId;
         const saveResponse = await fetch(`${apiUrl}/api/v1/scenarios`, {
           method: "POST",
-          headers,
+          headers: saveHeaders,
           body: JSON.stringify({
             name: scenarioData.scenario_name,
             description: scenarioData.premise,
@@ -134,6 +134,16 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
         if (!saveResponse.ok) {
           const errorData = await saveResponse.json().catch(() => ({}));
           throw new Error(errorData.detail || "Failed to save scenario");
+        }
+      } else {
+        // No librarian — save as file instead
+        const fileSaveResponse = await fetch(`${apiUrl}/api/v1/scenarios/save`, {
+          method: "POST",
+          headers: saveHeaders,
+          body: JSON.stringify(scenarioData),
+        });
+        if (!fileSaveResponse.ok) {
+          throw new Error("Failed to save scenario to file");
         }
       }
 
