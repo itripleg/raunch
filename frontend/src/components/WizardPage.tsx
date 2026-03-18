@@ -378,6 +378,32 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
       setResult(data);
       setRawJson(JSON.stringify(data, null, 2));
 
+      // Auto-save immediately so the scenario isn't lost
+      if (librarianId) {
+        try {
+          const saveRes = await fetch(`${apiUrl}/api/v1/scenarios`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Librarian-ID": librarianId,
+            },
+            body: JSON.stringify({
+              name: data.scenario_name || "Untitled Scenario",
+              description: data.premise,
+              setting: data.setting,
+              data: data,
+              public: false,
+            }),
+          });
+          if (saveRes.ok) {
+            const saved = await saveRes.json();
+            setResult({ ...data, saved_to: saved.id });
+          }
+        } catch {
+          // Auto-save failed silently — user can still manually save
+        }
+      }
+
       // Scroll to result
       setTimeout(() => {
         resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
