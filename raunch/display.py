@@ -48,31 +48,31 @@ INTENSITY_WORDS: Dict[str, str] = {
 }
 
 INTENSITY_COLORS = {
-    "primal": [204, 205, 211],  # Rose/pink
-    "hot": [214, 220, 221],      # Amber/gold
-    "warm": [209, 215, 216],     # Coral/peach
+    "primal": [204, 205, 211],  # Rose (matches frontend text-rose-400)
+    "hot": [214, 220, 178],     # Amber (matches frontend text-amber-400)
+    "warm": [215, 216, 222],    # Orange (matches frontend text-orange-300)
 }
 
-# Mood-based border styles (unicode, ascii)
+# Mood-based border styles (matches frontend MOOD_COLORS)
 MOOD_STYLES_UNICODE = {
-    "anticipation": ("bright_magenta", "✧"),
-    "tension": ("yellow", "⚡"),
-    "passion": ("bright_red", "♥"),
-    "desire": ("red", "❧"),
-    "tenderness": ("bright_magenta", "♡"),
-    "climax": ("bright_red", "✦"),
-    "afterglow": ("bright_yellow", "✿"),
+    "anticipation": ("deep_pink4", "✧"),       # rose-500
+    "tension": ("dark_goldenrod", "⚡"),         # amber-500
+    "passion": ("hot_pink", "♥"),               # pink-500
+    "desire": ("indian_red", "❧"),              # red-400
+    "tenderness": ("medium_purple", "♡"),       # violet-400
+    "climax": ("deep_pink4", "✦"),              # rose-400
+    "afterglow": ("dark_goldenrod", "✿"),       # amber-300
     "default": ("bright_blue", "·"),
 }
 
 MOOD_STYLES_ASCII = {
-    "anticipation": ("bright_magenta", "*"),
-    "tension": ("yellow", "!"),
-    "passion": ("bright_red", "<3"),
-    "desire": ("red", "~"),
-    "tenderness": ("bright_magenta", "<3"),
-    "climax": ("bright_red", "*"),
-    "afterglow": ("bright_yellow", "*"),
+    "anticipation": ("deep_pink4", "*"),
+    "tension": ("dark_goldenrod", "!"),
+    "passion": ("hot_pink", "<3"),
+    "desire": ("indian_red", "~"),
+    "tenderness": ("medium_purple", "<3"),
+    "climax": ("deep_pink4", "*"),
+    "afterglow": ("dark_goldenrod", "*"),
     "default": ("bright_blue", "."),
 }
 
@@ -81,14 +81,14 @@ def _get_mood_styles() -> Dict[str, Tuple[str, str]]:
     """Get mood styles based on unicode support."""
     return MOOD_STYLES_UNICODE if _supports_unicode() else MOOD_STYLES_ASCII
 
-# Character colors for distinct dialogue (Rich style names)
+# Character colors for distinct dialogue (matches frontend CHARACTER_COLORS)
 CHARACTER_STYLES = [
-    "bright_green",
-    "bright_magenta",
-    "bright_yellow",
-    "bright_cyan",
-    "bright_red",
-    "green",
+    "green3",           # emerald-400
+    "medium_purple1",   # violet-400
+    "dark_goldenrod",   # amber-400
+    "dark_cyan",        # cyan-400
+    "deep_pink4",       # rose-400
+    "chartreuse3",      # lime-400
 ]
 
 # Scene break decorators
@@ -264,11 +264,11 @@ def _dramatic_reveal(text: str, style: str = "bright_magenta") -> None:
             segments = _parse_intensity(sentence)
             for content, level in segments:
                 if level == "primal":
-                    rich_text.append(content, style="bold bright_red")
+                    rich_text.append(content, style="bold deep_pink4")
                 elif level == "hot":
-                    rich_text.append(content, style="bold bright_yellow")
+                    rich_text.append(content, style="bold dark_goldenrod")
                 elif level == "warm":
-                    rich_text.append(content, style="italic bright_magenta")
+                    rich_text.append(content, style="italic orange3")
                 else:
                     rich_text.append(content)
             console.print(rich_text)
@@ -278,11 +278,11 @@ def _dramatic_reveal(text: str, style: str = "bright_magenta") -> None:
             segments = _parse_intensity(sentence)
             for content, level in segments:
                 if level == "primal":
-                    rich_text.append(content, style="bright_red")
+                    rich_text.append(content, style="deep_pink4")
                 elif level == "hot":
-                    rich_text.append(content, style="bright_yellow")
+                    rich_text.append(content, style="dark_goldenrod")
                 elif level == "warm":
-                    rich_text.append(content, style="bright_magenta")
+                    rich_text.append(content, style="orange3")
                 else:
                     rich_text.append(content, style="dim")
             console.print(rich_text)
@@ -343,11 +343,11 @@ def render_page(
 
         for content, level in segments:
             if level == "primal":
-                rich_narration.append(content, style="bold bright_red")
+                rich_narration.append(content, style="bold deep_pink4")
             elif level == "hot":
-                rich_narration.append(content, style="bright_yellow")
+                rich_narration.append(content, style="dark_goldenrod")
             elif level == "warm":
-                rich_narration.append(content, style="bright_magenta")
+                rich_narration.append(content, style="orange3")
             else:
                 rich_narration.append(content)
 
@@ -425,17 +425,17 @@ def render_page(
 
             if dialogue and dialogue.lower() != "null":
                 panel_content.append("Says: ", style="bold")
-                panel_content.append(f'"{dialogue}"', style="bright_green italic")
+                panel_content.append(f'"{dialogue}"', style="green3 italic")
 
             heart = "<3" if not _supports_unicode() else "♥"
-            title = f"[bold bright_magenta]{heart} {name} {heart}[/]"
+            title = f"[bold medium_purple1]{heart} {name} {heart}[/]"
 
             console.print(
                 Panel(
                     panel_content,
                     title=title,
                     subtitle="[dim]attached[/]",
-                    border_style="bright_magenta",
+                    border_style="medium_purple1",
                     box=DOUBLE,
                     padding=(1, 3),
                 )
@@ -443,6 +443,15 @@ def render_page(
         else:
             # ═══ OTHER CHARACTERS — Only show spoken dialogue ═══
             dialogue = data.get("dialogue")
+            action = data.get("action")
+
+            # If no explicit dialogue, extract quoted speech from action
+            if (not dialogue or dialogue.lower() == "null") and action:
+                import re as _re
+                match = _re.search(r'["\u201C\u201D\u2018\u2019\'"](.{2,}?)["\u201C\u201D\u2018\u2019\'"]', action)
+                if match:
+                    dialogue = match.group(1)
+
             if dialogue and dialogue.lower() != "null":
                 dash = "-" if not _supports_unicode() else "—"
                 console.print()
@@ -540,11 +549,11 @@ def render_character_panel_inline(
             segments = _parse_intensity(inner)
             for content, level in segments:
                 if level == "primal":
-                    rich_inner.append(content, style="italic bright_red")
+                    rich_inner.append(content, style="italic deep_pink4")
                 elif level == "hot":
-                    rich_inner.append(content, style="italic bright_yellow")
+                    rich_inner.append(content, style="italic dark_goldenrod")
                 elif level == "warm":
-                    rich_inner.append(content, style="italic bright_magenta")
+                    rich_inner.append(content, style="italic orange3")
                 else:
                     rich_inner.append(content, style="italic")
 
@@ -564,17 +573,17 @@ def render_character_panel_inline(
 
         if dialogue and dialogue.lower() != "null":
             panel_content.append("Says: ", style="bold")
-            panel_content.append(f'"{dialogue}"', style="bright_green italic")
+            panel_content.append(f'"{dialogue}"', style="green3 italic")
 
         heart = "<3" if not _supports_unicode() else "♥"
-        title = f"[bold bright_magenta]{heart} {name} {heart}[/]"
+        title = f"[bold medium_purple1]{heart} {name} {heart}[/]"
 
         console.print(
             Panel(
                 panel_content,
                 title=title,
                 subtitle="[dim]attached[/]",
-                border_style="bright_magenta",
+                border_style="medium_purple1",
                 box=DOUBLE,
                 padding=(1, 3),
             )
@@ -582,6 +591,15 @@ def render_character_panel_inline(
     else:
         # Just dialogue for non-attached characters
         dialogue = data.get("dialogue")
+        action = data.get("action")
+
+        # If no explicit dialogue, extract quoted speech from action
+        if (not dialogue or dialogue.lower() == "null") and action:
+            import re as _re
+            match = _re.search(r'["\u201C\u201D\u2018\u2019\'"](.{2,}?)["\u201C\u201D\u2018\u2019\'"]', action)
+            if match:
+                dialogue = match.group(1)
+
         if dialogue and dialogue.lower() != "null":
             dash = "-" if not _supports_unicode() else "—"
             console.print()
@@ -676,7 +694,7 @@ def render_character_history(character_name: str, pages: List[Dict[str, Any]]) -
             inner_clean = inner.replace("\n", " ").strip()
             if len(inner_clean) > 200:
                 inner_clean = inner_clean[:200] + "..."
-            console.print(f"    [italic bright_magenta]{inner_clean}[/]")
+            console.print(f"    [italic medium_purple1]{inner_clean}[/]")
 
         # Action - subtle
         if action:
@@ -687,7 +705,7 @@ def render_character_history(character_name: str, pages: List[Dict[str, Any]]) -
 
         # Dialogue - if present
         if dialogue and dialogue.lower() != "null":
-            console.print(f"    [bright_green]\"{dialogue}\"[/]")
+            console.print(f"    [green3]\"{dialogue}\"[/]")
 
         # Separator between entries (except last)
         if i < len(pages) - 1:
