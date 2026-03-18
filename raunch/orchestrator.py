@@ -493,46 +493,28 @@ class Orchestrator:
             results["narration"] = f"[Narrator error: {e}]"
             results["events"] = []
 
-        # 2. Each character reacts (in parallel)
+        # 2. Each character reacts (sequentially to avoid SDK subprocess contention)
         # Take a snapshot to avoid "dictionary changed size during iteration" errors
         narration_text = results["narration"]
         char_items = list(self.characters.items())
 
-        # Use ThreadPoolExecutor for parallel character processing
-        # Set max_workers based on character count (min 1, max 10)
-        max_workers = min(max(1, len(char_items)), 10)
+        for name, char in char_items:
+            try:
+                char_name, char_result = self._process_single_character(
+                    name, char, narration_text, world_snapshot, page_num
+                )
+                results["characters"][char_name] = char_result
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all character processing tasks
-            futures = {
-                executor.submit(
-                    self._process_single_character,
-                    name,
-                    char,
-                    narration_text,
-                    world_snapshot,
-                    page_num
-                ): name
-                for name, char in char_items
-            }
+                # Call character callback for progressive rendering
+                if not self.streaming_enabled and self._character_callback:
+                    try:
+                        self._character_callback(page_num, char_name, char_result)
+                    except Exception as cb_e:
+                        logger.error(f"Character callback error for {char_name}: {cb_e}")
 
-            # Collect results as they complete
-            for future in as_completed(futures):
-                name = futures[future]
-                try:
-                    char_name, char_result = future.result()
-                    results["characters"][char_name] = char_result
-
-                    # Call character callback for progressive rendering (non-streaming mode)
-                    if not self.streaming_enabled and self._character_callback:
-                        try:
-                            self._character_callback(page_num, char_name, char_result)
-                        except Exception as cb_e:
-                            logger.error(f"Character callback error for {char_name}: {cb_e}")
-
-                except Exception as e:
-                    logger.error(f"Character {name} processing failed: {e}")
-                    results["characters"][name] = {"inner_thoughts": f"[Error: {e}]", "action": None}
+            except Exception as e:
+                logger.error(f"Character {name} processing failed: {e}")
+                results["characters"][name] = {"inner_thoughts": f"[Error: {e}]", "action": None}
 
         # 3. Persist page to database (skip if error page)
         narration = results.get("narration", "")
