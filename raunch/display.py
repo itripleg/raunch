@@ -532,6 +532,10 @@ def render_character_panel_inline(
     if not data:
         return
 
+    # Handle unparsed "raw" JSON responses
+    if "raw" in data and "inner_thoughts" not in data:
+        data = _extract_character_data(data.get("raw", ""))
+
     char_color = _get_char_color(name)
 
     if is_attached:
