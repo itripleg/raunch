@@ -1,70 +1,17 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { PageData } from "@/hooks/useGame";
+import { parseTimestamp, extractCharacterFromRaw } from "@/lib/utils";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PREMIUM NARRATION FEED - Immersive storytelling experience
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Extract character fields from raw unparsed JSON */
-function extractCharacterFromRaw(data: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-  if (!data) return undefined;
-
-  // If data is already parsed, return as-is
-  if (data.inner_thoughts || data.action || data.dialogue) {
-    return data;
-  }
-
-  // Check for raw field that needs parsing
-  const raw = data.raw as string | undefined;
-  if (!raw || typeof raw !== "string") return data;
-
-  const extracted: Record<string, unknown> = { ...data };
-
-  try {
-    let text = raw;
-    if (text.includes("```json")) text = text.split("```json")[1] || text;
-    if (text.includes("```")) text = text.split("```")[0] || text;
-
-    const first = text.indexOf("{");
-    const last = text.lastIndexOf("}");
-    if (first !== -1 && last !== -1) {
-      const parsed = JSON.parse(text.slice(first, last + 1));
-      Object.assign(extracted, parsed);
-    }
-  } catch {
-    // Regex fallback
-    const extractField = (field: string): string | undefined => {
-      const match = raw.match(new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`, "s"));
-      return match?.[1]?.replace(/\\n/g, "\n").replace(/\\"/g, '"');
-    };
-    extracted.inner_thoughts = extractField("inner_thoughts");
-    extracted.action = extractField("action");
-    extracted.dialogue = extractField("dialogue");
-    extracted.emotional_state = extractField("emotional_state");
-  }
-
-  return extracted;
-}
-
 /** Format timestamp elegantly - relative for recent, time for older */
 function formatTimestamp(timestamp?: string | number): string {
   if (!timestamp) return "";
 
-  let date: Date;
-  if (typeof timestamp === "string") {
-    // Ensure UTC parsing: add Z if ISO format without explicit timezone
-    let ts = timestamp;
-    if (ts.includes("T") && !/[Z+-]/.test(ts.slice(-6))) {
-      ts = ts + "Z";
-    } else if (!ts.includes("T")) {
-      ts = ts.replace(" ", "T") + "Z";
-    }
-    date = new Date(ts);
-  } else {
-    date = new Date(timestamp);
-  }
-
+  const date = parseTimestamp(timestamp);
   if (isNaN(date.getTime())) return "";
 
   const now = new Date();
@@ -99,6 +46,12 @@ const INTENSITY_GLOW: Record<IntensityLevel, string> = {
   warm: "0 0 8px rgba(253, 186, 116, 0.4)",
   hot: "0 0 10px rgba(251, 191, 36, 0.5)",
   primal: "0 0 12px rgba(251, 113, 133, 0.6)",
+};
+
+// Page number words for display
+const PAGE_WORDS: Record<number, string> = {
+  1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five",
+  6: "Six", 7: "Seven", 8: "Eight", 9: "Nine", 10: "Ten",
 };
 
 // Mood-based accent colors for atmosphere
@@ -519,7 +472,7 @@ function PageHeader({ pageNum, isFirst }: { pageNum: number; isFirst: boolean })
       className="text-center mb-6"
     >
       <div className="text-xs uppercase tracking-[0.4em] text-primary/50 font-medium">
-        {pageNum === 1 ? "The Beginning" : `Page ${pageNum === 2 ? "Two" : pageNum === 3 ? "Three" : pageNum}`}
+        {pageNum === 1 ? "The Beginning" : `Page ${PAGE_WORDS[pageNum] ?? pageNum}`}
       </div>
     </motion.div>
   );
@@ -570,11 +523,7 @@ function PageIntermission({ pageNum }: { pageNum: number }) {
   const [messageIndex, setMessageIndex] = useState(0);
   const [dots, setDots] = useState(1);
 
-  // Format page number as word for low numbers
-  const pageWord = pageNum === 1 ? "One" : pageNum === 2 ? "Two" : pageNum === 3 ? "Three" :
-                   pageNum === 4 ? "Four" : pageNum === 5 ? "Five" : pageNum === 6 ? "Six" :
-                   pageNum === 7 ? "Seven" : pageNum === 8 ? "Eight" : pageNum === 9 ? "Nine" :
-                   pageNum === 10 ? "Ten" : String(pageNum);
+  const pageWord = PAGE_WORDS[pageNum] ?? String(pageNum);
 
   // Animate dots
   useEffect(() => {
@@ -782,8 +731,6 @@ function IntermissionWrapper({ pageNum }: { pageNum: number }) {
 
 type Props = {
   pages: PageData[];
-  attachedTo: string | null;
-  autoScroll?: boolean;
   focusedPage?: number | null;
   onPageFocus?: (pageNum: number) => void;
   containerRef?: React.RefObject<HTMLDivElement | null>;
@@ -795,9 +742,7 @@ type Props = {
   nextPageNum?: number;
 };
 
-export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, focusedPage, onPageFocus, containerRef, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
-  void _autoScroll; // Reserved for future use
-  const endRef = useRef<HTMLDivElement>(null);
+export function PageFeed({ pages, focusedPage, onPageFocus, containerRef, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
   const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
 
   // Track newest page synchronously (not in effect) so isNew works on first render
@@ -967,7 +912,6 @@ export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, f
               <PageHeader pageNum={pageItem.page} isFirst={isFirst} />
               <PageEntry
                 pageItem={pageItem}
-                attachedTo={attachedTo}
                 isFocused={focusedPage === pageItem.page}
                 isNew={isNewest}
                 onHoverCharacter={onHoverCharacter}
@@ -1023,14 +967,12 @@ export function PageFeed({ pages, attachedTo, autoScroll: _autoScroll = false, f
         )}
       </AnimatePresence>
 
-      <div ref={endRef} />
     </div>
   );
 }
 
 type PageEntryProps = {
   pageItem: PageData;
-  attachedTo: string | null;
   isFocused: boolean;
   isNew: boolean;
   onHoverCharacter?: (name: string | null) => void;
@@ -1042,26 +984,12 @@ type PageEntryProps = {
 /** Check if a timestamp is within the last N seconds */
 function isRecentTimestamp(timestamp?: string | number, maxAgeSeconds = 60): boolean {
   if (!timestamp) return false;
-  let date: Date;
-  if (typeof timestamp === "string") {
-    // Ensure UTC parsing: add Z if ISO format without explicit timezone
-    // Backend sends "2026-03-16T10:30:00" (UTC but no Z suffix)
-    let ts = timestamp;
-    if (ts.includes("T") && !/[Z+-]/.test(ts.slice(-6))) {
-      ts = ts + "Z";
-    } else if (!ts.includes("T")) {
-      ts = ts.replace(" ", "T") + "Z";
-    }
-    date = new Date(ts);
-  } else {
-    date = new Date(timestamp);
-  }
+  const date = parseTimestamp(timestamp);
   if (isNaN(date.getTime())) return false;
-  const diffMs = Date.now() - date.getTime();
-  return diffMs < maxAgeSeconds * 1000;
+  return Date.now() - date.getTime() < maxAgeSeconds * 1000;
 }
 
-function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, onHoverCharacter, onTapCharacter, characterNames, moodStyle }: PageEntryProps) {
+function PageEntry({ pageItem, isFocused, isNew, onHoverCharacter, onTapCharacter, characterNames, moodStyle }: PageEntryProps) {
   // Use typewriter for recent pages (created < 1 min ago)
   const useTypewriter = isNew && isRecentTimestamp(pageItem.created_at, 60);
 
@@ -1126,7 +1054,6 @@ function PageEntry({ pageItem, attachedTo: _attachedTo, isFocused, isNew, onHove
         />
       )}
 
-      {/* Events removed - viewable in director panel */}
     </div>
   );
 }

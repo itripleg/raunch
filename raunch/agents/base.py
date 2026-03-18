@@ -3,7 +3,7 @@
 import json
 import logging
 import re
-from typing import List, Dict, Any, Optional, Generator, Tuple
+from typing import Callable, List, Dict, Any, Optional
 
 from ..llm import get_client
 
@@ -159,7 +159,7 @@ class Agent:
     def page_stream(
         self,
         world_context: str,
-        on_delta: Optional[callable] = None,
+        on_delta: Optional[Callable] = None,
         _retry: bool = False,
         _original_context: str = None
     ) -> Dict[str, Any]:

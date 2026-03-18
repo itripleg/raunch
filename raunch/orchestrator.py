@@ -98,8 +98,6 @@ class Orchestrator:
         self._page_callbacks: List[Callable] = []  # Called after each page with results
         self._player_input: Optional[str] = None  # Pending player action (legacy)
         self._player_event = threading.Event()
-        self._pause_event = threading.Event()  # Signaled when pause state changes
-        self._pause_event.set()  # Start unpaused (set = not paused)
         self._manual_page_event = threading.Event()  # For manual page mode
         self._host_triggered = False  # True when page triggered by CLI/host (bypasses multiplayer wait)
 
@@ -110,7 +108,6 @@ class Orchestrator:
         self._director_guidance: Optional[str] = None
 
         # Session tracking
-        self.is_loaded_session = False  # True if this was loaded from a save
         self.save_name: Optional[str] = None  # Name to save under (derived from scenario/world)
         self._initial_save_done = False  # Track if we've done the first auto-save
 

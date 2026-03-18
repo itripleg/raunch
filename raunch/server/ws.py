@@ -182,7 +182,7 @@ def _ensure_orchestrator(book) -> bool:
             logger.warning(f"[CALLBACK] main_loop is None, cannot broadcast page {results.get('page')}")
             return
         try:
-            future = asyncio.run_coroutine_threadsafe(
+            asyncio.run_coroutine_threadsafe(
                 _broadcast_page(book.book_id, results),
                 main_loop
             )

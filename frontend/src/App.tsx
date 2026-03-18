@@ -725,7 +725,6 @@ function App() {
                 <GameLayout
                   game={game}
                   actions={actions}
-                  apiUrl={apiUrl}
                   onAddCharacter={() => {
                     actions.listCharacters();
                     setShowCharacterWizard(true);
@@ -733,7 +732,6 @@ function App() {
                   onDeleteCharacter={handleDeleteCharacter}
                   onResetBook={handleResetBook}
                   onStopWorld={handleStopWorld}
-                  onBackToDashboard={handleBackToDashboard}
                   onOpenDebug={() => setShowDebugPanel(true)}
                 />
               </ErrorBoundary>
