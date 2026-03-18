@@ -1,7 +1,7 @@
 """Alpha dashboard endpoints — hero message, feedback, polls, admin."""
 
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -83,7 +83,7 @@ async def get_about_content():
 # ─── Feedback ─────────────────────────────────────────────────────────────────
 
 class FeedbackItem(BaseModel):
-    id: int
+    id: Union[int, str]
     title: str
     notes: Optional[str] = None
     status: str
@@ -123,7 +123,7 @@ async def create_feedback(req: FeedbackCreate):
 
 
 @router.put("/feedback/{item_id}", response_model=FeedbackItem)
-async def update_feedback(item_id: int, req: FeedbackUpdate):
+async def update_feedback(item_id: str, req: FeedbackUpdate):
     """Update a feedback item."""
     item = db.update_feedback_item(
         item_id,
@@ -137,7 +137,7 @@ async def update_feedback(item_id: int, req: FeedbackUpdate):
 
 
 @router.delete("/feedback/{item_id}")
-async def delete_feedback(item_id: int):
+async def delete_feedback(item_id: str):
     """Delete a feedback item."""
     deleted = db.delete_feedback_item(item_id)
     if not deleted:
@@ -146,7 +146,7 @@ async def delete_feedback(item_id: int):
 
 
 @router.post("/feedback/{item_id}/vote")
-async def vote_feedback(item_id: int, req: VoteRequest):
+async def vote_feedback(item_id: str, req: VoteRequest):
     """Toggle vote on a feedback item."""
     result = db.vote_feedback_item(item_id, req.voter_id)
     if result is None:
@@ -157,17 +157,26 @@ async def vote_feedback(item_id: int, req: VoteRequest):
 # ─── Polls ────────────────────────────────────────────────────────────────────
 
 class PollOption(BaseModel):
-    id: int
-    text: str
+    id: Union[int, str]
+    text: Optional[str] = None  # SQLite uses "text"
+    label: Optional[str] = None  # Firestore uses "label"
+    vote_count: int = 0
+    submitted_by: Optional[str] = None
     votes: int = 0
 
 
 class Poll(BaseModel):
-    id: int
+    id: Union[int, str]
     question: str
     options: List[PollOption] = []
     closed: bool = False
-    created_at: str
+    is_closed: bool = False
+    created_at: Optional[str] = None
+    poll_type: Optional[str] = None
+    max_selections: int = 1
+    allow_submissions: bool = True
+    show_live_results: bool = True
+    closes_at: Optional[str] = None
 
 
 class PollCreate(BaseModel):
@@ -176,7 +185,7 @@ class PollCreate(BaseModel):
 
 
 class PollVoteRequest(BaseModel):
-    option_id: int
+    option_id: Union[int, str]
     voter_id: str
 
 
@@ -199,7 +208,7 @@ async def create_poll(req: PollCreate):
 
 
 @router.post("/polls/{poll_id}/vote")
-async def vote_poll(poll_id: int, req: PollVoteRequest):
+async def vote_poll(poll_id: str, req: PollVoteRequest):
     """Vote on a poll option."""
     result = db.vote_poll(poll_id, req.option_id, req.voter_id)
     if result is None:
@@ -208,7 +217,7 @@ async def vote_poll(poll_id: int, req: PollVoteRequest):
 
 
 @router.post("/polls/{poll_id}/options", response_model=PollOption)
-async def add_poll_option(poll_id: int, req: PollOptionCreate):
+async def add_poll_option(poll_id: str, req: PollOptionCreate):
     """Add an option to a poll."""
     option = db.add_poll_option(poll_id, req.text)
     if option is None:
@@ -217,7 +226,7 @@ async def add_poll_option(poll_id: int, req: PollOptionCreate):
 
 
 @router.delete("/polls/{poll_id}")
-async def delete_poll(poll_id: int):
+async def delete_poll(poll_id: str):
     """Delete a poll."""
     deleted = db.delete_poll(poll_id)
     if not deleted:
