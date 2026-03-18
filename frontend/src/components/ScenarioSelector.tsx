@@ -33,7 +33,7 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"my" | "public">(initialTab ?? "public");
+  const [activeTab, setActiveTab] = useState<"my" | "public">(initialTab ?? "my");
 
   // Helper to get unique identifier for a scenario
   const getScenarioId = (scenario: Scenario) => scenario.file || scenario.id || "";
@@ -247,16 +247,6 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
           className="w-full flex gap-2 mb-4"
         >
           <button
-            onClick={() => setActiveTab("public")}
-            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === "public"
-                ? "bg-primary/10 text-primary border border-primary/30"
-                : "bg-card/30 text-muted-foreground/70 border border-border/30 hover:border-border/50"
-            }`}
-          >
-            Public Scenarios
-          </button>
-          <button
             onClick={() => setActiveTab("my")}
             className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               activeTab === "my"
@@ -265,6 +255,16 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
             }`}
           >
             My Scenarios
+          </button>
+          <button
+            onClick={() => setActiveTab("public")}
+            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "public"
+                ? "bg-primary/10 text-primary border border-primary/30"
+                : "bg-card/30 text-muted-foreground/70 border border-border/30 hover:border-border/50"
+            }`}
+          >
+            Public Scenarios
           </button>
         </motion.div>
 

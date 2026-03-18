@@ -182,7 +182,7 @@ function App() {
   const [scenarioLoading, setScenarioLoading] = useState(false);
   const [scenarioError, setScenarioError] = useState<string | null>(null);
   // Which tab to open in ScenarioSelector (reset after use)
-  const [scenarioInitialTab, setScenarioInitialTab] = useState<"my" | "public">("public");
+  const [scenarioInitialTab, setScenarioInitialTab] = useState<"my" | "public">("my");
 
 
   // Character wizard state
