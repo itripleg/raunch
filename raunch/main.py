@@ -15,7 +15,7 @@ from .orchestrator import Orchestrator, _extract_narration_from_raw, _clean_narr
 from .agents.character import Character
 from .display import (
     render_page, render_character_list, render_world_state, render_character_history,
-    render_server_startup,
+    render_server_startup, render_scene_intro, _scene_break,
     start_page_loading, stop_page_loading, update_page_loading,
     render_attach_animation, render_detach_animation,
 )
@@ -178,10 +178,19 @@ def start(save_name, world_name, scenario_name, headless, serve, port):
     progressive_results: Dict[str, Any] = {}
     progressive_rendered = {"narrator": False, "characters": set()}
 
+    # Track page count for scene breaks
+    cli_page_count = [0]
+
     # Progressive rendering callbacks — CLI renders as each piece completes
     def on_page_start(page_num: int):
         nonlocal page_loading_active, page_animation_thread, progressive_rendered
         progressive_rendered = {"narrator": False, "characters": set()}
+
+        # Scene break between pages (not before the first)
+        if cli_page_count[0] > 0:
+            _scene_break(cli_page_count[0])
+        cli_page_count[0] += 1
+
         page_loading_active = True
         page_animation_thread = threading.Thread(
             target=_run_loading_animation,
@@ -384,6 +393,21 @@ def start(save_name, world_name, scenario_name, headless, serve, port):
         page_count=world.page_count,
         animated=not headless,
     )
+
+    # Scene intro with scenario info
+    if not headless and orch.world.scenario:
+        scenario = orch.world.scenario
+        render_scene_intro(
+            scenario.get("scenario_name", world.world_name),
+            scenario.get("setting", ""),
+            world.mood or "anticipation",
+        )
+        # Show opening situation with dramatic reveal
+        opening = scenario.get("opening_situation", "")
+        if opening:
+            from .display import _dramatic_reveal
+            _dramatic_reveal(opening)
+            console.print()
 
     orch.start()
 
