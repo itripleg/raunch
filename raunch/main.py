@@ -424,12 +424,69 @@ def start(save_name, world_name, scenario_name, headless, force):
 
     orch.set_stream_callback(on_stream)
 
+    # Progressive rendering callbacks for non-streaming mode
+    def on_narrator_ready(page_num: int, narration: str, mood: str):
+        nonlocal page_loading_active, progressive_rendered
+        if progressive_rendered.get("narrator"):
+            return
+        # Stop loading animation
+        if page_loading_active:
+            page_loading_active = False
+            time.sleep(0.05)
+            stop_page_loading()
+        # Render narrator panel
+        from .display import render_narrator_panel
+        try:
+            render_narrator_panel(page_num, narration, mood)
+        except Exception as e:
+            console.print(f"[dim]Narrator: {narration[:100]}...[/dim]")
+        progressive_rendered["narrator"] = True
+        # Notify frontend
+        ws_server.broadcast_narrator_ready(page_num, narration, mood)
+
+    def on_character_ready(page_num: int, name: str, data: dict):
+        nonlocal progressive_rendered
+        if name in progressive_rendered.get("characters", set()):
+            return
+        from .display import render_character_panel_inline
+        try:
+            render_character_panel_inline(
+                name, data,
+                is_attached=(name == orch.attached_to)
+            )
+        except Exception:
+            dialogue = data.get("dialogue")
+            if dialogue and dialogue.lower() != "null":
+                console.print(f"  [bold]{name}[/] — [italic]\"{dialogue}\"[/]")
+        progressive_rendered["characters"].add(name)
+        ws_server.broadcast_character_ready(page_num, name, data)
+
+    def on_page_start(page_num: int):
+        nonlocal page_loading_active, page_animation_thread, progressive_rendered
+        # Reset progressive state for new page
+        progressive_rendered = {"narrator": False, "characters": set()}
+        # Start loading animation
+        page_loading_active = True
+        page_animation_thread = threading.Thread(
+            target=_run_loading_animation,
+            args=(page_num,),
+            daemon=True
+        )
+        page_animation_thread.start()
+        # Notify frontend that page is generating (for intermission)
+        ws_server.broadcast_page_generating(page_num)
+
+    orch.set_page_start_callback(on_page_start)
+    orch.set_narrator_callback(on_narrator_ready)
+    orch.set_character_callback(on_character_ready)
+
     # Disable streaming for OAuth (doesn't support real streaming)
     client = get_client()
-    console.print(f"[dim]Auth method: {client.auth_method}, streaming: {client.supports_streaming}[/dim]")
+    if client.auth_method != "none":
+        console.print(f"[dim]Auth method: {client.auth_method}, streaming: {client.supports_streaming}[/dim]")
     orch.streaming_enabled = client.supports_streaming
     if not client.supports_streaming:
-        console.print("[dim]OAuth mode: streaming disabled, using typewriter animation[/dim]")
+        console.print("[dim]OAuth mode: streaming disabled, using progressive rendering[/dim]")
 
     # Wire up: orchestrator pages → server broadcasts + local display
     def on_page(results):

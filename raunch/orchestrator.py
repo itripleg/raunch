@@ -120,6 +120,7 @@ class Orchestrator:
         self._stream_lock = threading.Lock()  # Protects _stream_callback from race conditions
 
         # Progressive rendering callbacks (for non-streaming mode)
+        self._page_start_callback: Optional[Callable[[int], None]] = None  # (page_num)
         self._narrator_callback: Optional[Callable[[int, str, str], None]] = None  # (page, narration, mood)
         self._character_callback: Optional[Callable[[int, str, dict], None]] = None  # (page, name, data)
 
@@ -350,6 +351,13 @@ class Orchestrator:
         self.world.page_count += 1
         page_num = self.world.page_count
         results: Dict[str, Any] = {"page": page_num, "characters": {}}
+
+        # Notify that page generation has started
+        if self._page_start_callback:
+            try:
+                self._page_start_callback(page_num)
+            except Exception as e:
+                logger.error(f"Page start callback error: {e}")
 
         # 1. Narrator advances the world
         world_snapshot = self.world.snapshot()
@@ -698,6 +706,10 @@ class Orchestrator:
     def set_stream_callback(self, callback: Optional[Callable[[int, str, str, str], None]]) -> None:
         """Set callback for streaming: callback(page_num, source, event_type, data)."""
         self._stream_callback = callback
+
+    def set_page_start_callback(self, callback: Optional[Callable[[int], None]]) -> None:
+        """Set callback for page generation start: callback(page_num)."""
+        self._page_start_callback = callback
 
     def set_narrator_callback(self, callback: Optional[Callable[[int, str, str], None]]) -> None:
         """Set callback for narrator completion (non-streaming): callback(page_num, narration, mood)."""
