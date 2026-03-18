@@ -856,55 +856,35 @@ export function PageFeed({ pages, bookId, focusedPage, onPageFocus, containerRef
     return () => clearTimeout(timer);
   }, [pages.length, storageKey]);
 
-  // Auto-scroll new pages into view, but only if the previous last page is visible
-  const lastPageCount = useRef(pages.length);
+  // Auto-scroll to intermission when page generation starts,
+  // but only if the last page is currently visible (user hasn't scrolled away)
+  const intermissionRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (pages.length === 0) {
-      lastPageCount.current = 0;
-      return;
-    }
+    if (!waitingForPage || pages.length === 0) return;
 
-    if (pages.length <= lastPageCount.current) {
-      lastPageCount.current = pages.length;
-      return;
-    }
+    const lastPageNum = pages[pages.length - 1]?.page;
+    if (!lastPageNum) return;
 
-    const prevLastPageNum = lastPageCount.current > 0
-      ? pages[lastPageCount.current - 1]?.page
-      : null;
-    const newestPageNum = pages[pages.length - 1]?.page;
-    lastPageCount.current = pages.length;
-
-    if (!newestPageNum) return;
-    if (!hasScrolledOnLoad.current) {
-      hasScrolledOnLoad.current = true;
-    }
-
-    // Only auto-scroll if the previous last page is in view (user hasn't scrolled away)
-    if (prevLastPageNum) {
-      const prevEl = pageRefs.current.get(prevLastPageNum)
-        ?? document.querySelector(`[data-page="${prevLastPageNum}"]`) as HTMLElement | null;
-      if (prevEl) {
-        const container = containerRef?.current;
-        if (container) {
-          const containerRect = container.getBoundingClientRect();
-          const elRect = prevEl.getBoundingClientRect();
-          const isVisible = elRect.bottom > containerRect.top && elRect.top < containerRect.bottom;
-          if (!isVisible) return; // User scrolled away, don't auto-scroll
-        }
+    // Check if last page is in view
+    const lastEl = pageRefs.current.get(lastPageNum)
+      ?? document.querySelector(`[data-page="${lastPageNum}"]`) as HTMLElement | null;
+    if (lastEl) {
+      const container = containerRef?.current;
+      if (container) {
+        const containerRect = container.getBoundingClientRect();
+        const elRect = lastEl.getBoundingClientRect();
+        const isVisible = elRect.bottom > containerRect.top && elRect.top < containerRect.bottom;
+        if (!isVisible) return; // User scrolled away, don't auto-scroll
       }
     }
 
+    // Small delay for the intermission element to mount
     const timer = setTimeout(() => {
-      const el = pageRefs.current.get(newestPageNum)
-        ?? document.querySelector(`[data-page="${newestPageNum}"]`) as HTMLElement | null;
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    }, 600);
+      intermissionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
 
     return () => clearTimeout(timer);
-  }, [pages.length, containerRef]);
+  }, [waitingForPage, containerRef, pages.length]);
 
   // Empty state - show centered "Your story awaits" when no pages and not waiting
   if (pages.length === 0 && !waitingForPage) {
@@ -997,7 +977,9 @@ export function PageFeed({ pages, bookId, focusedPage, onPageFocus, containerRef
       {/* Intermission while waiting for generation */}
       <AnimatePresence mode="wait">
         {waitingForPage && (
-          <IntermissionWrapper key="intermission" pageNum={nextPageNum} />
+          <div ref={intermissionRef}>
+            <IntermissionWrapper key="intermission" pageNum={nextPageNum} />
+          </div>
         )}
       </AnimatePresence>
 
