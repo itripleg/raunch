@@ -626,11 +626,9 @@ def get_feedback_items(voter_id: Optional[str] = None) -> List[Dict[str, Any]]:
 
     # Sort by status order, then upvotes DESC, then created_at DESC
     status_order = {"planned": 1, "considering": 2, "requests": 3, "results": 4}
-    items.sort(key=lambda x: (
-        status_order.get(x["status"], 99),
-        -(x["upvotes"] or 0),
-        -(x["created_at"] or ""),
-    ))
+    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)  # newest first
+    items.sort(key=lambda x: -(x["upvotes"] or 0))  # most upvoted first (stable)
+    items.sort(key=lambda x: status_order.get(x["status"], 99))  # status order (stable)
     return items
 
 
@@ -792,7 +790,8 @@ def get_polls(voter_id: Optional[str] = None) -> List[Dict[str, Any]]:
         polls.append(poll)
 
     # Sort: is_closed ASC, created_at DESC
-    polls.sort(key=lambda p: (p["is_closed"], -(p["created_at"] or "")))
+    polls.sort(key=lambda p: p.get("created_at") or "", reverse=True)  # newest first (stable)
+    polls.sort(key=lambda p: p["is_closed"])  # open polls first (stable)
     return polls
 
 
