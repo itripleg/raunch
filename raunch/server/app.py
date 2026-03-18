@@ -52,7 +52,56 @@ def create_app() -> FastAPI:
     )
 
     @app.on_event("startup")
-    async def start_keep_alive():
+    async def on_startup():
+        # Ensure our logger is visible
+        logging.basicConfig(level=logging.INFO)
+        # Startup health checks
+        from ..config import DB_BACKEND
+        logger.info(f"╔══════════════════════════════════════╗")
+        logger.info(f"║  Living Library — starting up...     ║")
+        logger.info(f"╚══════════════════════════════════════╝")
+        logger.info(f"  DB backend: {DB_BACKEND}")
+
+        # Init DB and verify connectivity
+        try:
+            from .. import db
+            db.init_db()
+            logger.info(f"  ✓ Database OK")
+        except Exception as e:
+            logger.error(f"  ✗ Database FAILED: {e}")
+
+        # Check for LLM credentials
+        llm_ok = False
+        try:
+            from ..auth_db import get_active_token
+            token = get_active_token()
+            if token:
+                logger.info(f"  ✓ LLM token: active (OAuth)")
+                llm_ok = True
+        except Exception:
+            pass
+        if not llm_ok:
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if api_key:
+                logger.info(f"  ✓ LLM token: ANTHROPIC_API_KEY set")
+            else:
+                oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+                if oauth_token:
+                    logger.info(f"  ✓ LLM token: CLAUDE_CODE_OAUTH_TOKEN set")
+                else:
+                    logger.warning(f"  ✗ No LLM credentials found — page generation will fail")
+
+        # Check scenarios
+        try:
+            from ..wizard import list_scenarios
+            file_scenarios = list_scenarios()
+            logger.info(f"  ✓ Scenarios: {len(file_scenarios)} file-based")
+        except Exception as e:
+            logger.warning(f"  ✗ Scenarios: {e}")
+
+        logger.info(f"  Ready!")
+
+        # Start keep-alive ping
         asyncio.create_task(_keep_alive())
 
     # CORS — allow_credentials=True is incompatible with allow_origins=["*"]
