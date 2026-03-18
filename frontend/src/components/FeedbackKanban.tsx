@@ -225,7 +225,7 @@ export function FeedbackKanban({ onBack, isAdmin, apiUrl, userEmail }: Props) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Header */}
       <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
         <div className="flex items-center justify-between px-4 sm:px-6 py-4 max-w-7xl mx-auto">
@@ -273,7 +273,7 @@ export function FeedbackKanban({ onBack, isAdmin, apiUrl, userEmail }: Props) {
       </header>
 
       {/* Content */}
-      <main className="p-4 sm:p-6 max-w-7xl mx-auto">
+      <main className="p-4 sm:p-6 max-w-7xl mx-auto flex-1 min-h-0">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="text-muted-foreground">Loading...</div>
@@ -298,12 +298,12 @@ export function FeedbackKanban({ onBack, isAdmin, apiUrl, userEmail }: Props) {
             )}
           </div>
         ) : (
-          // Desktop: 4 columns
-          <div className="grid grid-cols-4 gap-6">
+          // Desktop: 4 columns, fill remaining viewport
+          <div className="grid grid-cols-4 gap-6 h-full">
             {COLUMNS.map((status) => (
               <div
                 key={status}
-                className="space-y-4"
+                className="flex flex-col min-h-0"
                 onDragOver={(e) => {
                   if (isAdmin && draggedItem) {
                     e.preventDefault();
@@ -335,8 +335,8 @@ export function FeedbackKanban({ onBack, isAdmin, apiUrl, userEmail }: Props) {
                   </div>
                 </div>
 
-                {/* Items */}
-                <div className="space-y-3 min-h-[200px]">
+                {/* Items — scrollable independently */}
+                <div className="space-y-3 flex-1 overflow-y-auto min-h-0 pr-1">
                   {getItemsByStatus(status).map((item) => (
                     <FeedbackCard
                       key={item.id}

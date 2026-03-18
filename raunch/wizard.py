@@ -128,6 +128,9 @@ PAIRINGS = [
     "bi exploration", "lesbian/sapphic", "anonymous/masked", "throuple",
     "gay/mlm", "nonbinary character(s)", "straight", "cuckold/cuckquean",
     "group/orgy", "trans-inclusive", "solo with toys", "androgynous",
+    "age gap (all adults)", "power imbalance", "rivals/competitors",
+    "best friend's ex", "teacher/mentor", "coworkers", "exes reunited",
+    "arranged/forced proximity",
 ]
 
 KINK_POOLS = [

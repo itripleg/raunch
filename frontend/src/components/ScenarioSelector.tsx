@@ -288,7 +288,7 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
             ) : (
               <>
                 <Plus className="w-4 h-4" />
-                quick generate
+                quick generate <span className="text-muted-foreground/40">(vanilla)</span>
               </>
             )}
           </button>
@@ -343,7 +343,8 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className={`relative group flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
+                      layout
+                      className={`relative group rounded-xl border transition-all ${
                         selectedScenario === scenarioId
                           ? "border-primary/40 bg-primary/[0.05]"
                           : "border-border/30 bg-card/30 hover:border-border/50"
@@ -351,27 +352,50 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
                     >
                       {/* Main content - clickable */}
                       <button
-                        onClick={() => setSelectedScenario(scenarioId)}
-                        className="flex-1 text-left min-w-0"
+                        onClick={() => setSelectedScenario(selectedScenario === scenarioId ? null : scenarioId)}
+                        className="w-full text-left px-4 py-3"
                       >
-                        <p className="text-base font-medium text-foreground/90 truncate">
-                          {scenario.name}
-                        </p>
+                        <div className="flex items-center gap-3">
+                          <p className={`text-base font-medium text-foreground/90 flex-1 ${selectedScenario === scenarioId ? "" : "truncate"}`}>
+                            {scenario.name}
+                          </p>
+                          <span className="text-xs text-muted-foreground/50 flex-shrink-0">
+                            {scenario.characters} {scenario.characters === 1 ? "char" : "chars"}
+                          </span>
+                        </div>
                         {scenario.setting && (
-                          <p className="text-sm text-muted-foreground/60 mt-1 line-clamp-1">
+                          <p className={`text-sm text-muted-foreground/60 mt-1 ${selectedScenario === scenarioId ? "" : "line-clamp-1"}`}>
                             {scenario.setting}
                           </p>
                         )}
+                        {/* Expanded details */}
+                        <AnimatePresence>
+                          {selectedScenario === scenarioId && scenario.themes && scenario.themes.length > 0 && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border/20">
+                                {scenario.themes.map((theme) => (
+                                  <span
+                                    key={theme}
+                                    className="px-2 py-0.5 text-[10px] rounded-full bg-primary/10 text-primary/70 border border-primary/20"
+                                  >
+                                    {theme}
+                                  </span>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </button>
-
-                      {/* Character count */}
-                      <span className="text-xs text-muted-foreground/50 flex-shrink-0">
-                        {scenario.characters}
-                      </span>
 
                       {/* Delete button - only show for user's own DB scenarios */}
                       {scenario.source === "db" && scenario.owner_id === librarianId && (
-                        <div className="flex-shrink-0">
+                        <div className="absolute top-2 right-2">
                           {isConfirming ? (
                             <div className="flex gap-1">
                               <button

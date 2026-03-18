@@ -19,6 +19,8 @@ type Props = {
   onOpenSettings: () => void;
   apiUrl: string;
   userEmail?: string;
+  hasActiveBook?: boolean;
+  activeBookName?: string;
 };
 
 type HeroMessage = {
@@ -39,7 +41,7 @@ type Card = {
   disabled?: boolean;
 };
 
-export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, userEmail }: Props) {
+export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, userEmail, hasActiveBook, activeBookName }: Props) {
   const [heroMessage, setHeroMessage] = useState<HeroMessage | null>(null);
   const [isEditingHero, setIsEditingHero] = useState(false);
   const [editContent, setEditContent] = useState("");
@@ -55,7 +57,7 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, us
       .catch(() => {
         // API not available, use fallback
         setHeroMessage({
-          content: "Welcome to the Raunch alpha! We're building the future of adult interactive fiction. Your feedback shapes what we create.",
+          content: "You're in early 💖 Thanks for alpha testing — things will break, stories will get weird, and we love that. 😈 Use Feedback & Polls so we know what to build next.",
           updated_at: new Date().toISOString(),
         });
       });
@@ -96,21 +98,35 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, us
   };
 
   const cards: Card[] = [
+    // Featured: Continue or Scenarios depending on active book
     {
-      id: "game",
-      title: "Play Raunch",
-      subtitle: "Dive into your story",
-      icon: Gamepad2,
+      id: hasActiveBook ? "game" : "scenario",
+      title: hasActiveBook ? "Continue" : "Enter the Library",
+      subtitle: hasActiveBook
+        ? (activeBookName || "Pick up where you left off")
+        : "Browse scenarios and start a new story",
+      icon: hasActiveBook ? Gamepad2 : Compass,
       color: "from-violet-500/30 via-fuchsia-500/20 to-primary/20",
       borderColor: "border-violet-400/50",
       hoverGlow: "hover:shadow-[0_0_60px_oklch(0.6_0.25_300_/_0.3)]",
-      onClick: () => onNavigate("game"),
+      onClick: () => onNavigate(hasActiveBook ? "game" : "scenario"),
       featured: true,
     },
+    // Show scenarios as secondary if we have an active book
+    ...(hasActiveBook ? [{
+      id: "scenario",
+      title: "New Story",
+      subtitle: "Start something different",
+      icon: Compass,
+      color: "from-sky-500/20 to-sky-500/5",
+      borderColor: "border-sky-500/30",
+      hoverGlow: "hover:shadow-[0_0_40px_oklch(0.65_0.2_220_/_0.15)]",
+      onClick: () => onNavigate("scenario"),
+    }] : []),
     {
       id: "wizard",
       title: "Smut Wizard",
-      subtitle: "Generate scenarios",
+      subtitle: "Craft your perfect scene",
       icon: Wand2,
       color: "from-fuchsia-500/20 to-fuchsia-500/5",
       borderColor: "border-fuchsia-500/30",
@@ -118,19 +134,9 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, us
       onClick: () => onNavigate("wizard"),
     },
     {
-      id: "scenario",
-      title: "New Story",
-      subtitle: "Choose a scenario",
-      icon: Compass,
-      color: "from-sky-500/20 to-sky-500/5",
-      borderColor: "border-sky-500/30",
-      hoverGlow: "hover:shadow-[0_0_40px_oklch(0.65_0.2_220_/_0.15)]",
-      onClick: () => onNavigate("scenario"),
-    },
-    {
       id: "kanban",
       title: "Feedback",
-      subtitle: "Shape the roadmap",
+      subtitle: "Tell us what you want",
       icon: MessageSquare,
       color: "from-primary/20 to-primary/5",
       borderColor: "border-primary/30",
@@ -138,24 +144,24 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, us
       onClick: () => onNavigate("kanban"),
     },
     {
-      id: "about",
-      title: "About",
-      subtitle: "Getting started",
-      icon: BookOpen,
-      color: "from-jade/20 to-jade/5",
-      borderColor: "border-jade/30",
-      hoverGlow: "hover:shadow-[0_0_40px_oklch(0.6_0.15_160_/_0.15)]",
-      onClick: () => onNavigate("about"),
-    },
-    {
       id: "voting",
-      title: "Voting",
-      subtitle: "Polls & preferences",
+      title: "Polls",
+      subtitle: "Vote on what's next",
       icon: Vote,
       color: "from-amber-500/20 to-amber-500/5",
       borderColor: "border-amber-500/30",
       hoverGlow: "hover:shadow-[0_0_40px_oklch(0.7_0.18_60_/_0.15)]",
       onClick: () => onNavigate("voting"),
+    },
+    {
+      id: "about",
+      title: "WTF is this?",
+      subtitle: "How it works",
+      icon: BookOpen,
+      color: "from-jade/20 to-jade/5",
+      borderColor: "border-jade/30",
+      hoverGlow: "hover:shadow-[0_0_40px_oklch(0.6_0.15_160_/_0.15)]",
+      onClick: () => onNavigate("about"),
     },
   ];
 
@@ -305,7 +311,7 @@ export function AlphaDashboard({ onNavigate, isAdmin, onOpenSettings, apiUrl, us
                     ? "opacity-50 cursor-not-allowed p-6 sm:p-8"
                     : `hover:scale-[1.02] hover:border-opacity-60 ${card.hoverGlow} p-6 sm:p-8`
                   }
-                  ${card.featured ? "sm:col-span-2 lg:col-span-1 p-8 sm:p-10" : ""}
+                  ${card.featured ? "sm:col-span-2 p-8 sm:p-10" : ""}
                 `}
               >
                 {/* Background pattern */}

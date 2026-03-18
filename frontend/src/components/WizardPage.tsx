@@ -76,17 +76,7 @@ function MagicParticle({ delay }: { delay: number }) {
   );
 }
 
-// Animated dice for the roll button
-function AnimatedDice({ rolling }: { rolling: boolean }) {
-  return (
-    <motion.div
-      animate={rolling ? { rotateZ: [0, 360, 720], scale: [1, 1.2, 1] } : {}}
-      transition={{ duration: 0.6, ease: "easeOut" }}
-    >
-      <Dice5 className="w-5 h-5" />
-    </motion.div>
-  );
-}
+
 
 // Chip component for kinks and vibes
 function SelectableChip({
@@ -257,6 +247,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
   const [customVibe, setCustomVibe] = useState<string>("");
   const [customPrefs, setCustomPrefs] = useState("");
   const [numChars, setNumChars] = useState(2);
+  const [multiplayer, setMultiplayer] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [rawJson, setRawJson] = useState("");
   const [saving, setSaving] = useState(false);
@@ -267,40 +258,154 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
   const resultRef = useRef<HTMLDivElement>(null);
   const diceControls = useAnimation();
 
-  // Random roll with animation
-  const randomRoll = async () => {
+  // Hold-to-roll refs
+  const rollingRef = useRef(false);
+  const rollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rollFrameRef = useRef(0);
+
+  // Start rolling — called on mousedown/touchstart
+  const startRolling = () => {
     if (!options || rolling) return;
     setRolling(true);
+    rollingRef.current = true;
+    rollFrameRef.current = 0;
 
-    // Trigger dice animation
-    await diceControls.start({
-      rotate: [0, 360, 720, 1080],
-      scale: [1, 1.3, 1],
-      transition: { duration: 0.8, ease: "easeOut" },
+    // Shuffle option order for a fresh feel each roll
+    setOptions({
+      settings: shuffle(options.settings),
+      pairings: shuffle(options.pairings),
+      kinks: shuffle(options.kinks),
+      vibes: shuffle(options.vibes),
     });
 
-    setSelectedSetting(
-      options.settings[Math.floor(Math.random() * options.settings.length)]
-    );
-    setCustomSetting("");
+    // Continuous dice spin while held
+    diceControls.start({
+      rotate: [0, 360],
+      transition: { duration: 0.4, ease: "linear", repeat: Infinity },
+    });
 
-    // Pick 1-2 random pairings
-    const shuffledPairings = [...options.pairings].sort(() => Math.random() - 0.5);
-    setSelectedPairings(shuffledPairings.slice(0, 1 + Math.floor(Math.random() * 2)));
+    const settingOptions = options.settings;
+    const pairingOptions = options.pairings;
+    const kinkOptions = options.kinks;
+    const vibeOptions = options.vibes;
 
-    // Pick 2-4 random kinks
-    const shuffled = [...options.kinks].sort(() => Math.random() - 0.5);
-    setSelectedKinks(shuffled.slice(0, 2 + Math.floor(Math.random() * 3)));
-    setCustomKinks("");
+    // Rapidly cycle all categories while button is held
+    rollIntervalRef.current = setInterval(() => {
+      const f = rollFrameRef.current++;
+      setSelectedSetting(settingOptions[f % settingOptions.length]);
+      const pIdx = f % pairingOptions.length;
+      setSelectedPairings([pairingOptions[pIdx], pairingOptions[(pIdx + 3) % pairingOptions.length]]);
+      const kIdx = f % kinkOptions.length;
+      setSelectedKinks([kinkOptions[kIdx], kinkOptions[(kIdx + 2) % kinkOptions.length], kinkOptions[(kIdx + 5) % kinkOptions.length]]);
+      setSelectedVibe(vibeOptions[f % vibeOptions.length]);
+      setNumChars(1 + (f % 4));
+    }, 60);
+  };
 
-    setSelectedVibe(
-      options.vibes[Math.floor(Math.random() * options.vibes.length)]
-    );
-    setCustomVibe("");
-    setNumChars(1 + Math.floor(Math.random() * 4));
+  // Stop rolling — called on mouseup/touchend, triggers eased deceleration
+  const stopRolling = async () => {
+    if (!rollingRef.current || !options) return;
+    rollingRef.current = false;
 
+    // Stop the rapid cycling
+    if (rollIntervalRef.current) {
+      clearInterval(rollIntervalRef.current);
+      rollIntervalRef.current = null;
+    }
+
+    // Pick final values
+    const finalSetting = options.settings[Math.floor(Math.random() * options.settings.length)];
+    const finalPairings = [...options.pairings].sort(() => Math.random() - 0.5).slice(0, 1 + Math.floor(Math.random() * 2));
+    const finalKinks = [...options.kinks].sort(() => Math.random() - 0.5).slice(0, 2 + Math.floor(Math.random() * 3));
+    const finalVibe = options.vibes[Math.floor(Math.random() * options.vibes.length)];
+    const finalChars = 1 + Math.floor(Math.random() * 4);
+
+    // Dice deceleration
+    diceControls.stop();
+    diceControls.start({
+      rotate: [0, 360, 540],
+      scale: [1, 1.2, 1],
+      transition: { duration: 1.5, ease: "easeOut" },
+    });
+
+    const settingOptions = options.settings;
+    const pairingOptions = options.pairings;
+    const kinkOptions = options.kinks;
+    const vibeOptions = options.vibes;
+
+    // Ease function: quadratic ease-out
+    const baseTick = 60;
+    const easedDelay = (i: number, total: number) => {
+      const t = i / total;
+      return baseTick + (t * t) * 350;
+    };
+
+    const runReel = (
+      total: number,
+      onTick: (i: number) => void,
+      onDone: () => void,
+    ) => new Promise<void>((resolve) => {
+      let i = 0;
+      const next = () => {
+        if (i >= total) { onDone(); resolve(); return; }
+        onTick(i);
+        i++;
+        setTimeout(next, easedDelay(i, total));
+      };
+      next();
+    });
+
+    const stagger = 300;
+
+    const reels = [
+      new Promise<void>(r => setTimeout(() => {
+        runReel(8,
+          (i) => setSelectedSetting(settingOptions[(rollFrameRef.current + i) % settingOptions.length]),
+          () => { setSelectedSetting(finalSetting); setCustomSetting(""); }
+        ).then(r);
+      }, 0)),
+      new Promise<void>(r => setTimeout(() => {
+        runReel(10,
+          (i) => {
+            const idx = (rollFrameRef.current + i) % pairingOptions.length;
+            setSelectedPairings([pairingOptions[idx], pairingOptions[(idx + 3) % pairingOptions.length]]);
+          },
+          () => setSelectedPairings(finalPairings),
+        ).then(r);
+      }, stagger)),
+      new Promise<void>(r => setTimeout(() => {
+        runReel(12,
+          (i) => {
+            const idx = (rollFrameRef.current + i) % kinkOptions.length;
+            setSelectedKinks([kinkOptions[idx], kinkOptions[(idx + 2) % kinkOptions.length], kinkOptions[(idx + 5) % kinkOptions.length]]);
+          },
+          () => { setSelectedKinks(finalKinks); setCustomKinks(""); },
+        ).then(r);
+      }, stagger * 2)),
+      new Promise<void>(r => setTimeout(() => {
+        runReel(14,
+          (i) => setSelectedVibe(vibeOptions[(rollFrameRef.current + i) % vibeOptions.length]),
+          () => { setSelectedVibe(finalVibe); setCustomVibe(""); },
+        ).then(r);
+      }, stagger * 3)),
+      new Promise<void>(r => setTimeout(() => {
+        runReel(6,
+          (i) => setNumChars(1 + ((rollFrameRef.current + i) % 4)),
+          () => setNumChars(finalChars),
+        ).then(r);
+      }, stagger * 4)),
+    ];
+
+    await Promise.all(reels);
     setRolling(false);
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+    };
+  }, []);
 
   // Shuffle array helper
   const shuffle = <T,>(arr: T[]): T[] => {
@@ -364,7 +469,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
           pairings: selectedPairings.length > 0 ? selectedPairings : null,
           kinks: finalKinks,
           vibe: finalVibe,
-          preferences: customPrefs || null,
+          preferences: [customPrefs, multiplayer ? "This is a multiplayer scenario where multiple human players can join" : null].filter(Boolean).join(". ") || null,
           num_characters: numChars,
           save: false,
         }),
@@ -376,6 +481,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
       }
 
       const data = await res.json();
+      data.multiplayer = multiplayer;
       setResult(data);
       setRawJson(JSON.stringify(data, null, 2));
 
@@ -574,19 +680,20 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
 
                 {/* Roll button */}
                 <motion.button
-                  onClick={randomRoll}
-                  disabled={generating || !options || rolling}
-                  animate={diceControls}
-                  className="relative group px-4 py-2.5 bg-gradient-to-r from-violet-500/80 to-primary/80 hover:from-violet-500 hover:to-primary text-white rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20 flex items-center gap-2"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  onMouseDown={startRolling}
+                  onMouseUp={stopRolling}
+                  onMouseLeave={() => { if (rollingRef.current) stopRolling(); }}
+                  onTouchStart={startRolling}
+                  onTouchEnd={stopRolling}
+                  disabled={generating || !options}
+                  className="relative group px-4 py-2.5 bg-gradient-to-r from-violet-500/80 to-primary/80 hover:from-violet-500 hover:to-primary text-white rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20 flex items-center gap-2 select-none"
                 >
                   {/* Button glow */}
                   <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-violet-500 to-primary opacity-0 group-hover:opacity-50 blur-xl transition-opacity" />
                   <span className="relative flex items-center gap-2">
-                    <AnimatedDice rolling={rolling} />
-                    <span className="hidden sm:inline">Roll the Dice</span>
-                    <span className="sm:hidden">Roll</span>
+                    <motion.span animate={diceControls}><Dice5 className="w-5 h-5" /></motion.span>
+                    <span className="hidden sm:inline">{rolling ? "Rolling..." : "Roll the Dice"}</span>
+                    <span className="sm:hidden">{rolling ? "..." : "Roll"}</span>
                   </span>
                 </motion.button>
               </div>
@@ -601,11 +708,125 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
           transition={{ delay: 0.1 }}
           className="space-y-8"
         >
+          {/* Characters & Mode — first section */}
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.12 }}
+            className="relative"
+          >
+            <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-500/50 via-emerald-500/20 to-transparent rounded-full" />
+            <div className="flex items-center gap-2 mb-4">
+              <Users className="w-4 h-4 text-emerald-400" />
+              <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
+                Cast
+              </h2>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              {/* Person icons */}
+              <div className="flex items-end justify-center gap-1.5 h-14">
+                <AnimatePresence mode="popLayout">
+                  {multiplayer ? (
+                    <>
+                      {[0, 1, 2, 3, 4].map((i) => (
+                        <motion.div
+                          key={`mp-${i}`}
+                          initial={{ scale: 0, opacity: 0, y: 10 }}
+                          animate={{ scale: 1, opacity: 1, y: 0 }}
+                          exit={{ scale: 0, opacity: 0, y: 10 }}
+                          transition={{ type: "spring", stiffness: 500, damping: 25, delay: i * 0.05 }}
+                        >
+                          <User
+                            className={`w-10 h-10 ${
+                              i === 2
+                                ? "text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]"
+                                : "text-pink-400/50 drop-shadow-[0_0_6px_rgba(236,72,153,0.2)]"
+                            }`}
+                            strokeWidth={1.5}
+                          />
+                        </motion.div>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      {[...Array(numChars)].map((_, i) => (
+                        <motion.div
+                          key={`solo-${i}`}
+                          initial={{ scale: 0, opacity: 0, y: 10 }}
+                          animate={{ scale: 1, opacity: 1, y: 0 }}
+                          exit={{ scale: 0, opacity: 0, y: 10 }}
+                          transition={{ type: "spring", stiffness: 500, damping: 25, delay: i * 0.05 }}
+                        >
+                          <User className="w-10 h-10 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]" strokeWidth={1.5} />
+                        </motion.div>
+                      ))}
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Number buttons — only in solo mode */}
+              {!multiplayer && (
+                <div className="flex items-center justify-center gap-2">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setNumChars(n)}
+                      className={`w-10 h-10 rounded-lg text-sm font-semibold transition-all ${
+                        numChars === n
+                          ? "bg-emerald-500/30 border-2 border-emerald-400 text-emerald-300 shadow-lg shadow-emerald-500/10"
+                          : "bg-secondary/30 border border-border/40 text-muted-foreground hover:border-emerald-500/30 hover:text-foreground"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* In multiplayer, show single "1" button (locked) */}
+              {multiplayer && (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-10 h-10 rounded-lg text-sm font-semibold bg-emerald-500/30 border-2 border-emerald-400 text-emerald-300 flex items-center justify-center">
+                    1
+                  </div>
+                </div>
+              )}
+
+              {/* Mode toggle: Solo / Multiplayer */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setMultiplayer(false)}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
+                    !multiplayer
+                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                      : "bg-secondary/20 border-border/30 text-muted-foreground/60 hover:border-border/50 hover:text-muted-foreground"
+                  }`}
+                >
+                  <User className="w-4 h-4" />
+                  Solo
+                </button>
+                <button
+                  onClick={() => setMultiplayer(true)}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
+                    multiplayer
+                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                      : "bg-secondary/20 border-border/30 text-muted-foreground/60 hover:border-border/50 hover:text-muted-foreground"
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  Multiplayer
+                </button>
+              </div>
+            </div>
+          </motion.section>
+
           {/* Setting Section */}
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
+            transition={{ delay: 0.18 }}
             className="relative"
           >
             <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-primary/50 via-primary/20 to-transparent rounded-full" />
@@ -684,7 +905,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.18 }}
+            transition={{ delay: 0.22 }}
             className="relative"
           >
             <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-rose-500/50 via-rose-500/20 to-transparent rounded-full" />
@@ -716,7 +937,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.22 }}
+            transition={{ delay: 0.26 }}
             className="relative"
           >
             <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-primary/50 via-primary/20 to-transparent rounded-full" />
@@ -756,7 +977,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
+            transition={{ delay: 0.30 }}
             className="relative"
           >
             <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-500/50 via-amber-500/20 to-transparent rounded-full" />
@@ -798,7 +1019,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.34 }}
             className="relative"
           >
             <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-violet-500/50 via-violet-500/20 to-transparent rounded-full" />
@@ -818,61 +1039,6 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
               placeholder="Any specific requests, character types, situations, or fantasies you'd like to see..."
               className="w-full bg-secondary/30 border border-border/30 hover:border-border/50 focus:border-violet-500/50 rounded-xl px-4 py-3 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-500/20 placeholder:text-muted-foreground/50 h-28 resize-none"
             />
-          </motion.section>
-
-          {/* Character Count */}
-          <motion.section
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 }}
-            className="relative"
-          >
-            <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-500/50 via-emerald-500/20 to-transparent rounded-full" />
-            <div className="flex items-center gap-2 mb-4">
-              <Users className="w-4 h-4 text-emerald-400" />
-              <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
-                Characters
-              </h2>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              {/* Person icons showing current count */}
-              <div className="flex items-end justify-center gap-1 h-14">
-                <AnimatePresence mode="popLayout">
-                  {[...Array(numChars)].map((_, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ scale: 0, opacity: 0, y: 10 }}
-                      animate={{ scale: 1, opacity: 1, y: 0 }}
-                      exit={{ scale: 0, opacity: 0, y: 10 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 25, delay: i * 0.05 }}
-                    >
-                      <User className="w-9 h-9 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]" strokeWidth={1.5} />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-
-              {/* Number buttons */}
-              <div className="flex items-center justify-center gap-2">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setNumChars(n)}
-                    className={`w-10 h-10 rounded-lg text-sm font-semibold transition-all ${
-                      numChars === n
-                        ? "bg-emerald-500/30 border-2 border-emerald-400 text-emerald-300 shadow-lg shadow-emerald-500/10"
-                        : "bg-secondary/30 border border-border/40 text-muted-foreground hover:border-emerald-500/30 hover:text-foreground"
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-                <span className="text-xs text-muted-foreground/60 ml-2">
-                  {numChars === 1 ? "solo" : numChars === 2 ? "duo" : numChars === 3 ? "trio" : numChars === 4 ? "quartet" : "ensemble"}
-                </span>
-              </div>
-            </div>
           </motion.section>
 
           {/* Action Buttons */}

@@ -498,6 +498,8 @@ function App() {
               onOpenSettings={() => setShowSettings(true)}
               apiUrl={apiUrl}
               userEmail={user?.email}
+              hasActiveBook={library.currentBook !== null}
+              activeBookName={library.currentBook?.scenario}
             />
           </motion.div>
         )}
