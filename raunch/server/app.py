@@ -3,10 +3,12 @@
 import asyncio
 import logging
 import os
+import traceback
 
 import httpx
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .routes import health, librarians, books, readers, characters, scenarios, pages, alpha, auth
 from ..oauth import router as oauth_router
@@ -113,6 +115,16 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Catch-all exception handler — ensures 500s return JSON (with CORS headers)
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+        logger.error(f"Unhandled exception on {request.method} {request.url}:\n{''.join(tb)}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc), "type": type(exc).__name__},
+        )
 
     # Routes
     app.include_router(health.router)

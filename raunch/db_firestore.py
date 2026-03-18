@@ -93,11 +93,11 @@ def get_page_history(world_id: str, limit: int = 50, offset: int = 0) -> List[Di
     query = (
         _db.collection("pages")
         .where(filter=FieldFilter("world_id", "==", world_id))
-        .order_by("page_num", direction=firestore.Query.DESCENDING)
-        .offset(offset)
-        .limit(limit)
     )
-    rows = list(query.stream())
+    all_rows = list(query.stream())
+    # Sort in Python to avoid Firestore composite index requirement
+    all_rows.sort(key=lambda s: s.to_dict().get("page_num", 0), reverse=True)
+    rows = all_rows[offset:offset + limit]
 
     results = []
     for snap in reversed(rows):
@@ -144,11 +144,10 @@ def get_character_history(world_id: str, character_name: str,
         _db.collection("character_pages")
         .where(filter=FieldFilter("world_id", "==", world_id))
         .where(filter=FieldFilter("character_name", "==", character_name))
-        .order_by("page_num", direction=firestore.Query.DESCENDING)
-        .offset(offset)
-        .limit(limit)
     )
-    rows = list(query.stream())
+    all_rows = list(query.stream())
+    all_rows.sort(key=lambda s: s.to_dict().get("page_num", 0), reverse=True)
+    rows = all_rows[offset:offset + limit]
     return [
         {
             "page": r.to_dict()["page_num"],
@@ -167,15 +166,15 @@ def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
                    include_raw: bool = True) -> Dict[str, Any]:
     """Get raw database data for debugging."""
     # Pages
-    page_query = (
+    all_page_snaps = list(
         _db.collection("pages")
         .where(filter=FieldFilter("world_id", "==", world_id))
-        .order_by("page_num", direction=firestore.Query.DESCENDING)
-        .offset(offset)
-        .limit(limit)
+        .stream()
     )
+    all_page_snaps.sort(key=lambda s: s.to_dict().get("page_num", 0), reverse=True)
+    page_snaps = all_page_snaps[offset:offset + limit]
     pages = []
-    for snap in page_query.stream():
+    for snap in page_snaps:
         r = snap.to_dict()
         events = r.get("events", [])
         if isinstance(events, str):
@@ -191,15 +190,15 @@ def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
         })
 
     # Character pages
-    char_query = (
+    all_char_snaps = list(
         _db.collection("character_pages")
         .where(filter=FieldFilter("world_id", "==", world_id))
-        .order_by("page_num", direction=firestore.Query.DESCENDING)
-        .offset(offset)
-        .limit(limit * 3)
+        .stream()
     )
+    all_char_snaps.sort(key=lambda s: s.to_dict().get("page_num", 0), reverse=True)
+    char_page_snaps = all_char_snaps[offset:offset + limit * 3]
     character_pages = []
-    for snap in char_query.stream():
+    for snap in char_page_snaps:
         r = snap.to_dict()
         raw_json = r.get("raw_json")
         raw_parsed = None
@@ -1228,10 +1227,10 @@ def get_scenario_by_name(name: str) -> Optional[Dict[str, Any]]:
         _db.collection("scenarios")
         .where(filter=FieldFilter("name_upper", "==", name.upper()))
         .where(filter=FieldFilter("public", "==", True))
-        .order_by("created_at", direction=firestore.Query.DESCENDING)
-        .limit(1)
     )
     snaps = list(query.stream())
+    snaps.sort(key=lambda s: s.to_dict().get("created_at", ""), reverse=True)
+    snaps = snaps[:1]
     if not snaps:
         return None
 
@@ -1257,7 +1256,6 @@ def list_scenarios_for_librarian(librarian_id: str) -> List[Dict[str, Any]]:
     query = (
         _db.collection("scenarios")
         .where(filter=FieldFilter("owner_id", "==", librarian_id))
-        .order_by("created_at", direction=firestore.Query.DESCENDING)
     )
     results = []
     for snap in query.stream():
@@ -1275,6 +1273,7 @@ def list_scenarios_for_librarian(librarian_id: str) -> List[Dict[str, Any]]:
             "public": bool(r.get("public", False)),
             "created_at": r.get("created_at"),
         })
+    results.sort(key=lambda s: s.get("created_at", ""), reverse=True)
     return results
 
 
@@ -1283,7 +1282,6 @@ def list_public_scenarios() -> List[Dict[str, Any]]:
     query = (
         _db.collection("scenarios")
         .where(filter=FieldFilter("public", "==", True))
-        .order_by("created_at", direction=firestore.Query.DESCENDING)
     )
     results = []
     for snap in query.stream():
@@ -1301,6 +1299,7 @@ def list_public_scenarios() -> List[Dict[str, Any]]:
             "public": bool(r.get("public", False)),
             "created_at": r.get("created_at"),
         })
+    results.sort(key=lambda s: s.get("created_at", ""), reverse=True)
     return results
 
 
