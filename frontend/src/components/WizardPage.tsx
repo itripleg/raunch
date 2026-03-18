@@ -834,31 +834,23 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
               </h2>
             </div>
 
-            <div className="flex items-center gap-4">
-              <input
-                type="range"
-                min={1}
-                max={5}
-                value={numChars}
-                onChange={(e) => setNumChars(parseInt(e.target.value))}
-                className="flex-1 h-2 appearance-none bg-secondary/50 rounded-full cursor-pointer accent-emerald-400
-                  [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-emerald-400/30 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-all [&::-webkit-slider-thumb]:hover:scale-110"
-              />
-              <div className="flex items-center gap-2 min-w-[60px]">
-                {[...Array(numChars)].map((_, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0, opacity: 0 }}
-                    className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center"
-                  >
-                    <span className="text-[10px] font-bold text-emerald-400">
-                      {i + 1}
-                    </span>
-                  </motion.div>
-                ))}
-              </div>
+            <div className="flex items-center gap-2">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setNumChars(n)}
+                  className={`w-10 h-10 rounded-lg text-sm font-semibold transition-all ${
+                    numChars === n
+                      ? "bg-emerald-500/30 border-2 border-emerald-400 text-emerald-300 shadow-lg shadow-emerald-500/10"
+                      : "bg-secondary/30 border border-border/40 text-muted-foreground hover:border-emerald-500/30 hover:text-foreground"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+              <span className="text-xs text-muted-foreground/60 ml-2">
+                {numChars === 1 ? "solo" : numChars === 2 ? "duo" : numChars === 3 ? "trio" : numChars === 4 ? "quartet" : "ensemble"}
+              </span>
             </div>
           </motion.section>
 
