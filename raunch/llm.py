@@ -99,11 +99,10 @@ class LLMClient:
             self.auth_method = "api_key"
             logger.debug(f"[AUTH] Using API key: {self.api_key[:15]}...")
         else:
-            raise RuntimeError(
-                "No authentication found.\n"
-                "  Option 1: Log in with `claude` CLI (OAuth auto-detected)\n"
-                "  Option 2: Set ANTHROPIC_API_KEY environment variable\n"
-                "  Option 3: Set CLAUDE_CODE_OAUTH_TOKEN environment variable"
+            self.auth_method = "none"
+            logger.warning(
+                "[AUTH] No authentication found. Add a token via the UI or set "
+                "CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY environment variable."
             )
 
     @property
@@ -221,6 +220,8 @@ class LLMClient:
         temperature: Optional[float] = None,
     ) -> str:
         """Send a chat completion."""
+        if self.auth_method == "none":
+            raise RuntimeError("No auth token configured. Add one via the UI or set CLAUDE_CODE_OAUTH_TOKEN.")
         if self.auth_method == "oauth_sdk":
             return self._run_async(self._oauth_sdk_chat(system, messages, max_tokens))
 
@@ -250,6 +251,8 @@ class LLMClient:
         temperature: Optional[float] = None,
     ) -> Generator[str, None, None]:
         """Stream chat completion, yielding text deltas."""
+        if self.auth_method == "none":
+            raise RuntimeError("No auth token configured. Add one via the UI or set CLAUDE_CODE_OAUTH_TOKEN.")
         if self.auth_method == "oauth_sdk":
             # Run the async generator synchronously
             async def collect_stream():
