@@ -11,6 +11,7 @@ import {
   Check,
   ChevronDown,
   X,
+  User,
   Users,
   MapPin,
   Flame,
@@ -834,23 +835,43 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
               </h2>
             </div>
 
-            <div className="flex items-center gap-2">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setNumChars(n)}
-                  className={`w-10 h-10 rounded-lg text-sm font-semibold transition-all ${
-                    numChars === n
-                      ? "bg-emerald-500/30 border-2 border-emerald-400 text-emerald-300 shadow-lg shadow-emerald-500/10"
-                      : "bg-secondary/30 border border-border/40 text-muted-foreground hover:border-emerald-500/30 hover:text-foreground"
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-              <span className="text-xs text-muted-foreground/60 ml-2">
-                {numChars === 1 ? "solo" : numChars === 2 ? "duo" : numChars === 3 ? "trio" : numChars === 4 ? "quartet" : "ensemble"}
-              </span>
+            <div className="flex flex-col gap-3">
+              {/* Person icons showing current count */}
+              <div className="flex items-end justify-center gap-1 h-14">
+                <AnimatePresence mode="popLayout">
+                  {[...Array(numChars)].map((_, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ scale: 0, opacity: 0, y: 10 }}
+                      animate={{ scale: 1, opacity: 1, y: 0 }}
+                      exit={{ scale: 0, opacity: 0, y: 10 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 25, delay: i * 0.05 }}
+                    >
+                      <User className="w-9 h-9 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]" strokeWidth={1.5} />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+
+              {/* Number buttons */}
+              <div className="flex items-center justify-center gap-2">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setNumChars(n)}
+                    className={`w-10 h-10 rounded-lg text-sm font-semibold transition-all ${
+                      numChars === n
+                        ? "bg-emerald-500/30 border-2 border-emerald-400 text-emerald-300 shadow-lg shadow-emerald-500/10"
+                        : "bg-secondary/30 border border-border/40 text-muted-foreground hover:border-emerald-500/30 hover:text-foreground"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <span className="text-xs text-muted-foreground/60 ml-2">
+                  {numChars === 1 ? "solo" : numChars === 2 ? "duo" : numChars === 3 ? "trio" : numChars === 4 ? "quartet" : "ensemble"}
+                </span>
+              </div>
             </div>
           </motion.section>
 
