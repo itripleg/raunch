@@ -129,10 +129,10 @@ def start(save_name, world_name, scenario_name, headless, serve, port):
         orch.world.world_name = world_name
 
     if save_name and orch.world.load(save_name):
-
         orch.save_name = save_name
-        orch._initial_save_done = True  # Don't re-save immediately for loaded sessions
+        orch._initial_save_done = True
         console.print(f"[green]Loaded save: {save_name}[/green]")
+        # Character history will be restored after characters are created
 
     # Load scenario if specified
     if scenario_name and not orch.characters:
@@ -150,6 +150,9 @@ def start(save_name, world_name, scenario_name, headless, serve, port):
                     # Recreate characters from SAVED scenario (includes dynamically added characters)
                     # Use orch.world.scenario which was loaded from save, not the original scenario file
                     _apply_scenario_characters(orch, orch.world.scenario or scenario)
+                    # Restore character memory (history + summary)
+                    if orch._load_characters(derived_save_name):
+                        console.print(f"[green]Character memories restored[/green]")
                 else:
                     # Fresh start
                     _apply_scenario(orch, scenario)
@@ -162,6 +165,13 @@ def start(save_name, world_name, scenario_name, headless, serve, port):
     # No default characters - players create their own on join
     if not orch.characters:
         console.print("[cyan]No characters yet - players will create on join[/cyan]")
+
+    # Restore character memories if loaded from save (and not already restored above)
+    if save_name and orch.characters and not orch._initial_save_done:
+        pass  # Already handled above
+    elif save_name and orch.characters:
+        if orch._load_characters(save_name):
+            console.print(f"[green]Character memories restored[/green]")
 
     # Track page loading state
     page_loading_active = False
@@ -219,13 +229,17 @@ def start(save_name, world_name, scenario_name, headless, serve, port):
         nonlocal progressive_rendered
         if name in progressive_rendered.get("characters", set()):
             return
+        is_attached = (name == orch.attached_to)
+        # Debug: show data keys so we can diagnose missing inner_thoughts
+        console.print(f"[dim]  [{name}] attached={is_attached} keys={list(data.keys()) if data else 'None'}[/dim]")
         from .display import render_character_panel_inline
         try:
             render_character_panel_inline(
                 name, data,
-                is_attached=(name == orch.attached_to)
+                is_attached=is_attached
             )
-        except Exception:
+        except Exception as e:
+            console.print(f"[dim red]Character render error for {name}: {e}[/dim red]")
             dialogue = data.get("dialogue")
             if dialogue and dialogue.lower() != "null":
                 console.print(f"  [bold]{name}[/] — [italic]\"{dialogue}\"[/]")
@@ -268,42 +282,80 @@ def start(save_name, world_name, scenario_name, headless, serve, port):
         from .server.ws import ws_manager, _broadcast_narrator_ready, _broadcast_character_ready, _broadcast_page
         from . import db
 
-        # Create a book in the database so the frontend can find it
+        # Find or create a book for this scenario
         book_id = None
         scenario_display = scenario_name or world_name or "cli-session"
         try:
-            librarian = db.create_librarian("CLI Host")
-            book_data = db.create_book(
-                librarian_id=librarian["id"],
-                scenario_name=scenario_display,
-                bookmark=scenario_display.lower().replace(" ", "-")[:30],
-            )
-            book_id = book_data["id"]
-            console.print(f"[dim]Book created: {book_id} (bookmark: {book_data.get('bookmark')})[/dim]")
+            # Use same librarian as frontend demo mode so books are shared
+            librarian = db.create_librarian("CLI Host", kinde_user_id="local-demo-user")
+            # Reuse existing book for this scenario if one exists
+            existing_books = db.list_books_for_librarian(librarian["id"])
+            # Normalize for comparison: strip .json, lowercase
+            norm = scenario_display.lower().replace(".json", "").replace(" ", "_")
+            for b in existing_books:
+                b_norm = (b.get("scenario_name") or "").lower().replace(".json", "").replace(" ", "_")
+                if b_norm == norm:
+                    book_id = b["id"]
+                    book_data = b
+                    console.print(f"[dim]Reusing book: {book_id} (bookmark: {b.get('bookmark')})[/dim]")
+                    break
+            if not book_id:
+                book_data = db.create_book(scenario_display, librarian["id"])
+                book_id = book_data["id"]
+                console.print(f"[dim]Book created: {book_id} (bookmark: {book_data.get('bookmark')})[/dim]")
+            # Set as the active book so frontend auto-loads it
+            db.set_librarian_last_active_book(librarian["id"], book_id)
         except Exception as e:
             console.print(f"[yellow]Could not create book for web sync: {e}[/yellow]")
 
-        # Start FastAPI server in background thread
+        # Start FastAPI server in background thread, capturing its event loop
         fastapi_app = create_app()
-        server_started = threading.Event()
+        _server_loop = [None]
 
         def _run_server():
-            config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=port, log_level="warning")
-            server = uvicorn.Server(config)
-            server_started.set()
-            server.run()
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            _server_loop[0] = loop
+            config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=port, log_level="warning", loop="none")
+            srv = uvicorn.Server(config)
+            loop.run_until_complete(srv.serve())
 
         server_thread = threading.Thread(target=_run_server, daemon=True)
         server_thread.start()
-        server_started.wait(timeout=3)
+        time.sleep(1)  # Let server start
+
+        # Register CLI's orchestrator with the server's Library so WebSocket
+        # clients share it instead of creating a new one
+        if book_id:
+            from .server.library import get_library
+            from .server.book import Book
+            library = get_library()
+            book_obj = library.get_book(book_id)
+            if book_obj is None:
+                # Create in-memory Book and register
+                book_obj = Book(
+                    book_id=book_id,
+                    bookmark=book_data.get("bookmark", ""),
+                    scenario_name=scenario_display,
+                    owner_id=librarian["id"],
+                )
+                library.books[book_id] = book_obj
+                library._bookmarks[book_data.get("bookmark", "").upper()] = book_id
+            # Attach the CLI's orchestrator to this book
+            book_obj.set_orchestrator(orch)
 
         # Wire orchestrator callbacks to also broadcast via WebSocket
         if book_id:
-            # Get the event loop from the uvicorn server thread
-            import time as _time
-            _time.sleep(0.5)  # Let uvicorn's event loop start
+            def _broadcast(coro):
+                """Schedule an async broadcast on the server's event loop."""
+                loop = _server_loop[0]
+                if loop is None:
+                    return
+                try:
+                    asyncio.run_coroutine_threadsafe(coro, loop)
+                except Exception:
+                    pass
 
-            # Wrap callbacks to also broadcast to frontend
             _orig_page_start = on_page_start
             _orig_narrator_ready = on_narrator_ready
             _orig_character_ready = on_character_ready
@@ -311,69 +363,34 @@ def start(save_name, world_name, scenario_name, headless, serve, port):
 
             def on_page_start_with_serve(page_num: int):
                 _orig_page_start(page_num)
-                if book_id:
-                    try:
-                        # Broadcast page_generating to frontend
-                        import asyncio as _aio
-                        loop = _aio.new_event_loop()
-                        loop.run_until_complete(ws_manager.broadcast(book_id, {
-                            "type": "page_generating",
-                            "page": page_num,
-                        }))
-                        loop.close()
-                    except Exception:
-                        pass
+                _broadcast(ws_manager.broadcast(book_id, {
+                    "type": "page_generating",
+                    "page": page_num,
+                }))
 
             def on_narrator_ready_with_serve(page_num: int, narration: str, mood: str):
                 _orig_narrator_ready(page_num, narration, mood)
-                if book_id:
-                    try:
-                        import asyncio as _aio
-                        loop = _aio.new_event_loop()
-                        loop.run_until_complete(
-                            _broadcast_narrator_ready(book_id, page_num, narration, mood)
-                        )
-                        loop.close()
-                    except Exception:
-                        pass
+                _broadcast(_broadcast_narrator_ready(book_id, page_num, narration, mood))
 
             def on_character_ready_with_serve(page_num: int, name: str, data: dict):
                 _orig_character_ready(page_num, name, data)
-                if book_id:
-                    try:
-                        import asyncio as _aio
-                        loop = _aio.new_event_loop()
-                        loop.run_until_complete(
-                            _broadcast_character_ready(book_id, page_num, name, data)
-                        )
-                        loop.close()
-                    except Exception:
-                        pass
+                _broadcast(_broadcast_character_ready(book_id, page_num, name, data))
 
             def on_page_with_serve(results):
                 _orig_on_page(results)
-                if book_id:
-                    try:
-                        import asyncio as _aio
-                        loop = _aio.new_event_loop()
-                        loop.run_until_complete(
-                            _broadcast_page(book_id, results)
-                        )
-                        loop.close()
-                    except Exception:
-                        pass
-                    # Also save to database
-                    try:
-                        db.save_page(
-                            book_id,
-                            results.get("page", 0),
-                            results.get("narration", ""),
-                            results.get("events", []),
-                            orch.world.world_time,
-                            orch.world.mood or "default",
-                        )
-                    except Exception:
-                        pass
+                _broadcast(_broadcast_page(book_id, results))
+                # Also save to database
+                try:
+                    db.save_page(
+                        book_id,
+                        results.get("page", 0),
+                        results.get("narration", ""),
+                        results.get("events", []),
+                        orch.world.world_time,
+                        orch.world.mood or "default",
+                    )
+                except Exception:
+                    pass
 
             # Replace callbacks
             orch.set_page_start_callback(on_page_start_with_serve)
@@ -383,7 +400,9 @@ def start(save_name, world_name, scenario_name, headless, serve, port):
 
         console.print(f"[green]Web server running on http://localhost:{port}[/green]")
         if book_id:
-            console.print(f"[dim]Frontend can connect to this session via bookmark[/dim]")
+            bm = book_data.get("bookmark", "")
+            console.print(f"[bold]Book ID: [bright_cyan]{book_id}[/bright_cyan] | Bookmark: [bright_cyan]{bm}[/bright_cyan][/bold]")
+            console.print(f"[dim]Select this book in the frontend dashboard to sync[/dim]")
 
     # ─── ANIMATED STARTUP BANNER ──────────────────────────────────────────
     world = orch.world
@@ -516,6 +535,295 @@ def start(save_name, world_name, scenario_name, headless, serve, port):
         orch.stop()
         console.print("[dim]World saved. Goodbye.[/dim]")
 
+
+# ---------------------------------------------------------------------------
+# ATTACH — connect to a running server and view a character's inner thoughts
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.argument("character", required=False, default=None)
+@click.option("--host", default="localhost", help="Server host (default: localhost)")
+@click.option("--port", default=8000, type=int, help="Server port (default: 8000)")
+@click.option("--book", "book_id", default=None, help="Book ID to attach to")
+def attach(character, host, port, book_id):
+    """Attach to a character on a running server. See their inner thoughts in real-time.
+
+    Examples:
+        raunch attach Maven
+        raunch attach --host my-server.com
+        raunch attach Maven --book abc123
+    """
+    import websockets.sync.client as ws_sync
+    import httpx
+
+    base_url = f"http://{host}:{port}"
+
+    # Find a book to attach to
+    if not book_id:
+        try:
+            resp = httpx.get(f"{base_url}/health", timeout=3)
+            resp.raise_for_status()
+        except Exception:
+            console.print(f"[red]Cannot connect to server at {base_url}[/red]")
+            console.print("[dim]Start the server first: python -m raunch.server[/dim]")
+            console.print("[dim]Or with CLI: raunch start --serve[/dim]")
+            return
+
+        # Find books — query the local database directly for active books
+        books = []
+        try:
+            from . import db as _db
+            # Get all librarians and their books
+            conn = None
+            try:
+                from .db_sqlite import _get_conn
+                conn = _get_conn()
+                rows = conn.execute("SELECT id, scenario_name, bookmark, owner_id FROM books ORDER BY created_at DESC LIMIT 10").fetchall()
+                books = [{"id": r["id"], "scenario_name": r["scenario_name"], "bookmark": r["bookmark"]} for r in rows]
+            except Exception:
+                pass
+
+            # Fallback: try API with common librarian IDs
+            if not books:
+                for lib_id in ["CLI Host", "local-demo-user"]:
+                    try:
+                        resp = httpx.get(f"{base_url}/api/v1/books", headers={"X-Librarian-Id": lib_id}, timeout=5)
+                        if resp.status_code == 200:
+                            found = resp.json()
+                            if found:
+                                books = found
+                                break
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        if not books:
+            console.print("[yellow]No active books found on the server.[/yellow]")
+            console.print("[dim]Start with: raunch start --scenario <name> --serve[/dim]")
+            return
+
+        if len(books) == 1:
+            book_id = books[0]["id"]
+            console.print(f"[dim]Joining: {books[0].get('scenario_name', book_id)}[/dim]")
+        else:
+            console.print("\n[bold]Available books:[/bold]")
+            for i, b in enumerate(books, 1):
+                console.print(f"  [bold]{i}[/bold]. {b.get('scenario_name', b['id'])} [dim]({b.get('bookmark', '')})[/dim]")
+            try:
+                choice = input("\n> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                return
+            if choice.isdigit() and 1 <= int(choice) <= len(books):
+                book_id = books[int(choice) - 1]["id"]
+            else:
+                console.print("[red]Invalid choice.[/red]")
+                return
+
+    # Connect via WebSocket
+    ws_url = f"ws://{host}:{port}/ws/{book_id}"
+    try:
+        ws = ws_sync.connect(ws_url)
+    except Exception as e:
+        console.print(f"[red]WebSocket connection failed: {e}[/red]")
+        return
+
+    # Read welcome
+    import json
+    try:
+        welcome = json.loads(ws.recv(timeout=5))
+    except Exception:
+        console.print("[red]No welcome message from server.[/red]")
+        ws.close()
+        return
+
+    if welcome.get("type") == "error":
+        console.print(f"[red]{welcome.get('message', 'Connection error')}[/red]")
+        ws.close()
+        return
+
+    w = welcome.get("world", {})
+    chars = welcome.get("characters", [])
+    console.print(
+        Panel(
+            f"[bold]{w.get('world_name', '?')}[/bold]\n"
+            f"Page: {w.get('page_count', '?')} | Mood: {w.get('mood', '?')}\n"
+            f"Characters: {', '.join(chars)}",
+            title="[green]Connected[/green]",
+            border_style="green",
+        )
+    )
+
+    # Join as reader
+    ws.send(json.dumps({"cmd": "join", "nickname": "CLI Attach"}))
+    try:
+        join_resp = json.loads(ws.recv(timeout=5))
+    except Exception:
+        pass
+
+    # Pick character
+    if not character:
+        console.print("\n[bold]Who do you want to attach to?[/bold]")
+        for i, c in enumerate(chars, 1):
+            console.print(f"  [bold]{i}[/bold]. {c}")
+        try:
+            choice = input("\n> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            ws.close()
+            return
+        if choice.isdigit() and 1 <= int(choice) <= len(chars):
+            character = chars[int(choice) - 1]
+        else:
+            # Try as name
+            character = choice
+
+    # Attach
+    ws.send(json.dumps({"cmd": "attach", "character": character}))
+    try:
+        attach_resp = json.loads(ws.recv(timeout=5))
+        if attach_resp.get("type") == "attached":
+            attached_name = attach_resp["character"]
+            render_attach_animation(attached_name)
+        elif attach_resp.get("type") == "error":
+            console.print(f"[red]{attach_resp.get('message')}[/red]")
+            ws.close()
+            return
+    except Exception:
+        pass
+
+    # Background receive loop
+    running = True
+    attached_to = character
+
+    def _receive_loop():
+        nonlocal running, attached_to
+        while running:
+            try:
+                raw = ws.recv(timeout=1)
+                msg = json.loads(raw)
+                msg_type = msg.get("type", "")
+
+                if msg_type == "page":
+                    # Skip — character_ready already rendered progressively
+                    pass
+
+                elif msg_type == "narrator_ready":
+                    # Skip narration in attach mode — the start terminal shows it
+                    pass
+
+                elif msg_type == "character_ready":
+                    # Only show the attached character
+                    name = msg.get("character", "")
+                    if name == attached_to:
+                        from .display import render_character_panel_inline
+                        data = msg.get("data", {})
+                        render_character_panel_inline(name, data, is_attached=True)
+
+                elif msg_type == "page_generating":
+                    console.print(f"\n  [dim]✧ Page {msg.get('page', '')} generating...[/dim]")
+
+                elif msg_type == "attached":
+                    attached_to = msg["character"]
+                    render_attach_animation(attached_to)
+
+                elif msg_type == "detached":
+                    render_detach_animation(attached_to or "character")
+                    attached_to = None
+
+                elif msg_type == "influence_queued":
+                    console.print(f"  [dim italic]♥ whispered to {msg.get('character')}: \"{msg.get('text')}\"[/dim italic]")
+
+                elif msg_type == "director_queued":
+                    console.print(f"  [dim italic]✧ whispered to narrator: \"{msg.get('text')}\"[/dim italic]")
+
+                elif msg_type == "error":
+                    console.print(f"[red]{msg.get('message', 'Error')}[/red]")
+
+            except TimeoutError:
+                continue
+            except Exception:
+                if running:
+                    console.print("\n[red]Connection lost.[/red]")
+                running = False
+                break
+
+    recv_thread = threading.Thread(target=_receive_loop, daemon=True)
+    recv_thread.start()
+
+    # Input loop
+    console.print("\n[dim]Type [bold]?[/bold] for commands. Type anything else to whisper.[/dim]")
+    try:
+        while running:
+            try:
+                cmd = input().strip()
+            except EOFError:
+                break
+
+            if not cmd or not running:
+                continue
+
+            parts = cmd.split(None, 1)
+            cmd_name = parts[0].lower() if parts else ""
+            cmd_arg = parts[1].strip() if len(parts) > 1 else ""
+
+            if cmd_name in ("q", "quit", "exit"):
+                break
+            elif cmd_name in ("w", "whisper"):
+                if not cmd_arg:
+                    console.print("[red]Usage: w <message>[/red]")
+                elif attached_to:
+                    ws.send(json.dumps({"cmd": "whisper", "text": cmd_arg}))
+                else:
+                    ws.send(json.dumps({"cmd": "director", "text": cmd_arg}))
+            elif cmd_name in ("a", "attach", "switch"):
+                if not cmd_arg:
+                    console.print("[red]Usage: a <character_name>[/red]")
+                else:
+                    ws.send(json.dumps({"cmd": "attach", "character": cmd_arg}))
+            elif cmd_name in ("d", "detach"):
+                ws.send(json.dumps({"cmd": "detach"}))
+            elif cmd_name in ("c", "chars", "characters"):
+                ws.send(json.dumps({"cmd": "list"}))
+            elif cmd_name in ("n", "next"):
+                ws.send(json.dumps({"cmd": "page"}))
+            elif cmd_name in ("p", "pause"):
+                ws.send(json.dumps({"cmd": "toggle_pause"}))
+            elif cmd_name in ("world",):
+                ws.send(json.dumps({"cmd": "world"}))
+            elif cmd_name in ("?", "help"):
+                console.print(
+                    Panel(
+                        "[bold bright_cyan]STORY[/]\n"
+                        "  [bold]w[/] [dim]<text>[/]             Whisper (to character if attached, narrator if not)\n"
+                        "  [bold]n[/], [bold]next[/]             Trigger next page\n"
+                        "\n"
+                        "[bold bright_cyan]CHARACTERS[/]\n"
+                        "  [bold]a[/] [dim]<name>[/]             Attach to character\n"
+                        "  [bold]d[/]                  Detach\n"
+                        "  [bold]c[/]                  List characters\n"
+                        "\n"
+                        "[bold bright_cyan]SYSTEM[/]\n"
+                        "  [bold]p[/]                  Pause/resume\n"
+                        "  [bold]world[/]              World state\n"
+                        "  [bold]q[/]                  Disconnect",
+                        title="[bold]Attach Commands[/]",
+                        border_style="bright_cyan",
+                        padding=(0, 2),
+                    )
+                )
+            else:
+                console.print("[dim]Unknown command. Type [bold]?[/bold] for help.[/dim]")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        running = False
+        ws.close()
+        console.print("[dim]Disconnected.[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# CONNECT — connect to a remote Living Library server
+# ---------------------------------------------------------------------------
 
 @cli.command()
 @click.argument("host")
@@ -967,6 +1275,77 @@ def kill():
         console.print(f"[green]Killed {killed} process(es)[/green]")
     else:
         console.print("[dim]No raunch processes found.[/dim]")
+
+
+@cli.command("purge")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+def purge(yes):
+    """Hard reset — wipe all books, saves, and user scenarios. Keeps built-in scenarios."""
+    import shutil
+    from .config import SAVES_DIR
+
+    if not yes:
+        console.print("[bold red]This will delete:[/bold red]")
+        console.print("  - All books in the database")
+        console.print("  - All save files (character memories, world state)")
+        console.print("  - All user-created scenarios")
+        console.print()
+        console.print("[dim]Built-in scenarios (scenarios/ folder) will be kept.[/dim]")
+        console.print()
+        try:
+            confirm = input("Type 'purge' to confirm: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return
+        if confirm.lower() != "purge":
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+    deleted = {"books": 0, "saves": 0, "scenarios": 0}
+
+    # 1. Wipe books from database
+    try:
+        from .db_sqlite import _get_conn
+        conn = _get_conn()
+        # Count before delete
+        count = conn.execute("SELECT COUNT(*) FROM books").fetchone()[0]
+        conn.execute("DELETE FROM books")
+        conn.execute("DELETE FROM pages")
+        conn.execute("DELETE FROM character_pages")
+        conn.execute("DELETE FROM librarians")
+        conn.commit()
+        deleted["books"] = count
+        console.print(f"[green]Deleted {count} books from database[/green]")
+    except Exception as e:
+        console.print(f"[yellow]Could not clear database: {e}[/yellow]")
+
+    # 2. Wipe save files
+    try:
+        save_files = [f for f in os.listdir(SAVES_DIR) if f.endswith(".json")]
+        for f in save_files:
+            os.remove(os.path.join(SAVES_DIR, f))
+        deleted["saves"] = len(save_files)
+        console.print(f"[green]Deleted {len(save_files)} save files[/green]")
+    except Exception as e:
+        console.print(f"[yellow]Could not clear saves: {e}[/yellow]")
+
+    # 3. Wipe user scenarios from database (not file-based ones)
+    try:
+        from .db_sqlite import _get_conn
+        conn = _get_conn()
+        count = conn.execute("SELECT COUNT(*) FROM scenarios").fetchone()[0]
+        conn.execute("DELETE FROM scenarios")
+        conn.commit()
+        deleted["scenarios"] = count
+        console.print(f"[green]Deleted {count} user scenarios from database[/green]")
+    except Exception as e:
+        # Table might not exist
+        pass
+
+    total = sum(deleted.values())
+    if total > 0:
+        console.print(f"\n[bold green]Purge complete.[/bold green]")
+    else:
+        console.print("[dim]Nothing to purge.[/dim]")
 
 
 # ---------------------------------------------------------------------------

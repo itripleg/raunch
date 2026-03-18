@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -10,7 +11,7 @@ from typing import Dict, Any, Optional, Callable, List
 
 from .agents import Narrator, Character
 from .world import WorldState
-from .config import BASE_PAGE_SECONDS
+from .config import BASE_PAGE_SECONDS, SAVES_DIR
 from . import db
 from .db import save_potential_character
 
@@ -492,14 +493,52 @@ class Orchestrator:
             except Exception as e:
                 logger.error(f"DB save failed: {e}")
 
-        # 4. Autosave world state every page (JSON is small, prevents data loss)
+        # 4. Autosave world + character state every page
         save_name = self.save_name or self._derive_save_name()
         self.world.save(save_name)
+        self._save_characters(save_name)
         if not self._initial_save_done:
             self._initial_save_done = True
             logger.info(f"Initial save: {save_name}")
 
         return results
+
+    def _save_characters(self, save_name: str) -> None:
+        """Save all character agent states (history, summary, emotional state)."""
+        import json as _json
+        path = os.path.join(SAVES_DIR, f"{save_name}_characters.json")
+        data = {}
+        for name, char in self.characters.items():
+            data[name] = char.get_state()
+        # Also save narrator state
+        data["__narrator__"] = self.narrator.get_state()
+        try:
+            with open(path, "w") as f:
+                _json.dump(data, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to save character states: {e}")
+
+    def _load_characters(self, save_name: str) -> bool:
+        """Restore character agent states from save. Returns True if loaded."""
+        import json as _json
+        path = os.path.join(SAVES_DIR, f"{save_name}_characters.json")
+        if not os.path.exists(path):
+            return False
+        try:
+            with open(path, "r") as f:
+                data = _json.load(f)
+            for name, char in self.characters.items():
+                if name in data:
+                    char.load_state(data[name])
+                    logger.info(f"Restored state for {name}: {len(char.history)} history msgs, summary={len(char.summary)}chars")
+            # Restore narrator state
+            if "__narrator__" in data:
+                self.narrator.load_state(data["__narrator__"])
+                logger.info(f"Restored narrator state: {len(self.narrator.history)} history msgs")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to load character states: {e}")
+            return False
 
     def _derive_save_name(self) -> str:
         """Generate a save name from scenario or world name."""
@@ -660,7 +699,8 @@ class Orchestrator:
             self._thread.join(timeout=5)
         save_name = self.save_name or self._derive_save_name()
         self.world.save(save_name)
-        logger.info(f"World saved to {save_name}")
+        self._save_characters(save_name)
+        logger.info(f"World + characters saved to {save_name}")
 
     def pause(self) -> None:
         self._paused = True

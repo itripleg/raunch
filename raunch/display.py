@@ -170,22 +170,39 @@ def _supports_unicode() -> bool:
 
 
 def _parse_intensity(text: str) -> List[Tuple[str, Optional[str]]]:
-    """Parse text into segments with intensity markers."""
-    pattern = r'\b(' + '|'.join(re.escape(w) for w in INTENSITY_WORDS.keys()) + r')\b'
+    """Parse text with asterisk intensity markers (matching frontend).
+
+    *warm* = sensual, **hot** = crude, ***primal*** = breeding.
+    Falls back to word-level detection for unmarked text.
+    """
+    # First try asterisk markers (narrator output format)
+    asterisk_pattern = r'(\*{1,3})([^*]+?)\1'
     result = []
     last_end = 0
+    has_markers = bool(re.search(asterisk_pattern, text))
 
-    for match in re.finditer(pattern, text, re.IGNORECASE):
-        # Add text before match
+    if has_markers:
+        for match in re.finditer(asterisk_pattern, text):
+            if match.start() > last_end:
+                result.append((text[last_end:match.start()], None))
+            stars = len(match.group(1))
+            level = "primal" if stars >= 3 else "hot" if stars == 2 else "warm"
+            result.append((match.group(2), level))
+            last_end = match.end()
+        if last_end < len(text):
+            result.append((text[last_end:], None))
+        return result
+
+    # Fallback: word-level detection for text without markers
+    word_pattern = r'\b(' + '|'.join(re.escape(w) for w in INTENSITY_WORDS.keys()) + r')\b'
+    for match in re.finditer(word_pattern, text, re.IGNORECASE):
         if match.start() > last_end:
             result.append((text[last_end:match.start()], None))
-        # Add the intensity word
         word = match.group(0)
         level = INTENSITY_WORDS.get(word.lower())
         result.append((word, level))
         last_end = match.end()
 
-    # Add remaining text
     if last_end < len(text):
         result.append((text[last_end:], None))
 
@@ -421,11 +438,7 @@ def render_page(
 
             if action:
                 panel_content.append("Action: ", style="bold")
-                panel_content.append(f"{action}\n")
-
-            if dialogue and dialogue.lower() != "null":
-                panel_content.append("Says: ", style="bold")
-                panel_content.append(f'"{dialogue}"', style="green3 italic")
+                panel_content.append(action)
 
             heart = "<3" if not _supports_unicode() else "♥"
             title = f"[bold medium_purple1]{heart} {name} {heart}[/]"
@@ -573,11 +586,7 @@ def render_character_panel_inline(
 
         if action:
             panel_content.append("Action: ", style="bold")
-            panel_content.append(f"{action}\n")
-
-        if dialogue and dialogue.lower() != "null":
-            panel_content.append("Says: ", style="bold")
-            panel_content.append(f'"{dialogue}"', style="green3 italic")
+            panel_content.append(action)
 
         heart = "<3" if not _supports_unicode() else "♥"
         title = f"[bold medium_purple1]{heart} {name} {heart}[/]"
@@ -952,153 +961,73 @@ def render_server_startup(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ATTACH CHARACTER ANIMATION - Dramatic neural link establishment
+# ATTACH CHARACTER ANIMATION - Opening a character's book
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Gradient for character name reveal (magenta → pink → white)
-ATTACH_GRADIENT = [129, 135, 141, 177, 183, 189, 225, 231, 255]
+# Gradient for character name reveal (deep violet → bright violet → white)
+ATTACH_GRADIENT = [53, 54, 91, 128, 135, 141, 177, 183, 189, 225]
 
-# Thematic connection messages
-NEURAL_LINK_MESSAGES = [
-    "Establishing neural link",
-    "Synchronizing consciousness",
-    "Binding to thought stream",
-    "Merging perspectives",
-    "Attuning to desires",
-    "Opening mind's eye",
-    "Connecting hearts",
-    "Linking souls",
+# Thematic connection messages for the Living Library
+ATTACH_MESSAGES = [
+    "Opening their story",
+    "Turning to their chapter",
+    "Reading between the lines",
+    "Listening to their thoughts",
+    "Entering their world",
+    "The pages whisper",
+    "Their story unfolds",
+    "The ink reveals",
 ]
 
 
 def render_attach_animation(character_name: str, animated: bool = True) -> None:
-    """Render a dramatic animation when attaching to a character.
+    """Render a cinematic animation when attaching to a character."""
+    star = "*" if not _supports_unicode() else "✧"
+    heart = "<3" if not _supports_unicode() else "♥"
 
-    This creates a cinematic "neural link establishing" effect with
-    the character's name revealed letter by letter.
-    """
     if not animated:
-        # Static fallback
-        heart = "<3" if not _supports_unicode() else "♥"
         console.print()
-        console.print(f"  [bold bright_magenta]{heart} Attached to {character_name} {heart}[/]")
+        console.print(f"  [bold medium_purple1]{heart} Attached to {character_name} {heart}[/]")
         console.print()
         return
 
     console.print()
-
-    # Hide cursor during animation
     sys.stdout.write("\033[?25l")
-    sys.stdout.flush()
 
     try:
-        # Phase 1: "Establishing neural link" with pulsing dots
-        link_msg = random.choice(NEURAL_LINK_MESSAGES)
+        # Phase 1: Thematic message with pulsing dots
+        msg = random.choice(ATTACH_MESSAGES)
         spinner = SPINNER_CHARS if _supports_unicode() else ["|", "/", "-", "\\"]
 
-        for frame in range(24):
+        for frame in range(20):
             dots = "." * ((frame % 4) + 1)
             spaces = " " * (3 - (frame % 4))
             spin = spinner[frame % len(spinner)]
-
-            # Color pulse
-            color_idx = frame % len(ATTACH_GRADIENT)
-            color = ATTACH_GRADIENT[color_idx]
-
-            line = f"\r  {_c256(color)}{spin}{RESET} {link_msg}{dots}{spaces}"
-            sys.stdout.write(line)
+            color = ATTACH_GRADIENT[frame % len(ATTACH_GRADIENT)]
+            sys.stdout.write(f"\r  {_c256(color)}{spin}{RESET} {msg}{dots}{spaces}")
             sys.stdout.flush()
-            time.sleep(0.08)
+            time.sleep(0.07)
 
-        sys.stdout.write("\r\033[K")  # Clear line
+        sys.stdout.write("\r\033[K")
 
-        # Phase 2: Build dramatic frame
-        name_len = len(character_name)
-        box_width = max(name_len + 8, 30)
-
-        if _supports_unicode():
-            top_left, top_right = "╔", "╗"
-            bot_left, bot_right = "╚", "╝"
-            horiz, vert = "═", "║"
-            heart = "♥"
-            star = "✧"
-        else:
-            top_left, top_right = "+", "+"
-            bot_left, bot_right = "+", "+"
-            horiz, vert = "=", "|"
-            heart = "<3"
-            star = "*"
-
-        # Animate the box appearing
-        center_pad = (box_width - 4) // 2
-
-        # Top border slides in
-        for i in range(box_width + 1):
-            border = horiz * min(i, box_width - 2)
-            padding = " " * (box_width - 2 - len(border))
-            line = f"\r  {_c256(213)}{top_left}{border}{padding}{top_right if i >= box_width - 1 else ''}{RESET}"
-            sys.stdout.write(line)
-            sys.stdout.flush()
-            time.sleep(0.015)
-
-        sys.stdout.write("\n")
-
-        # Middle section with hearts
-        heart_line = f"{vert}  {heart}  "
-        heart_line += " " * (box_width - 10)
-        heart_line += f"  {heart}  {vert}"
-        sys.stdout.write(f"  {_c256(205)}{heart_line}{RESET}\n")
-
-        # Character name reveal - letter by letter with gradient
-        name_padding = (box_width - 4 - name_len) // 2
-        sys.stdout.write(f"  {_c256(205)}{vert}{RESET}")
-        sys.stdout.write(" " * (name_padding + 1))
-
+        # Phase 2: Character name reveal — letter by letter with gradient
+        sys.stdout.write(f"\r  {_c256(141)}{star}{RESET} ")
         for i, char in enumerate(character_name):
-            # Cycle through gradient colors
-            color_idx = i % len(ATTACH_GRADIENT)
-            color = ATTACH_GRADIENT[color_idx]
+            color = ATTACH_GRADIENT[i % len(ATTACH_GRADIENT)]
             sys.stdout.write(f"{_c256(color)}{BOLD}{char}{RESET}")
             sys.stdout.flush()
-            time.sleep(0.06)  # Dramatic reveal timing
+            time.sleep(0.06)
 
-        remaining_pad = box_width - 4 - name_len - name_padding
-        sys.stdout.write(" " * remaining_pad)
-        sys.stdout.write(f"  {_c256(205)}{vert}{RESET}\n")
-
-        # Another heart line
-        sys.stdout.write(f"  {_c256(205)}{heart_line}{RESET}\n")
-
-        # Bottom border slides in
-        sys.stdout.write(f"  {_c256(213)}{bot_left}")
-        for i in range(box_width - 2):
-            sys.stdout.write(horiz)
-            sys.stdout.flush()
-            time.sleep(0.01)
-        sys.stdout.write(f"{bot_right}{RESET}\n")
-
-        # Phase 3: Final flourish - stars burst out
+        # Pause, then complete the line
+        time.sleep(0.2)
+        sys.stdout.write(f" {_c256(141)}{star}{RESET}")
+        sys.stdout.flush()
         time.sleep(0.1)
 
-        flourish_line = f"  {star}  NEURAL LINK ESTABLISHED  {star}"
-
-        # Type out the flourish with color wave
-        sys.stdout.write("\r  ")
-        for i, char in enumerate(flourish_line.strip()):
-            if char == star:
-                sys.stdout.write(f"{_c256(226)}{char}{RESET}")
-            elif char.isupper():
-                color = ATTACH_GRADIENT[(i * 2) % len(ATTACH_GRADIENT)]
-                sys.stdout.write(f"{_c256(color)}{char}{RESET}")
-            else:
-                sys.stdout.write(f"{DIM}{char}{RESET}")
-            sys.stdout.flush()
-            time.sleep(0.02)
-
-        sys.stdout.write("\n\n")
+        # Phase 3: Subtitle fade in
+        sys.stdout.write(f"\n  {DIM}  You hear their inner thoughts...{RESET}\n\n")
 
     finally:
-        # Show cursor again
         sys.stdout.write("\033[?25h")
         sys.stdout.flush()
 
@@ -1110,30 +1039,24 @@ def render_detach_animation(character_name: str, animated: bool = True) -> None:
         return
 
     console.print()
-    sys.stdout.write("\033[?25l")  # Hide cursor
+    sys.stdout.write("\033[?25l")
 
     try:
-        # Quick fade out effect
-        if _supports_unicode():
-            star = "✧"
-            ellipsis = "..."
-        else:
-            star = "*"
-            ellipsis = "..."
+        star = "✧" if _supports_unicode() else "*"
+        dot = "·" if _supports_unicode() else "."
 
         # Name fades character by character
         for i in range(len(character_name), -1, -1):
             visible = character_name[:i]
-            faded = "·" * (len(character_name) - i) if _supports_unicode() else "." * (len(character_name) - i)
-            line = f"\r  {_c256(241)}{star} {visible}{faded} {star}{RESET}   "
-            sys.stdout.write(line)
+            faded = dot * (len(character_name) - i)
+            sys.stdout.write(f"\r  {_c256(241)}{star} {visible}{faded} {star}{RESET}   ")
             sys.stdout.flush()
             time.sleep(0.04)
 
-        sys.stdout.write(f"\r  {DIM}Neural link severed{RESET}           \n")
+        sys.stdout.write(f"\r  {DIM}The book closes softly{RESET}           \n")
 
     finally:
-        sys.stdout.write("\033[?25h")  # Show cursor
+        sys.stdout.write("\033[?25h")
         sys.stdout.flush()
 
     console.print()

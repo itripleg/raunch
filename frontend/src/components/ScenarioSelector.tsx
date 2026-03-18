@@ -201,6 +201,13 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
     return !id.startsWith("test_") && (s.source === "file" || (s.source === "db" && s.public));
   });
 
+  // Auto-switch to public tab if my scenarios is empty (so new users see the tutorial)
+  useEffect(() => {
+    if (!loading && myScenarios.length === 0 && publicScenarios.length > 0 && activeTab === "my") {
+      setActiveTab("public");
+    }
+  }, [loading, myScenarios.length, publicScenarios.length, activeTab]);
+
   const visibleScenarios = activeTab === "my" ? myScenarios : publicScenarios;
   const selectedData = scenarios.find((s) => getScenarioId(s) === selectedScenario);
 
