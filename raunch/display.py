@@ -879,8 +879,6 @@ def render_server_startup(
     world_id: str,
     created_at: str,
     page_count: int,
-    tcp_port: int,
-    ws_port: int,
     animated: bool = True,
 ) -> None:
     """Render an animated server startup banner."""
@@ -931,7 +929,6 @@ def render_server_startup(
     console.print(f"[dim]{dash * 60}[/]")
     console.print(f"  [bold bright_magenta]{heart} {world_name}[/] [dim][{world_id}][/]")
     console.print(f"  [dim]Created: {created_at} | Page: {page_count}[/]")
-    console.print(f"  [dim]TCP: {tcp_port} | WebSocket: {ws_port} | API: 8000[/]")
     console.print(f"[dim]{dash * 60}[/]")
     console.print()
 

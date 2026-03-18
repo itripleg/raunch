@@ -2,7 +2,6 @@
 
 import json
 import os
-import socket
 import logging
 import threading
 import time
@@ -14,95 +13,24 @@ from rich.panel import Panel
 from .client import RemoteClient, LocalClient, Page
 from .orchestrator import Orchestrator, _extract_narration_from_raw, _clean_narration
 from .agents.character import Character
-from .tcp_server import GameServer
-from .ws_server import WebSocketServer, WS_PORT
 from .display import (
     render_page, render_character_list, render_world_state, render_character_history,
-    render_server_startup, render_port_error, render_port_conflict,
-    render_server_already_running, check_port_available, check_raunch_server_running,
+    render_server_startup,
     start_page_loading, stop_page_loading, update_page_loading,
     render_attach_animation, render_detach_animation,
 )
-from .config import CHARACTERS_DIR, CLIENT_HOST, SERVER_PORT, SAVES_DIR
+from .config import CHARACTERS_DIR, SAVES_DIR
 from .wizard import generate_scenario, random_scenario, save_scenario, load_scenario, list_scenarios
 from .wizard import SETTINGS, KINK_POOLS, VIBES
 from .llm import get_client
 
 
-def _extract_character_data_safe(raw: str) -> Dict[str, Any]:
-    """Extract character data from raw LLM response, with fallbacks."""
-    import json
-    import re
-
-    if not raw:
-        return {}
-
-    try:
-        # Try direct JSON parse
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        pass
-
-    try:
-        # Strip markdown fences
-        text = raw
-        if "```json" in text:
-            text = text.split("```json", 1)[1]
-        if "```" in text:
-            text = text.split("```", 1)[0]
-
-        # Find JSON object
-        first = text.find("{")
-        last = text.rfind("}")
-        if first != -1 and last > first:
-            return json.loads(text[first:last + 1])
-    except (json.JSONDecodeError, IndexError):
-        pass
-
-    # Regex fallback
-    result = {}
-    for field in ["inner_thoughts", "action", "dialogue", "emotional_state", "desires_update"]:
-        match = re.search(rf'"{field}"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
-        if match:
-            result[field] = match.group(1).replace("\\n", "\n").replace('\\"', '"')
-    return result
-
 console = Console()
 logging.basicConfig(level=logging.WARNING, format="%(name)s: %(message)s")
-logging.getLogger("websockets").setLevel(logging.ERROR)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logging.getLogger("httpcore").setLevel(logging.ERROR)
 
 
-def _show_attach_commands():
-    """Display available commands when attached to a character."""
-    console.print()
-    console.print("[dim]You see their inner thoughts in real-time. Type [bold]?[/bold] for help.[/]")
-    console.print()
-    console.print(
-        Panel(
-            "[bold bright_cyan]NAVIGATION[/]\n"
-            "  [bold]a[/], [bold]attach[/] [dim]<name>[/]    Switch to another character\n"
-            "  [bold]d[/], [bold]detach[/]            Stop viewing inner thoughts\n"
-            "  [bold]q[/], [bold]quit[/]              Disconnect from server\n"
-            "\n"
-            "[bold bright_cyan]INFORMATION[/]\n"
-            "  [bold]c[/], [bold]characters[/]        List all characters\n"
-            "  [bold]w[/], [bold]world[/]             Show current world state\n"
-            "  [bold]s[/], [bold]status[/]            Server status & info\n"
-            "\n"
-            "[bold bright_cyan]HISTORY[/]\n"
-            "  [bold]h[/], [bold]history[/]           Recent narration history\n"
-            "  [bold]t[/], [bold]thoughts[/] [dim]<name>[/]  Character's thought history\n"
-            "  [bold]r[/], [bold]replay[/] [dim]<page>[/]    Replay a specific page\n"
-            "\n"
-            "[bold bright_cyan]ACTIONS[/]\n"
-            "  [dim]<anything else>[/]       Send as your character's action",
-            title="[bold]Commands[/]",
-            border_style="dim",
-            padding=(0, 2),
-        )
-    )
 
 
 def _show_server_commands():
@@ -190,8 +118,7 @@ def cli(ctx):
 @click.option("--name", "world_name", default=None, help="Name this world")
 @click.option("--scenario", "scenario_name", default=None, help="Load a scenario (from wizard/roll)")
 @click.option("--headless", is_flag=True, default=False, help="Run without interactive console (for background/daemon mode)")
-@click.option("--force", "-f", is_flag=True, default=False, help="Kill any existing server and start fresh")
-def start(save_name, world_name, scenario_name, headless, force):
+def start(save_name, world_name, scenario_name, headless):
     """Start the world simulation server."""
     orch = Orchestrator()
 
@@ -233,92 +160,6 @@ def start(save_name, world_name, scenario_name, headless, force):
     if not orch.characters:
         console.print("[cyan]No characters yet - players will create on join[/cyan]")
 
-    # ─── PRE-FLIGHT: Check if server already running ────────────────────────
-    existing_server = check_raunch_server_running(SERVER_PORT)
-    if existing_server:
-        if force:
-            # Kill the existing server
-            console.print("[yellow]Killing existing server...[/yellow]")
-            _kill_raunch_servers()
-            time.sleep(1)
-            console.print("[green]Done.[/green]\n")
-        else:
-            # Pass the requested scenario name if any
-            requested = scenario_name or world_name
-            render_server_already_running(existing_server, requested_scenario=requested)
-            console.print("[dim]Tip: Use --force or -f to kill existing server and start fresh[/dim]\n")
-            return
-
-    # ─── PRE-FLIGHT PORT CHECKS ────────────────────────────────────────────
-    ports_ok = True
-
-    if not check_port_available(SERVER_PORT):
-        render_port_conflict(SERVER_PORT, "TCP Game Server")
-        ports_ok = False
-
-    if not check_port_available(WS_PORT):
-        render_port_conflict(WS_PORT, "WebSocket Server")
-        ports_ok = False
-
-    if not check_port_available(8000):
-        render_port_conflict(8000, "REST API Server")
-        ports_ok = False
-
-    if not ports_ok:
-        console.print("[yellow]Fix the port conflicts above and try again.[/yellow]")
-        return
-
-    # ─── START SERVERS ─────────────────────────────────────────────────────
-    server = GameServer(orch)
-    server.start()
-
-    # Start the WebSocket server for web frontend
-    import asyncio
-    import uvicorn
-    from .api import app as fastapi_app, set_orchestrator
-
-    ws_server = WebSocketServer(orch)
-    ws_error = None
-
-    def _run_ws():
-        nonlocal ws_error
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(ws_server.start())
-            loop.run_forever()
-        except OSError as e:
-            ws_error = e
-
-    ws_thread = threading.Thread(target=_run_ws, daemon=True)
-    ws_thread.start()
-    time.sleep(0.3)  # Give it a moment to start or fail
-
-    if ws_error:
-        render_port_error(WS_PORT, "WebSocket Server")
-        server.stop()
-        return
-
-    # Start the FastAPI REST API server (port 8000) in its own thread
-    set_orchestrator(orch)
-    api_error = None
-
-    def _run_api():
-        nonlocal api_error
-        try:
-            uvicorn.run(fastapi_app, host="127.0.0.1", port=8000, log_level="error", ws="wsproto")
-        except OSError as e:
-            api_error = e
-
-    api_thread = threading.Thread(target=_run_api, daemon=True)
-    api_thread.start()
-    time.sleep(0.3)
-
-    if api_error:
-        render_port_error(8000, "REST API Server")
-        server.stop()
-        return
-
     # Track page loading state
     page_loading_active = False
     page_animation_thread = None
@@ -335,114 +176,32 @@ def start(save_name, world_name, scenario_name, headless, force):
     progressive_results: Dict[str, Any] = {}
     progressive_rendered = {"narrator": False, "characters": set()}
 
-    # Wire up streaming callback for real-time text + loading animation
-    def on_stream(page_num: int, source: str, event_type: str, data: str):
-        nonlocal page_loading_active, page_animation_thread, progressive_results, progressive_rendered
+    # Progressive rendering callbacks — CLI renders as each piece completes
+    def on_page_start(page_num: int):
+        nonlocal page_loading_active, page_animation_thread, progressive_rendered
+        progressive_rendered = {"narrator": False, "characters": set()}
+        page_loading_active = True
+        page_animation_thread = threading.Thread(
+            target=_run_loading_animation,
+            args=(page_num,),
+            daemon=True
+        )
+        page_animation_thread.start()
 
-        if event_type == "start" and source == "narrator":
-            # Reset progressive state for new page
-            progressive_results = {"page": page_num, "characters": {}}
-            progressive_rendered = {"narrator": False, "characters": set()}
-            # Start loading animation when narrator begins
-            page_loading_active = True
-            page_animation_thread = threading.Thread(
-                target=_run_loading_animation,
-                args=(page_num,),
-                daemon=True
-            )
-            page_animation_thread.start()
-            # Only broadcast page_start if actually streaming (not OAuth mode)
-            # This prevents frontend from showing empty StreamingPageEntry
-            if orch.streaming_enabled:
-                ws_server.broadcast_page_start(page_num, orch._last_page_trigger_reason)
-            else:
-                # Non-streaming: notify frontend that page is generating (for intermission)
-                ws_server.broadcast_page_generating(page_num)
-
-        elif event_type == "delta":
-            # Only broadcast deltas if actually streaming
-            if orch.streaming_enabled:
-                ws_server.broadcast_stream_delta(page_num, source, data)
-
-        elif event_type == "done":
-            # Only broadcast stream_done if actually streaming
-            if orch.streaming_enabled:
-                ws_server.broadcast_stream_done(page_num, source)
-
-            # Progressive CLI rendering - show content as it completes
-            if source == "narrator" and not progressive_rendered["narrator"]:
-                # Stop loading animation, render narrator immediately
-                if page_loading_active:
-                    page_loading_active = False
-                    time.sleep(0.05)
-                    stop_page_loading()
-
-                # Get narrator result from orchestrator and render
-                narrator_result = orch.narrator.history[-1]["content"] if orch.narrator.history else ""
-                narration = _extract_narration_from_raw(narrator_result) if narrator_result else ""
-                narration = _clean_narration(narration)
-                progressive_results["narration"] = narration
-                progressive_results["mood"] = orch.world.mood
-
-                # Render narrator panel
-                from .display import render_narrator_panel
-                try:
-                    render_narrator_panel(page_num, narration, orch.world.mood)
-                except Exception as e:
-                    console.print(f"[dim]Narrator: {narration[:100]}...[/dim]")
-                progressive_rendered["narrator"] = True
-
-                # In non-streaming mode, send narration to frontend immediately
-                # so it can show with typewriter before characters are done
-                if not orch.streaming_enabled:
-                    ws_server.broadcast_narrator_ready(page_num, narration, orch.world.mood)
-
-            elif source != "narrator" and source not in progressive_rendered["characters"]:
-                # Render character as they complete
-                char = orch.characters.get(source)
-                if char and char.history:
-                    raw_response = char.history[-1]["content"] if char.history else ""
-                    char_data = _extract_character_data_safe(raw_response)
-                    progressive_results["characters"][source] = char_data
-
-                    from .display import render_character_panel_inline
-                    try:
-                        render_character_panel_inline(
-                            source, char_data,
-                            is_attached=(source == orch.attached_to)
-                        )
-                    except Exception:
-                        # Fallback: just show dialogue
-                        dialogue = char_data.get("dialogue")
-                        if dialogue and dialogue.lower() != "null":
-                            console.print(f"  [bold]{source}[/] — [italic]\"{dialogue}\"[/]")
-                    progressive_rendered["characters"].add(source)
-
-                    # In non-streaming mode, send character to frontend immediately
-                    if not orch.streaming_enabled:
-                        ws_server.broadcast_character_ready(page_num, source, char_data)
-
-    orch.set_stream_callback(on_stream)
-
-    # Progressive rendering callbacks for non-streaming mode
     def on_narrator_ready(page_num: int, narration: str, mood: str):
         nonlocal page_loading_active, progressive_rendered
         if progressive_rendered.get("narrator"):
             return
-        # Stop loading animation
         if page_loading_active:
             page_loading_active = False
             time.sleep(0.05)
             stop_page_loading()
-        # Render narrator panel
         from .display import render_narrator_panel
         try:
             render_narrator_panel(page_num, narration, mood)
-        except Exception as e:
+        except Exception:
             console.print(f"[dim]Narrator: {narration[:100]}...[/dim]")
         progressive_rendered["narrator"] = True
-        # Notify frontend
-        ws_server.broadcast_narrator_ready(page_num, narration, mood)
 
     def on_character_ready(page_num: int, name: str, data: dict):
         nonlocal progressive_rendered
@@ -459,54 +218,26 @@ def start(save_name, world_name, scenario_name, headless, force):
             if dialogue and dialogue.lower() != "null":
                 console.print(f"  [bold]{name}[/] — [italic]\"{dialogue}\"[/]")
         progressive_rendered["characters"].add(name)
-        ws_server.broadcast_character_ready(page_num, name, data)
-
-    def on_page_start(page_num: int):
-        nonlocal page_loading_active, page_animation_thread, progressive_rendered
-        # Reset progressive state for new page
-        progressive_rendered = {"narrator": False, "characters": set()}
-        # Start loading animation
-        page_loading_active = True
-        page_animation_thread = threading.Thread(
-            target=_run_loading_animation,
-            args=(page_num,),
-            daemon=True
-        )
-        page_animation_thread.start()
-        # Notify frontend that page is generating (for intermission)
-        ws_server.broadcast_page_generating(page_num)
 
     orch.set_page_start_callback(on_page_start)
     orch.set_narrator_callback(on_narrator_ready)
     orch.set_character_callback(on_character_ready)
 
-    # Disable streaming for OAuth (doesn't support real streaming)
-    client = get_client()
-    if client.auth_method != "none":
-        console.print(f"[dim]Auth method: {client.auth_method}, streaming: {client.supports_streaming}[/dim]")
-    orch.streaming_enabled = client.supports_streaming
-    if not client.supports_streaming:
-        console.print("[dim]OAuth mode: streaming disabled, using progressive rendering[/dim]")
-
-    # Wire up: orchestrator pages → server broadcasts + local display
+    # Final page callback — renders anything not already shown progressively
     def on_page(results):
         nonlocal page_loading_active, progressive_rendered
 
-        # Stop loading animation if still running
         if page_loading_active:
             page_loading_active = False
             time.sleep(0.1)
             stop_page_loading()
 
-        # Only render if we haven't already rendered progressively
-        already_rendered = progressive_rendered.get("narrator", False)
-        if not already_rendered:
+        if not progressive_rendered.get("narrator", False):
             try:
                 render_page(results, attached_to=orch.attached_to)
             except Exception as e:
                 console.print(f"[red]Display error: {e}[/red]")
         else:
-            # Just render events at the end (characters already shown)
             events = results.get("events", [])
             if events:
                 from .display import render_events_panel
@@ -514,15 +245,6 @@ def start(save_name, world_name, scenario_name, headless, force):
                     render_events_panel(events)
                 except Exception:
                     pass
-
-        try:
-            server.broadcast_page(results)
-        except Exception as e:
-            console.print(f"[red]TCP broadcast error: {e}[/red]")
-        try:
-            ws_server.broadcast_page(results)
-        except Exception as e:
-            console.print(f"[red]WS broadcast error: {e}[/red]")
 
     orch.add_page_callback(on_page)
 
@@ -533,8 +255,6 @@ def start(save_name, world_name, scenario_name, headless, force):
         world_id=world.world_id,
         created_at=world.created_at,
         page_count=world.page_count,
-        tcp_port=SERVER_PORT,
-        ws_port=WS_PORT,
         animated=not headless,
     )
 
@@ -625,333 +345,9 @@ def start(save_name, world_name, scenario_name, headless, force):
     except KeyboardInterrupt:
         pass
     finally:
-        server.stop()
         orch.stop()
         console.print("[dim]World saved. Goodbye.[/dim]")
 
-
-# ---------------------------------------------------------------------------
-# ATTACH MODE — runs on host, connects to Docker container
-# ---------------------------------------------------------------------------
-
-@cli.command()
-@click.argument("character", required=False, default=None)
-@click.option("--host", default=None, help="Server host (default: 127.0.0.1)")
-@click.option("--port", default=None, type=int, help="Server port (default: 7666)")
-def attach(character, host, port):
-    """Attach to a character in the running game. Opens a live view of their inner thoughts."""
-    host = host or CLIENT_HOST
-    port = port or SERVER_PORT
-
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((host, port))
-    except ConnectionRefusedError:
-        console.print(f"[red]Cannot connect to game server at {host}:{port}[/red]")
-        console.print("[dim]Start the server first: raunch start[/dim]")
-        return
-
-    console.print(f"[green]Connected to game server at {host}:{port}[/green]")
-
-    buf = ""
-
-    def read_message():
-        """Read one newline-delimited JSON message."""
-        nonlocal buf
-        while "\n" not in buf:
-            data = sock.recv(8192)
-            if not data:
-                return None
-            buf += data.decode("utf-8")
-        line, buf = buf.split("\n", 1)
-        return json.loads(line.strip())
-
-    def send_command(cmd_dict):
-        sock.sendall((json.dumps(cmd_dict) + "\n").encode("utf-8"))
-
-    # Read welcome
-    welcome = read_message()
-    if welcome and welcome.get("type") == "welcome":
-        w = welcome.get("world", {})
-        chars = welcome.get("characters", [])
-        console.print(
-            Panel(
-                f"[bold]{w.get('world_name', '?')}[/bold] [{w.get('world_id', '?')}]\n"
-                f"Created: {w.get('created_at', '?')} | Page: {w.get('page_count', '?')} | Mood: {w.get('mood', '?')}\n"
-                f"Characters: {', '.join(chars)}",
-                title="Connected",
-                border_style="green",
-            )
-        )
-
-        if not character:
-            # No character specified — show list and ask
-            console.print("\nWho do you want to attach to?")
-            for i, c in enumerate(chars, 1):
-                console.print(f"  [bold]{i}[/bold]. {c}")
-            try:
-                choice = input("\n> ").strip()
-            except (EOFError, KeyboardInterrupt):
-                sock.close()
-                return
-            # Accept number or name
-            if choice.isdigit() and 1 <= int(choice) <= len(chars):
-                character = chars[int(choice) - 1]
-            else:
-                character = choice
-
-    # Attach to character
-    send_command({"cmd": "attach", "character": character})
-    response = read_message()
-    if response and response.get("type") == "attached":
-        attached_name = response["character"]
-
-        # Dramatic attach animation!
-        render_attach_animation(attached_name)
-
-        # Show commands after animation
-        _show_attach_commands()
-    elif response and response.get("type") == "error":
-        console.print(f"[red]{response['message']}[/red]")
-        sock.close()
-        return
-
-    # Start background thread to receive pages
-    running = True
-
-    def receive_loop():
-        nonlocal running
-        while running:
-            try:
-                msg = read_message()
-                if msg is None:
-                    console.print("\n[red]Server disconnected.[/red]")
-                    running = False
-                    break
-                _handle_server_message(msg)
-            except (ConnectionResetError, OSError):
-                if running:
-                    console.print("\n[red]Connection lost.[/red]")
-                running = False
-                break
-
-    recv_thread = threading.Thread(target=receive_loop, daemon=True)
-    recv_thread.start()
-
-    # Input loop
-    try:
-        while running:
-            try:
-                cmd = input().strip()
-            except EOFError:
-                break
-
-            if not cmd or not running:
-                continue
-
-            # Parse command and arguments
-            parts = cmd.split(None, 1)
-            cmd_name = parts[0].lower() if parts else ""
-            cmd_arg = parts[1].strip() if len(parts) > 1 else ""
-
-            # Command matching (short and long forms)
-            if cmd_name in ("q", "quit", "exit"):
-                break
-            elif cmd_name in ("c", "chars", "characters"):
-                send_command({"cmd": "list"})
-            elif cmd_name in ("w", "world"):
-                send_command({"cmd": "world"})
-            elif cmd_name in ("h", "history"):
-                send_command({"cmd": "history", "count": 20})
-            elif cmd_name in ("t", "thoughts"):
-                if cmd_arg:
-                    send_command({"cmd": "character_history", "character": cmd_arg})
-                else:
-                    send_command({"cmd": "character_history"})
-            elif cmd_name in ("r", "replay"):
-                if not cmd_arg:
-                    console.print("[red]Usage: r, replay <page_number>[/red]")
-                else:
-                    try:
-                        page_num = int(cmd_arg)
-                        send_command({"cmd": "replay", "page": page_num})
-                    except ValueError:
-                        console.print("[red]Usage: r, replay <page_number>[/red]")
-            elif cmd_name in ("s", "status"):
-                send_command({"cmd": "status"})
-            elif cmd_name in ("d", "detach"):
-                send_command({"cmd": "detach"})
-            elif cmd_name in ("a", "attach", "switch"):
-                if not cmd_arg:
-                    console.print("[red]Usage: a, attach <character_name>[/red]")
-                else:
-                    send_command({"cmd": "attach", "character": cmd_arg})
-            elif cmd_name in ("?", "help", "commands"):
-                _show_attach_commands()
-            else:
-                # Treat as player action
-                send_command({"cmd": "action", "text": cmd})
-    except KeyboardInterrupt:
-        pass
-    finally:
-        running = False
-        sock.close()
-        console.print("[dim]Disconnected.[/dim]")
-
-
-def _handle_server_message(msg):
-    """Render a message received from the server."""
-    msg_type = msg.get("type", "")
-
-    if msg_type == "page":
-        attached = msg.get("attached_to")
-        render_page(msg, attached_to=attached)
-
-    elif msg_type == "attached":
-        # Dramatic attach animation when switching characters
-        render_attach_animation(msg['character'])
-
-    elif msg_type == "detached":
-        render_detach_animation(msg.get('character', 'character'))
-
-    elif msg_type == "characters":
-        chars = msg.get("characters", {})
-        if not chars:
-            console.print("[dim]No characters.[/dim]")
-        for name, info in chars.items():
-            console.print(
-                f"  [bold]{name}[/bold] — {info.get('species', '?')}, "
-                f"feeling {info.get('emotional_state', '?')}, "
-                f"at {info.get('location', '?')}"
-            )
-
-    elif msg_type == "world":
-        render_world_state(msg.get("snapshot", ""))
-
-    elif msg_type == "status":
-        w = msg.get("world", {})
-        console.print(
-            Panel(
-                f"[bold]{w.get('world_name', '?')}[/bold] [{w.get('world_id', '?')}]\n"
-                f"Created: {w.get('created_at', '?')} | Page: {w.get('page_count', '?')}\n"
-                f"Time: {w.get('world_time', '?')} | Mood: {w.get('mood', '?')}\n"
-                f"Characters: {', '.join(msg.get('characters', []))}\n"
-                f"Paused: {msg.get('paused', False)} | Clients connected: {msg.get('clients', 0)}",
-                title="Server Status",
-                border_style="bright_cyan",
-            )
-        )
-
-    elif msg_type == "history":
-        pages = msg.get("pages", [])
-        if not pages:
-            console.print("[dim]No history yet.[/dim]")
-        else:
-            for p in pages:
-                # Compact view: page number, time, mood, first line of narration
-                narration = p.get("narration", "")
-                preview = narration[:120].replace("\n", " ") + ("..." if len(narration) > 120 else "")
-                events = ", ".join(p.get("events", [])[:3])
-                console.print(
-                    f"  [bold]Page {p['page']}[/bold] [dim]({p.get('world_time', '?')})[/dim]\n"
-                    f"    {preview}\n"
-                    f"    [dim]Events: {events}[/dim]"
-                )
-            console.print(f"\n[dim]Use 'r <page>' to replay a full page.[/dim]")
-
-    elif msg_type == "character_history":
-        char = msg.get("character", "?")
-        pages = msg.get("pages", [])
-        render_character_history(char, pages)
-
-    elif msg_type == "replay":
-        # Full page replay with all character details
-        page_num = msg.get("page", "?")
-        console.print(
-            Panel(
-                msg.get("narration", ""),
-                title=f"REPLAY — Page {page_num} ({msg.get('world_time', '?')})",
-                subtitle=f"Mood: {msg.get('mood', '?')}",
-                border_style="bright_blue",
-                padding=(1, 2),
-            )
-        )
-        events = msg.get("events", [])
-        if events:
-            console.print(Panel("\n".join(f"  * {e}" for e in events), title="Events", border_style="dim"))
-        for cname, cdata in msg.get("characters", {}).items():
-            console.print(
-                Panel(
-                    f"[italic dim]{cdata.get('emotional_state', '')}[/italic dim]\n\n"
-                    f"[italic]{cdata.get('inner_thoughts', '')}[/italic]\n\n"
-                    f"[bold]Action:[/bold] {cdata.get('action', '')}\n"
-                    f"[bold]Dialogue:[/bold] {cdata.get('dialogue', '')}",
-                    title=cname,
-                    border_style="bright_magenta",
-                    padding=(1, 2),
-                )
-            )
-
-    elif msg_type == "error":
-        console.print(f"[red]{msg.get('message', 'Unknown error')}[/red]")
-
-    elif msg_type == "ok":
-        console.print(f"[green]{msg.get('message', 'OK')}[/green]")
-
-
-# ---------------------------------------------------------------------------
-# STATUS — quick check on running server
-# ---------------------------------------------------------------------------
-
-@cli.command()
-@click.option("--host", default=None, help="Server host")
-@click.option("--port", default=None, type=int, help="Server port")
-def status(host, port):
-    """Check the status of a running game server."""
-    host = host or CLIENT_HOST
-    port = port or SERVER_PORT
-
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(3)
-        sock.connect((host, port))
-    except (ConnectionRefusedError, socket.timeout):
-        console.print(f"[red]No server running at {host}:{port}[/red]")
-        return
-
-    buf = ""
-    def read_msg():
-        nonlocal buf
-        while "\n" not in buf:
-            data = sock.recv(4096)
-            if not data:
-                return None
-            buf += data.decode("utf-8")
-        line, buf = buf.split("\n", 1)
-        return json.loads(line.strip())
-
-    # Read welcome
-    welcome = read_msg()
-    if welcome:
-        w = welcome.get("world", {})
-        chars = welcome.get("characters", [])
-        console.print(
-            Panel(
-                f"[bold]{w.get('world_name', '?')}[/bold] [{w.get('world_id', '?')}]\n"
-                f"Created: {w.get('created_at', '?')}\n"
-                f"Page: {w.get('page_count', '?')} | Time: {w.get('world_time', '?')}\n"
-                f"Mood: {w.get('mood', '?')}\n"
-                f"Characters: {', '.join(chars)}",
-                title=f"Server @ {host}:{port}",
-                border_style="green",
-            )
-        )
-    sock.close()
-
-
-# ---------------------------------------------------------------------------
-# CONNECT — connect to a remote Living Library server
-# ---------------------------------------------------------------------------
 
 @cli.command()
 @click.argument("host")
@@ -1396,25 +792,13 @@ def play(scenario, nickname):
 @cli.command()
 def kill():
     """Kill any running raunch server processes."""
-    from .display import check_raunch_server_running
-
-    # First check if anything is running
-    server = check_raunch_server_running(SERVER_PORT)
-    if not server:
-        console.print("[dim]No raunch server detected on port {SERVER_PORT}[/dim]")
-        return
-
-    world = server.get("world", {})
-    console.print(f"[yellow]Killing server:[/yellow] {world.get('world_name', 'Unknown')}")
-
+    console.print("[yellow]Looking for raunch processes...[/yellow]")
     killed = _kill_raunch_servers()
 
     if killed > 0:
         console.print(f"[green]Killed {killed} process(es)[/green]")
     else:
-        console.print("[yellow]Could not find processes to kill. Try manually:[/yellow]")
-        console.print("  [bold]tasklist | findstr python[/bold]")
-        console.print("  [bold]taskkill /F /PID <pid>[/bold]")
+        console.print("[dim]No raunch processes found.[/dim]")
 
 
 # ---------------------------------------------------------------------------
