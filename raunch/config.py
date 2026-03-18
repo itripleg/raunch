@@ -1,6 +1,9 @@
 """Global configuration and constants."""
 
 import os
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env from project root
 
 # Paths
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
