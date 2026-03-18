@@ -725,6 +725,7 @@ function App() {
                 <GameLayout
                   game={game}
                   actions={actions}
+                  bookId={library.currentBook?.book_id}
                   onAddCharacter={() => {
                     actions.listCharacters();
                     setShowCharacterWizard(true);

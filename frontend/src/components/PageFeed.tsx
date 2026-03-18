@@ -731,6 +731,7 @@ function IntermissionWrapper({ pageNum }: { pageNum: number }) {
 
 type Props = {
   pages: PageData[];
+  bookId?: string;
   focusedPage?: number | null;
   onPageFocus?: (pageNum: number) => void;
   containerRef?: React.RefObject<HTMLDivElement | null>;
@@ -742,8 +743,9 @@ type Props = {
   nextPageNum?: number;
 };
 
-export function PageFeed({ pages, focusedPage, onPageFocus, containerRef, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
+export function PageFeed({ pages, bookId, focusedPage, onPageFocus, containerRef, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
   const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
+  const storageKey = bookId ? `raunch-last-page-${bookId}` : null;
 
   // Track newest page synchronously (not in effect) so isNew works on first render
   const newestPage = useMemo(() => {
@@ -814,63 +816,95 @@ export function PageFeed({ pages, focusedPage, onPageFocus, containerRef, onHove
     };
   }, [containerRef, onPageFocus, pages.length]);
 
-  // Scroll to last page on initial load
+  // Persist focused page to localStorage
+  useEffect(() => {
+    if (focusedPage && storageKey) {
+      try { localStorage.setItem(storageKey, String(focusedPage)); } catch { /* ignore */ }
+    }
+  }, [focusedPage, storageKey]);
+
+  // Scroll to saved page on initial load (or last page if no saved position)
   const hasScrolledOnLoad = useRef(false);
   useEffect(() => {
     if (hasScrolledOnLoad.current || pages.length === 0) return;
 
-    // Wait for DOM and animations to settle
     const timer = setTimeout(() => {
-      const lastPageNum = pages[pages.length - 1]?.page;
-      if (!lastPageNum) return;
+      let targetPage: number | null = null;
 
-      let el = document.querySelector(`[data-page="${lastPageNum}"]`) as HTMLElement;
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-        hasScrolledOnLoad.current = true;
+      // Try to restore saved position
+      if (storageKey) {
+        try {
+          const saved = localStorage.getItem(storageKey);
+          if (saved) targetPage = parseInt(saved, 10);
+        } catch { /* ignore */ }
+      }
+
+      // Fall back to last page
+      if (!targetPage || !pages.some(p => p.page === targetPage)) {
+        targetPage = pages[pages.length - 1]?.page ?? null;
+      }
+
+      if (targetPage) {
+        const el = document.querySelector(`[data-page="${targetPage}"]`) as HTMLElement;
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          hasScrolledOnLoad.current = true;
+        }
       }
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [pages.length]);
+  }, [pages.length, storageKey]);
 
-  // Auto-scroll: scroll new page into view after delay
+  // Auto-scroll new pages into view, but only if the previous last page is visible
   const lastPageCount = useRef(pages.length);
   useEffect(() => {
-    // No pages yet - just track count
     if (pages.length === 0) {
       lastPageCount.current = 0;
       return;
     }
 
-    // Page count didn't increase - no scroll needed
     if (pages.length <= lastPageCount.current) {
       lastPageCount.current = pages.length;
       return;
     }
 
+    const prevLastPageNum = lastPageCount.current > 0
+      ? pages[lastPageCount.current - 1]?.page
+      : null;
     const newestPageNum = pages[pages.length - 1]?.page;
     lastPageCount.current = pages.length;
 
     if (!newestPageNum) return;
-
-    // Mark that we've handled initial load if this is first pages
     if (!hasScrolledOnLoad.current) {
       hasScrolledOnLoad.current = true;
     }
 
-    const timer = setTimeout(() => {
-      let el = pageRefs.current.get(newestPageNum);
-      if (!el) {
-        el = document.querySelector(`[data-page="${newestPageNum}"]`) as HTMLElement;
+    // Only auto-scroll if the previous last page is in view (user hasn't scrolled away)
+    if (prevLastPageNum) {
+      const prevEl = pageRefs.current.get(prevLastPageNum)
+        ?? document.querySelector(`[data-page="${prevLastPageNum}"]`) as HTMLElement | null;
+      if (prevEl) {
+        const container = containerRef?.current;
+        if (container) {
+          const containerRect = container.getBoundingClientRect();
+          const elRect = prevEl.getBoundingClientRect();
+          const isVisible = elRect.bottom > containerRect.top && elRect.top < containerRect.bottom;
+          if (!isVisible) return; // User scrolled away, don't auto-scroll
+        }
       }
+    }
+
+    const timer = setTimeout(() => {
+      const el = pageRefs.current.get(newestPageNum)
+        ?? document.querySelector(`[data-page="${newestPageNum}"]`) as HTMLElement | null;
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [pages.length]);
+  }, [pages.length, containerRef]);
 
   // Empty state - show centered "Your story awaits" when no pages and not waiting
   if (pages.length === 0 && !waitingForPage) {

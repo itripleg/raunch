@@ -61,6 +61,7 @@ type Actions = {
 type Props = {
   game: GameState;
   actions: Actions;
+  bookId?: string;
   onAddCharacter?: () => void;
   onDeleteCharacter?: (name: string) => Promise<void>;
   onResetBook?: () => void;
@@ -68,7 +69,7 @@ type Props = {
   onOpenDebug?: () => void;
 };
 
-export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter, onResetBook, onStopWorld, onOpenDebug }: Props) {
+export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteCharacter, onResetBook, onStopWorld, onOpenDebug }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [focusedPageNum, setFocusedPageNum] = useState<number | null>(null);
@@ -500,6 +501,7 @@ export function GameLayout({ game, actions, onAddCharacter, onDeleteCharacter, o
           >
             <PageFeed
               pages={game.pages}
+              bookId={bookId}
               focusedPage={focusedPageNum}
               onPageFocus={handlePageFocus}
               containerRef={feedRef}
