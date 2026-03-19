@@ -1012,7 +1012,7 @@ function ConsoleSection({ wsCommands, consoleResults, runCommand, logResult, boo
                   </span>
                 </button>
                 <AnimatePresence>
-                  {expandedResult === i && r.data && (
+                  {expandedResult === i && r.data != null && (
                     <motion.pre
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: "auto", opacity: 1 }}
@@ -1020,7 +1020,7 @@ function ConsoleSection({ wsCommands, consoleResults, runCommand, logResult, boo
                       transition={{ duration: 0.15 }}
                       className="overflow-hidden text-[9px] font-mono text-muted-foreground/40 bg-black/20 rounded px-2 py-1.5 overflow-x-auto"
                     >
-                      {JSON.stringify(r.data as object, null, 2)}
+                      {String(JSON.stringify(r.data, null, 2))}
                     </motion.pre>
                   )}
                 </AnimatePresence>
