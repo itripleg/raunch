@@ -308,11 +308,24 @@ def load_scenario(name: str) -> Optional[Dict[str, Any]]:
         with open(path) as f:
             return json.load(f)
 
-    # Try matching by slug
+    # Try matching by slug in filename
     for fname in os.listdir(SCENARIOS_DIR):
         if fname.endswith(".json") and name.lower() in fname.lower():
             with open(os.path.join(SCENARIOS_DIR, fname)) as f:
                 return json.load(f)
+
+    # Try matching by scenario_name field inside JSON files
+    try:
+        for fname in os.listdir(SCENARIOS_DIR):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(SCENARIOS_DIR, fname)
+            with open(fpath) as f:
+                data = json.load(f)
+            if data.get("scenario_name", "").lower() == name.lower():
+                return data
+    except Exception:
+        pass
 
     # Try database lookup by ID
     from . import db
