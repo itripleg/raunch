@@ -830,7 +830,8 @@ def attach(character, host, port, book_id):
 @click.option("--port", default=8000, type=int, help="Server port (default: 8000)")
 @click.option("--bookmark", default=None, help="Book bookmark to join")
 @click.option("--nickname", default=None, help="Your display name")
-def connect(host, port, bookmark, nickname):
+@click.option("--librarian", default=None, help="Use existing librarian ID (from web session)")
+def connect(host, port, bookmark, nickname, librarian):
     """Connect to a remote Living Library server.
 
     Examples:
@@ -889,7 +890,7 @@ def connect(host, port, bookmark, nickname):
         return
 
     try:
-        client = RemoteClient(server_url, nickname=nickname)
+        client = RemoteClient(server_url, nickname=nickname, librarian_id=librarian)
         console.print(f"[green]Connected as {nickname}[/green]")
         console.print(f"[dim]Librarian ID: {client.librarian_id}[/dim]")
     except Exception as e:
