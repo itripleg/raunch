@@ -18,6 +18,7 @@
       "Bash(git push origin auto-claude/*:*)",
       "Bash(git push origin feature/*:*)",
       "Bash(git push origin fix/*:*)",
+      "Bash(git push origin unstable:*)",
       "Bash(node -e:*)",
       "Bash(curl:*)",
       "Bash(taskkill:*)",

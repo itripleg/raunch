@@ -31,8 +31,8 @@ Raunch is an interactive fiction/game platform with a Python backend and React f
 
 ### Branch Strategy
 ```
-main (protected - deploys to prod)
-├── unstable (integration/staging)
+main (protected - deploys to prod, NO AGENT PUSHES)
+├── unstable (integration/staging - agents CAN push here)
 ├── feature/* (new features)
 ├── fix/* (bug fixes)
 └── auto-claude/* (agent work branches)
