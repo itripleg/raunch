@@ -15,11 +15,12 @@ import { CharacterWizard } from "./components/CharacterWizard";
 import { WizardPage } from "./components/WizardPage";
 import { ScenarioSelector } from "./components/ScenarioSelector";
 import { CommandCenter, CommandCenterTrigger } from "./components/CommandCenter";
+import { NotFoundPage } from "./components/NotFoundPage";
 
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
 const HAS_PLAYED_KEY = "raunch_has_played";
 
-type AppView = "presplash" | "splash" | "dashboard" | "kanban" | "voting" | "about" | "wizard" | "scenario" | "game";
+type AppView = "presplash" | "splash" | "dashboard" | "kanban" | "voting" | "about" | "wizard" | "scenario" | "game" | "notfound";
 
 // Smart URL detection for local vs remote/production
 function getApiUrl(): string {
@@ -200,6 +201,18 @@ function App() {
 
   // Game sub-view: connecting vs actual game (scenario selection removed for alpha)
   const [gameSubView, setGameSubView] = useState<"connecting" | "playing">("connecting");
+
+  // Connection timeout: track how long we've been in "connecting" state
+  const [connectingTooLong, setConnectingTooLong] = useState(false);
+  useEffect(() => {
+    if (wsState === "connecting") {
+      setConnectingTooLong(false);
+      const timer = setTimeout(() => setConnectingTooLong(true), 10000);
+      return () => clearTimeout(timer);
+    } else {
+      setConnectingTooLong(false);
+    }
+  }, [wsState]);
 
   // Handle presplash (pre-auth splash) completion
   const handlePresplashComplete = useCallback(() => {
@@ -606,6 +619,18 @@ function App() {
           </motion.div>
         )}
 
+        {view === "notfound" && (
+          <motion.div
+            key="notfound"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <NotFoundPage onBack={handleBackToDashboard} />
+          </motion.div>
+        )}
+
         {view === "game" && (
           <motion.div
             key="game"
@@ -635,8 +660,13 @@ function App() {
               <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center space-y-6">
                   {wsState === "connecting" && (
-                    <>
-                      <div className="flex gap-1.5 justify-center">
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.4 }}
+                      className="text-center space-y-5"
+                    >
+                      <div className="flex gap-2 justify-center">
                         {[0, 1, 2].map((i) => (
                           <motion.div
                             key={i}
@@ -653,31 +683,67 @@ function App() {
                           />
                         ))}
                       </div>
-                      <p className="text-xs text-muted-foreground/40">connecting to server</p>
-                    </>
+                      <p className="text-sm text-muted-foreground/60">
+                        Connecting to the story engine
+                        <motion.span
+                          animate={{ opacity: [0, 1, 0] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                        >...</motion.span>
+                      </p>
+                      <AnimatePresence>
+                        {connectingTooLong && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className="space-y-3"
+                          >
+                            <p className="text-xs text-muted-foreground/40 max-w-xs mx-auto">
+                              Taking longer than expected — the server may be waking up from sleep
+                            </p>
+                            <button
+                              onClick={handleBackToDashboard}
+                              className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              Back to dashboard
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
                   )}
 
                   {wsState === "disconnected" && (
-                    <>
-                      <p className="text-sm text-muted-foreground">Server not available</p>
-                      <p className="text-xs text-muted-foreground/50 max-w-xs">
-                        Start the server with <code className="font-mono text-primary/70">raunch start</code>
-                      </p>
-                      <div className="flex gap-3 justify-center">
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4 }}
+                      className="text-center space-y-5 max-w-sm mx-auto"
+                    >
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                          The Library is resting&hellip;
+                        </p>
+                        <p className="text-xs text-muted-foreground/50 leading-relaxed">
+                          Servers spin down when idle to save resources. Click below to wake it up.
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-center gap-3">
                         <button
                           onClick={() => actions.connect()}
-                          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm"
+                          className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
                         >
-                          Retry
+                          Wake Up Server
                         </button>
                         <button
                           onClick={handleBackToDashboard}
-                          className="px-4 py-2 text-muted-foreground hover:text-foreground text-sm"
+                          className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          Back
+                          Back to dashboard
                         </button>
                       </div>
-                    </>
+                    </motion.div>
                   )}
 
                   {isConnected && !hasWorld && (

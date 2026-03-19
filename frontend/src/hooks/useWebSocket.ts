@@ -16,6 +16,9 @@ export function useWebSocket(baseUrl: string, bookId?: string | null) {
   // Callback ref for processing messages synchronously
   const onMessageRef = useRef<((msg: ServerMessage) => void) | null>(null);
 
+  // Rate limiting: track last send time per command group
+  const lastSendTimesRef = useRef<Record<string, number>>({});
+
   // Compute the full WebSocket URL including /ws/{bookId} path
   const url = useMemo(() => {
     if (!bookId) return null;
@@ -68,9 +71,29 @@ export function useWebSocket(baseUrl: string, bookId?: string | null) {
   }, [url]);
 
   const send = useCallback((data: Record<string, unknown>) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(data));
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+
+    // Determine rate-limit group and interval
+    const command = data.command as string | undefined;
+    let group: string | null = null;
+    let interval = 0;
+
+    if (command === "action" || command === "director") {
+      group = "whisper";
+      interval = 500;
+    } else if (command === "page") {
+      group = "page";
+      interval = 3000;
     }
+
+    if (group) {
+      const now = Date.now();
+      const last = lastSendTimesRef.current[group] ?? 0;
+      if (now - last < interval) return; // drop message, rate limited
+      lastSendTimesRef.current[group] = now;
+    }
+
+    wsRef.current.send(JSON.stringify(data));
   }, []);
 
   const disconnect = useCallback(() => {
