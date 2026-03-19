@@ -7,9 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 RUN pip install -e .
-RUN chmod +x start.sh
 
-ENV PORT=8000
 EXPOSE 8000
 
-ENTRYPOINT ["/bin/sh", "./start.sh"]
+ENTRYPOINT ["python", "-c", "import os, uvicorn; uvicorn.run('raunch.server.app:create_app', factory=True, host='0.0.0.0', port=int(os.environ.get('PORT', '8000')))"]
