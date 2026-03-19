@@ -41,7 +41,7 @@ type Props = {
   pageInterval?: number;
 };
 
-type Section = "status" | "controls" | "tokens" | "console";
+type Section = "status" | "controls" | "tokens" | "console" | "characters";
 
 // ─── Trigger Button ──────────────────────────────────────────────────────────
 
@@ -112,7 +112,7 @@ export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectB
 
   // Debug data (refusal detection)
   type DebugStats = { total_pages: number; total_character_pages: number; refusals: number; successfully_parsed: number };
-  type CharacterPageDebug = { id: number; page: number; character_name: string; is_refusal: boolean; parse_error: string | null; has_extracted_data: boolean };
+  type CharacterPageDebug = { id: number; page: number; character_name: string; inner_thoughts: string | null; action: string | null; dialogue: string | null; emotional_state: string | null; desires_update: string | null; is_refusal: boolean; parse_error: string | null; has_extracted_data: boolean; raw_json?: Record<string, unknown>; created_at: string };
   type DebugData = { world_id: string; pages: unknown[]; character_pages: CharacterPageDebug[]; stats: DebugStats };
   const [debugData, setDebugData] = useState<DebugData | null>(null);
 
@@ -262,6 +262,7 @@ export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectB
   const sections: { id: Section; label: string; adminOnly?: boolean }[] = [
     { id: "status", label: "Status" },
     { id: "controls", label: "Controls" },
+    { id: "characters", label: "Characters", adminOnly: true },
     { id: "tokens", label: "Config", adminOnly: true },
     { id: "console", label: "Console", adminOnly: true },
   ];
@@ -433,6 +434,11 @@ export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectB
                       authInfo={authInfo}
                       isAdmin={isAdmin}
                     />
+                  </motion.div>
+                )}
+                {section === "characters" && isAdmin && (
+                  <motion.div key="characters" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.15 }}>
+                    <CharactersRawSection debugData={debugData} />
                   </motion.div>
                 )}
                 {section === "console" && isAdmin && (
@@ -798,6 +804,136 @@ function TokensSection({ tokens, newTokenName, setNewTokenName, newTokenValue, s
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Characters Raw Section ──────────────────────────────────────────────────
+
+function CharactersRawSection({ debugData }: {
+  debugData: { character_pages: { id: number; page: number; character_name: string; inner_thoughts: string | null; action: string | null; dialogue: string | null; emotional_state: string | null; desires_update: string | null; is_refusal: boolean; parse_error: string | null; has_extracted_data: boolean; raw_json?: Record<string, unknown>; created_at: string }[] } | null;
+}) {
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [filter, setFilter] = useState<"all" | "refusals" | "errors">("all");
+
+  if (!debugData || debugData.character_pages.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-[10px] text-muted-foreground/40 font-mono">No character data. Open a book and generate pages first.</p>
+      </div>
+    );
+  }
+
+  const filtered = debugData.character_pages.filter(cp => {
+    if (filter === "refusals") return cp.is_refusal;
+    if (filter === "errors") return cp.parse_error;
+    return true;
+  });
+
+  return (
+    <div className="space-y-3">
+      {/* Filter */}
+      <div className="flex gap-1">
+        {(["all", "refusals", "errors"] as const).map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-2 py-1 text-[9px] font-mono uppercase tracking-wider rounded transition-all ${
+              filter === f
+                ? f === "refusals" ? "bg-amber-500/15 text-amber-400" : f === "errors" ? "bg-red-500/15 text-red-400" : "bg-cyan-500/10 text-cyan-400"
+                : "text-muted-foreground/30 hover:text-muted-foreground/50"
+            }`}
+          >
+            {f} {f === "refusals" ? `(${debugData.character_pages.filter(cp => cp.is_refusal).length})` : f === "errors" ? `(${debugData.character_pages.filter(cp => cp.parse_error).length})` : `(${debugData.character_pages.length})`}
+          </button>
+        ))}
+      </div>
+
+      {/* Character pages */}
+      <div className="space-y-1 max-h-[60vh] overflow-y-auto">
+        {filtered.map(cp => (
+          <div
+            key={cp.id}
+            className={`rounded border transition-all ${
+              cp.is_refusal ? "border-amber-500/20 bg-amber-500/5" : cp.parse_error ? "border-red-500/20 bg-red-500/5" : "border-white/[0.04] bg-white/[0.01]"
+            }`}
+          >
+            {/* Header */}
+            <button
+              onClick={() => setExpandedId(expandedId === cp.id ? null : cp.id)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.02] transition-colors"
+            >
+              <span className="text-[9px] font-mono font-bold text-primary/70">#{cp.page}</span>
+              <span className="text-[10px] text-foreground/70 flex-1">{cp.character_name}</span>
+              {cp.is_refusal && <span className="px-1.5 py-0.5 text-[8px] font-mono bg-amber-500/15 text-amber-400 rounded">REFUSAL</span>}
+              {cp.parse_error && <span className="px-1.5 py-0.5 text-[8px] font-mono bg-red-500/15 text-red-400 rounded">PARSE ERR</span>}
+              {cp.emotional_state && <span className="text-[9px] text-amber-400/40 italic truncate max-w-24">{cp.emotional_state}</span>}
+            </button>
+
+            {/* Expanded content */}
+            <AnimatePresence>
+              {expandedId === cp.id && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-3 pb-3 pt-1 border-t border-white/[0.04] space-y-2">
+                    {cp.inner_thoughts && (
+                      <div>
+                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Thoughts</span>
+                        <p className="text-[10px] text-foreground/70 italic">{cp.inner_thoughts}</p>
+                      </div>
+                    )}
+                    {cp.action && (
+                      <div>
+                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Action</span>
+                        <p className="text-[10px] text-foreground/70">{cp.action}</p>
+                      </div>
+                    )}
+                    {cp.dialogue && (
+                      <div>
+                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Dialogue</span>
+                        <p className="text-[10px] text-foreground/70">"{cp.dialogue}"</p>
+                      </div>
+                    )}
+                    {cp.emotional_state && (
+                      <div>
+                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Emotion</span>
+                        <p className="text-[10px] text-amber-400/60 italic">{cp.emotional_state}</p>
+                      </div>
+                    )}
+                    {cp.desires_update && (
+                      <div>
+                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Desires</span>
+                        <p className="text-[10px] text-foreground/60">{cp.desires_update}</p>
+                      </div>
+                    )}
+                    {cp.parse_error && (
+                      <div>
+                        <span className="text-[8px] font-mono uppercase text-red-400/50">Parse Error</span>
+                        <p className="text-[10px] text-red-400/70">{cp.parse_error}</p>
+                      </div>
+                    )}
+                    {/* Raw JSON */}
+                    {cp.raw_json && (
+                      <div>
+                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Raw JSON</span>
+                        <pre className="text-[9px] font-mono text-muted-foreground/40 bg-black/20 rounded p-2 mt-1 overflow-x-auto max-h-40 overflow-y-auto">
+                          {String(JSON.stringify(cp.raw_json, null, 2))}
+                        </pre>
+                      </div>
+                    )}
+                    <p className="text-[8px] font-mono text-muted-foreground/20">ID: {cp.id} · {cp.created_at}</p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
