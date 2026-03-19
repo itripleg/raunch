@@ -810,10 +810,13 @@ function TokensSection({ tokens, newTokenName, setNewTokenName, newTokenValue, s
 
 // ─── Characters Raw Section ──────────────────────────────────────────────────
 
+type CharPageEntry = { id: number; page: number; character_name: string; inner_thoughts: string | null; action: string | null; dialogue: string | null; emotional_state: string | null; desires_update: string | null; is_refusal: boolean; parse_error: string | null; has_extracted_data: boolean; raw_json?: Record<string, unknown>; created_at: string };
+
 function CharactersRawSection({ debugData }: {
-  debugData: { character_pages: { id: number; page: number; character_name: string; inner_thoughts: string | null; action: string | null; dialogue: string | null; emotional_state: string | null; desires_update: string | null; is_refusal: boolean; parse_error: string | null; has_extracted_data: boolean; raw_json?: Record<string, unknown>; created_at: string }[] } | null;
+  debugData: { character_pages: CharPageEntry[] } | null;
 }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedPage, setExpandedPage] = useState<number | null>(null);
   const [filter, setFilter] = useState<"all" | "refusals" | "errors">("all");
 
   if (!debugData || debugData.character_pages.length === 0) {
@@ -829,6 +832,14 @@ function CharactersRawSection({ debugData }: {
     if (filter === "errors") return cp.parse_error;
     return true;
   });
+
+  // Group by page
+  const pageGroups: Record<number, CharPageEntry[]> = {};
+  for (const cp of filtered) {
+    if (!pageGroups[cp.page]) pageGroups[cp.page] = [];
+    pageGroups[cp.page].push(cp);
+  }
+  const sortedPages = Object.keys(pageGroups).map(Number).sort((a, b) => a - b);
 
   return (
     <div className="space-y-3">
@@ -849,90 +860,128 @@ function CharactersRawSection({ debugData }: {
         ))}
       </div>
 
-      {/* Character pages */}
-      <div className="space-y-1 max-h-[60vh] overflow-y-auto">
-        {filtered.map(cp => (
-          <div
-            key={cp.id}
-            className={`rounded border transition-all ${
-              cp.is_refusal ? "border-amber-500/20 bg-amber-500/5" : cp.parse_error ? "border-red-500/20 bg-red-500/5" : "border-white/[0.04] bg-white/[0.01]"
-            }`}
-          >
-            {/* Header */}
-            <button
-              onClick={() => setExpandedId(expandedId === cp.id ? null : cp.id)}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.02] transition-colors"
-            >
-              <span className="text-[9px] font-mono font-bold text-primary/70">#{cp.page}</span>
-              <span className="text-[10px] text-foreground/70 flex-1">{cp.character_name}</span>
-              {cp.is_refusal && <span className="px-1.5 py-0.5 text-[8px] font-mono bg-amber-500/15 text-amber-400 rounded">REFUSAL</span>}
-              {cp.parse_error && <span className="px-1.5 py-0.5 text-[8px] font-mono bg-red-500/15 text-red-400 rounded">PARSE ERR</span>}
-              {cp.emotional_state && <span className="text-[9px] text-amber-400/40 italic truncate max-w-24">{cp.emotional_state}</span>}
-            </button>
+      {/* Pages → Characters */}
+      <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+        {sortedPages.map(pageNum => {
+          const chars = pageGroups[pageNum];
+          const hasIssue = chars.some(cp => cp.is_refusal || cp.parse_error);
+          const isPageOpen = expandedPage === pageNum;
 
-            {/* Expanded content */}
-            <AnimatePresence>
-              {expandedId === cp.id && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-3 pb-3 pt-1 border-t border-white/[0.04] space-y-2">
-                    {cp.inner_thoughts && (
-                      <div>
-                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Thoughts</span>
-                        <p className="text-[10px] text-foreground/70 italic">{cp.inner_thoughts}</p>
-                      </div>
-                    )}
-                    {cp.action && (
-                      <div>
-                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Action</span>
-                        <p className="text-[10px] text-foreground/70">{cp.action}</p>
-                      </div>
-                    )}
-                    {cp.dialogue && (
-                      <div>
-                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Dialogue</span>
-                        <p className="text-[10px] text-foreground/70">"{cp.dialogue}"</p>
-                      </div>
-                    )}
-                    {cp.emotional_state && (
-                      <div>
-                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Emotion</span>
-                        <p className="text-[10px] text-amber-400/60 italic">{cp.emotional_state}</p>
-                      </div>
-                    )}
-                    {cp.desires_update && (
-                      <div>
-                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Desires</span>
-                        <p className="text-[10px] text-foreground/60">{cp.desires_update}</p>
-                      </div>
-                    )}
-                    {cp.parse_error && (
-                      <div>
-                        <span className="text-[8px] font-mono uppercase text-red-400/50">Parse Error</span>
-                        <p className="text-[10px] text-red-400/70">{cp.parse_error}</p>
-                      </div>
-                    )}
-                    {/* Raw JSON */}
-                    {cp.raw_json && (
-                      <div>
-                        <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Raw JSON</span>
-                        <pre className="text-[9px] font-mono text-muted-foreground/40 bg-black/20 rounded p-2 mt-1 overflow-x-auto max-h-40 overflow-y-auto">
-                          {String(JSON.stringify(cp.raw_json, null, 2))}
-                        </pre>
-                      </div>
-                    )}
-                    <p className="text-[8px] font-mono text-muted-foreground/20">ID: {cp.id} · {cp.created_at}</p>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        ))}
+          return (
+            <div key={pageNum} className={`rounded border ${hasIssue ? "border-amber-500/15" : "border-white/[0.04]"}`}>
+              {/* Page header */}
+              <button
+                onClick={() => setExpandedPage(isPageOpen ? null : pageNum)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.02] transition-colors"
+              >
+                <span className="text-[10px] font-mono font-bold text-primary/70">Page {pageNum}</span>
+                <span className="text-[9px] text-muted-foreground/30 flex-1">
+                  {chars.map(cp => cp.character_name).join(", ")}
+                </span>
+                {hasIssue && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`text-muted-foreground/30 transition-transform ${isPageOpen ? "rotate-180" : ""}`}>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+
+              {/* Characters under this page */}
+              <AnimatePresence>
+                {isPageOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="border-t border-white/[0.04] px-1 py-1 space-y-1">
+                      {chars.map(cp => (
+                        <div
+                          key={cp.id}
+                          className={`rounded transition-all ${
+                            cp.is_refusal ? "bg-amber-500/5" : cp.parse_error ? "bg-red-500/5" : ""
+                          }`}
+                        >
+                          {/* Character header */}
+                          <button
+                            onClick={() => setExpandedId(expandedId === cp.id ? null : cp.id)}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-white/[0.02] transition-colors rounded"
+                          >
+                            <span className="text-[10px] text-foreground/70 flex-1">{cp.character_name}</span>
+                            {cp.is_refusal && <span className="px-1.5 py-0.5 text-[8px] font-mono bg-amber-500/15 text-amber-400 rounded">REFUSAL</span>}
+                            {cp.parse_error && <span className="px-1.5 py-0.5 text-[8px] font-mono bg-red-500/15 text-red-400 rounded">PARSE ERR</span>}
+                            {cp.emotional_state && <span className="text-[9px] text-amber-400/40 italic truncate max-w-24">{cp.emotional_state}</span>}
+                          </button>
+
+                          {/* Expanded character detail */}
+                          <AnimatePresence>
+                            {expandedId === cp.id && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                className="overflow-hidden"
+                              >
+                                <div className="px-2 pb-2 pt-1 border-t border-white/[0.03] space-y-2 ml-2">
+                                  {cp.inner_thoughts && (
+                                    <div>
+                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Thoughts</span>
+                                      <p className="text-[10px] text-foreground/70 italic">{cp.inner_thoughts}</p>
+                                    </div>
+                                  )}
+                                  {cp.action && (
+                                    <div>
+                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Action</span>
+                                      <p className="text-[10px] text-foreground/70">{cp.action}</p>
+                                    </div>
+                                  )}
+                                  {cp.dialogue && (
+                                    <div>
+                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Dialogue</span>
+                                      <p className="text-[10px] text-foreground/70">"{cp.dialogue}"</p>
+                                    </div>
+                                  )}
+                                  {cp.emotional_state && (
+                                    <div>
+                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Emotion</span>
+                                      <p className="text-[10px] text-amber-400/60 italic">{cp.emotional_state}</p>
+                                    </div>
+                                  )}
+                                  {cp.desires_update && (
+                                    <div>
+                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Desires</span>
+                                      <p className="text-[10px] text-foreground/60">{cp.desires_update}</p>
+                                    </div>
+                                  )}
+                                  {cp.parse_error && (
+                                    <div>
+                                      <span className="text-[8px] font-mono uppercase text-red-400/50">Parse Error</span>
+                                      <p className="text-[10px] text-red-400/70">{cp.parse_error}</p>
+                                    </div>
+                                  )}
+                                  {cp.raw_json && (
+                                    <div>
+                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Raw JSON</span>
+                                      <pre className="text-[9px] font-mono text-muted-foreground/40 bg-black/20 rounded p-2 mt-1 overflow-x-auto max-h-40 overflow-y-auto">
+                                        {String(JSON.stringify(cp.raw_json, null, 2))}
+                                      </pre>
+                                    </div>
+                                  )}
+                                  <p className="text-[8px] font-mono text-muted-foreground/20">ID: {cp.id} · {cp.created_at}</p>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
