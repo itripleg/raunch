@@ -110,6 +110,28 @@ export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectB
   const [intervalInput, setIntervalInput] = useState("30");
   const [isPaused, setIsPaused] = useState(gamePaused ?? false);
 
+  // Debug data (refusal detection)
+  type DebugStats = { total_pages: number; total_character_pages: number; refusals: number; successfully_parsed: number };
+  type CharacterPageDebug = { id: number; page: number; character_name: string; is_refusal: boolean; parse_error: string | null; has_extracted_data: boolean };
+  type DebugData = { world_id: string; pages: unknown[]; character_pages: CharacterPageDebug[]; stats: DebugStats };
+  const [debugData, setDebugData] = useState<DebugData | null>(null);
+
+  // Fetch debug data on open
+  useEffect(() => {
+    if (isAdmin && bookId && sendCommand) {
+      sendCommand("debug", { limit: 50, include_raw: true });
+    }
+  }, [isAdmin, bookId, sendCommand]);
+
+  // Listen for debug data response
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setDebugData((e as CustomEvent<DebugData>).detail);
+    };
+    window.addEventListener("raunch-debug-data", handler);
+    return () => window.removeEventListener("raunch-debug-data", handler);
+  }, []);
+
   // Console state
   const [consoleResults, setConsoleResults] = useState<{ cmd: string; time: string; data?: unknown }[]>([]);
   const [wsCommands, setWsCommands] = useState<{ cmd: string; desc: string; params?: Record<string, string> }[]>([]);
@@ -367,6 +389,7 @@ export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectB
                       mockMode={mockMode}
                       books={books}
                       onSelectBook={onSelectBook}
+                      debugData={isAdmin ? debugData : null}
                     />
                   </motion.div>
                 )}
@@ -473,11 +496,12 @@ function StatusPill({ active, label, color, pulse }: { active: boolean; label: s
 
 // ─── Status Section ──────────────────────────────────────────────────────────
 
-function StatusSection({ bookId, pageCount, characterCount, gamePaused, gameManualMode, mockMode, books, onSelectBook }: {
+function StatusSection({ bookId, pageCount, characterCount, gamePaused, gameManualMode, mockMode, books, onSelectBook, debugData }: {
   bookId?: string; pageCount?: number; characterCount?: number;
   gamePaused?: boolean; gameManualMode?: boolean; mockMode: boolean;
   books: { id: string; bookmark: string; scenario_name?: string; page_count?: number }[];
   onSelectBook?: (id: string) => void;
+  debugData?: { stats: { total_pages: number; total_character_pages: number; refusals: number; successfully_parsed: number }; character_pages: { id: number; page: number; character_name: string; is_refusal: boolean; parse_error: string | null }[] } | null;
 }) {
   const currentBook = books.find(b => b.id === bookId);
 
@@ -501,6 +525,35 @@ function StatusSection({ bookId, pageCount, characterCount, gamePaused, gameManu
           textValue
         />
       </div>
+
+      {/* Refusal / Issue detection (admin) */}
+      {debugData && (
+        <>
+          {(debugData.stats.refusals > 0 || debugData.character_pages.some(cp => cp.parse_error)) ? (
+            <DataBlock title={`Issues · ${debugData.stats.refusals} refusals`}>
+              {debugData.character_pages.filter(cp => cp.is_refusal).slice(0, 5).map(cp => (
+                <div key={`r-${cp.id}`} className="text-[10px] px-2 py-1.5 rounded bg-amber-500/5 border border-amber-500/15 text-amber-400/70 mb-1">
+                  Page {cp.page} — {cp.character_name}: refusal
+                </div>
+              ))}
+              {debugData.character_pages.filter(cp => cp.parse_error).slice(0, 3).map(cp => (
+                <div key={`p-${cp.id}`} className="text-[10px] px-2 py-1.5 rounded bg-red-500/5 border border-red-500/15 text-red-400/70 mb-1">
+                  Page {cp.page} — {cp.character_name}: {cp.parse_error}
+                </div>
+              ))}
+            </DataBlock>
+          ) : (
+            <DataBlock title="Quality">
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span className="text-[10px] text-emerald-400/60 font-mono">
+                  {debugData.stats.successfully_parsed}/{debugData.stats.total_character_pages} parsed OK · 0 refusals
+                </span>
+              </div>
+            </DataBlock>
+          )}
+        </>
+      )}
 
       {/* Book list */}
       {books.length > 0 && (
