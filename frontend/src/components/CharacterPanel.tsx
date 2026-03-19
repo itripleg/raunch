@@ -88,7 +88,13 @@ export function CharacterPanel({ name, data: rawData, pendingInfluence, streamin
             </button>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-1">Inner thoughts</p>
+        <p className="text-[10px] mt-1 h-4 italic truncate">
+          {pendingInfluence ? (
+            <span className="text-amber-400/60">whisper queued: "{pendingInfluence}"</span>
+          ) : (
+            <span>&nbsp;</span>
+          )}
+        </p>
       </div>
 
       <ScrollArea className="flex-1 overflow-hidden">

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 
 type Props = {
@@ -6,7 +6,9 @@ type Props = {
   onSubmitDirector: (text: string) => void;
   attachedTo?: string | null;
   directorMode: boolean;
+  pendingInfluence?: { character: string; text: string } | null;
   pendingDirectorGuidance?: string | null;
+  isStreaming?: boolean;
   wideMode?: boolean;
 };
 
@@ -15,11 +17,23 @@ export function ActionBar({
   onSubmitDirector,
   attachedTo,
   directorMode,
+  pendingInfluence,
   pendingDirectorGuidance,
+  isStreaming,
   wideMode,
 }: Props) {
   const [value, setValue] = useState("");
   const [flash, setFlash] = useState(false);
+
+  // Populate input with pending influence text so user can see/edit it
+  const prevInfluenceRef = useRef<string | null>(null);
+  useEffect(() => {
+    const influenceText = pendingInfluence?.text ?? null;
+    if (influenceText && influenceText !== prevInfluenceRef.current) {
+      setValue(influenceText);
+    }
+    prevInfluenceRef.current = influenceText;
+  }, [pendingInfluence]);
 
   const handleSubmit = useCallback(() => {
     const text = value.trim();
@@ -93,11 +107,15 @@ export function ActionBar({
             placeholder={
               directorMode
                 ? "Direct the scene... (e.g., 'make it rain', 'introduce tension')"
+                : pendingInfluence
+                ? `Whisper queued for ${pendingInfluence.character}...`
                 : `Whisper to ${attachedTo}...`
             }
             className={`flex-1 px-4 py-2.5 bg-secondary/50 border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 transition-all ${
               directorMode
                 ? "border-amber-500/30 focus:ring-amber-500/50 focus:border-amber-500/40"
+                : pendingInfluence
+                ? "border-amber-500/30 bg-amber-500/5 focus:ring-amber-500/50 focus:border-amber-500/40 placeholder:text-amber-400/40"
                 : "border-border/50 focus:ring-primary/50 focus:border-primary/30"
             }`}
           />
@@ -125,6 +143,30 @@ export function ActionBar({
             Queued: "{pendingDirectorGuidance}" — takes effect next page
           </motion.div>
         )}
+
+        {/* Characters responding indicator */}
+        <AnimatePresence>
+          {isStreaming && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className={`mx-auto mt-2 flex items-center gap-2 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
+            >
+              <div className="flex gap-1">
+                {[0, 1, 2].map(i => (
+                  <motion.div
+                    key={i}
+                    className="w-1 h-1 rounded-full bg-primary/50"
+                    animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }}
+                    transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                  />
+                ))}
+              </div>
+              <span className="text-[10px] text-muted-foreground/40">characters responding...</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </AnimatePresence>
   );

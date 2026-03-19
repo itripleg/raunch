@@ -209,17 +209,19 @@ export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteChar
     }
   }, [game.attachedTo, game.directorMode, previewCharacter]);
 
-  // Click on character name - only works if panel already open (to avoid layout shift)
+  // Click on character name - desktop: only works if panel already open (to avoid layout shift)
+  // Mobile: always attach and open the overlay panel
   const handleTapCharacter = useCallback((name: string) => {
-    // Only allow if right panel is already open
-    if (game.attachedTo || game.directorMode || previewCharacter) {
+    const isMobile = window.innerWidth < 1024;
+    if (isMobile) {
+      // Mobile: attach to character and open panel
+      actions.attach(name);
+      setCharacterPanelOpen(true);
+    } else if (game.attachedTo || game.directorMode || previewCharacter) {
+      // Desktop: only preview if panel already open
       setPreviewCharacter(name);
-      // On mobile, also open the overlay panel
-      if (window.innerWidth < 1024) {
-        setCharacterPanelOpen(true);
-      }
     }
-  }, [game.attachedTo, game.directorMode, previewCharacter]);
+  }, [game.attachedTo, game.directorMode, previewCharacter, actions]);
 
   // Auto-scroll now handled by PageFeed (scrolls to actual page element)
 
@@ -505,7 +507,9 @@ export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteChar
             onSubmitDirector={actions.submitDirectorGuidance ?? (() => {})}
             attachedTo={game.attachedTo}
             directorMode={game.directorMode ?? false}
+            pendingInfluence={game.pendingInfluence}
             pendingDirectorGuidance={game.pendingDirectorGuidance}
+            isStreaming={game.streaming?.isStreaming}
             wideMode={wideMode}
           />
 

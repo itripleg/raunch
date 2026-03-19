@@ -764,8 +764,10 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Command Center trigger */}
-      <CommandCenterTrigger onClick={() => setShowCommandCenter(true)} />
+      {/* Command Center trigger - hidden during splash */}
+      {view !== "splash" && (
+        <CommandCenterTrigger onClick={() => setShowCommandCenter(true)} />
+      )}
 
       {/* Command Center panel */}
       {showCommandCenter && (

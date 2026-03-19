@@ -55,22 +55,14 @@ export function CommandCenterTrigger({ onClick }: { onClick: () => void }) {
       whileTap={{ scale: 0.95 }}
       className="fixed bottom-4 right-4 z-50 group"
     >
-      {/* Glow ring */}
-      <motion.div
-        className={`absolute inset-0 rounded-full blur-md transition-colors ${
-          mockMode ? "bg-fuchsia-500/30" : "bg-cyan-500/20"
-        }`}
-        animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.7, 0.4] }}
-        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-      />
       {/* Button */}
-      <div className={`relative w-10 h-10 rounded-full border backdrop-blur-md flex items-center justify-center transition-all ${
+      <div className={`relative w-10 h-10 rounded-full border backdrop-blur-sm flex items-center justify-center transition-all ${
         mockMode
-          ? "bg-fuchsia-950/80 border-fuchsia-500/40 group-hover:border-fuchsia-400/60"
-          : "bg-black/60 border-cyan-500/30 group-hover:border-cyan-400/50"
+          ? "bg-fuchsia-950/40 border-fuchsia-500/20 group-hover:border-fuchsia-400/40"
+          : "bg-primary/5 border-primary/15 group-hover:border-primary/30"
       }`}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
-          className={`transition-colors ${mockMode ? "text-fuchsia-400" : "text-cyan-400"}`}
+          className={`transition-colors ${mockMode ? "text-fuchsia-400/60" : "text-primary/40 group-hover:text-primary/60"}`}
         >
           <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
