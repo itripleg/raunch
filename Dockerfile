@@ -7,8 +7,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 RUN pip install -e .
+RUN chmod +x start.sh
 
 ENV PORT=8000
 EXPOSE 8000
 
-CMD uvicorn raunch.server.app:create_app --factory --host 0.0.0.0 --port $PORT
+ENTRYPOINT ["/bin/sh", "./start.sh"]
