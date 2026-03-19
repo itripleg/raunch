@@ -8,6 +8,7 @@ import { Sidebar } from "./Sidebar";
 import { ActionBar } from "./ActionBar";
 import { TurnStateUI } from "./TurnStateUI";
 import { PlayerPresence } from "./PlayerPresence";
+import { useMockMode } from "@/context/MockMode";
 
 type GameState = {
   world: Record<string, unknown> | null;
@@ -76,23 +77,8 @@ export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteChar
   const [previewCharacter, setPreviewCharacter] = useState<string | null>(null);
   const [nextClicked, setNextClicked] = useState(false);
   const [waitingForPage, setWaitingForPage] = useState(false);
-  // Debug mode: persisted in localStorage, app-wide
-  const [mockMode, setMockMode] = useState(() => {
-    try {
-      return localStorage.getItem('raunch-mock-mode') === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  // Persist mock mode changes
-  useEffect(() => {
-    try {
-      localStorage.setItem('raunch-mock-mode', mockMode ? 'true' : 'false');
-    } catch {
-      // ignore
-    }
-  }, [mockMode]);
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
+  const { mockMode, toggleMockMode } = useMockMode();
   const feedRef = useRef<HTMLDivElement>(null);
 
   // Handle next button click with animation
@@ -173,17 +159,15 @@ export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteChar
     actions.listCharacters();
   }, [actions]);
 
-  // Debug: Ctrl+Shift+M to toggle mock mode (for UI testing without AI)
+  // Auto-dismiss error toast after 5 seconds, suppress repeated identical errors
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === "M") {
-        e.preventDefault();
-        setMockMode(m => !m);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+    if (!game.error) { setDismissedError(null); return; }
+    const timer = setTimeout(() => {
+      setDismissedError(game.error);
+      actions.clearError();
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [game.error, actions]);
 
   // Auto-inject mock pages when in mock mode + auto mode + not paused
   useEffect(() => {
@@ -374,7 +358,7 @@ export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteChar
 
           {/* Mock/Live mode toggle */}
           <button
-            onClick={() => setMockMode(m => !m)}
+            onClick={() => toggleMockMode()}
             className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide transition-colors ${
               mockMode
                 ? "bg-fuchsia-500/20 text-fuchsia-400 hover:bg-fuchsia-500/30"
@@ -511,6 +495,7 @@ export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteChar
               mood={(game.world as Record<string, unknown>)?.mood as string}
               waitingForPage={isWaitingForPage}
               nextPageNum={game.pageGenerating ?? (game.pages.length > 0 ? game.pages[game.pages.length - 1].page + 1 : 1)}
+              onBegin={actions.triggerPage ? handleNextClick : undefined}
             />
           </div>
 
@@ -697,15 +682,29 @@ export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteChar
         </AnimatePresence>
       </div>
 
-      {/* Error toast */}
-      {game.error && (
-        <div
-          className="fixed bottom-4 right-4 bg-destructive text-destructive-foreground px-4 py-2 rounded-lg text-sm shadow-lg cursor-pointer animate-in fade-in slide-in-from-bottom-2"
-          onClick={actions.clearError}
-        >
-          {game.error}
-        </div>
-      )}
+      {/* Error toast - pointer-events-none on wrapper so it never blocks clicks */}
+      <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-40 max-w-sm pointer-events-none">
+        <AnimatePresence>
+          {game.error && game.error !== dismissedError && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div
+                className="bg-destructive/90 text-destructive-foreground px-4 py-2 rounded-lg text-sm shadow-lg cursor-pointer backdrop-blur-sm flex items-center gap-2 pointer-events-auto"
+                onClick={() => { setDismissedError(game.error); actions.clearError(); }}
+              >
+                <span className="flex-1">{game.error}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-60 flex-shrink-0">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
     </div>
   );

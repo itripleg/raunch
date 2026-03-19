@@ -78,10 +78,10 @@ const CHARACTER_COLORS = [
 
 // Decorative scene break patterns
 const SCENE_BREAKS = [
-  "· · ·  ✧  · · ·",
-  "─────  ❧  ─────",
-  "╌╌╌  ♡  ╌╌╌",
-  "·  ·  ·",
+  "✦",
+  "◆",
+  "✧",
+  "❖",
 ];
 
 type NarrationSegment =
@@ -446,18 +446,32 @@ function getCharacterColor(name: string, allNames: string[]) {
 
 /** Decorative scene break between major moments */
 function SceneBreak({ variant = 0 }: { variant?: number }) {
-  const pattern = SCENE_BREAKS[variant % SCENE_BREAKS.length];
+  const glyph = SCENE_BREAKS[variant % SCENE_BREAKS.length];
 
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
-      className="flex items-center justify-center py-4"
+      className="flex items-center justify-center gap-3 py-4"
     >
-      <span className="text-muted-foreground/30 text-sm tracking-[0.5em] font-light">
-        {pattern}
-      </span>
+      <motion.div
+        animate={{ opacity: [0.15, 0.3, 0.15] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        className="h-px w-12 bg-gradient-to-r from-transparent to-primary/30"
+      />
+      <motion.span
+        animate={{ opacity: [0.3, 0.55, 0.3] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        className="text-primary/40 text-[10px]"
+      >
+        {glyph}
+      </motion.span>
+      <motion.div
+        animate={{ opacity: [0.15, 0.3, 0.15] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        className="h-px w-12 bg-gradient-to-l from-transparent to-primary/30"
+      />
     </motion.div>
   );
 }
@@ -740,10 +754,11 @@ type Props = {
   wideMode?: boolean;
   mood?: string;
   waitingForPage?: boolean;
+  onBegin?: () => void;
   nextPageNum?: number;
 };
 
-export function PageFeed({ pages, bookId, focusedPage, onPageFocus, containerRef, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1 }: Props) {
+export function PageFeed({ pages, bookId, focusedPage, onPageFocus, containerRef, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1, onBegin }: Props) {
   const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
   const storageKey = bookId ? `raunch-last-page-${bookId}` : null;
 
@@ -904,7 +919,21 @@ export function PageFeed({ pages, bookId, focusedPage, onPageFocus, containerRef
           <div className="space-y-2">
             <h3 className="text-lg font-medium text-foreground/80">Your story awaits</h3>
             <p className="text-sm text-muted-foreground/60">
-              Press <span className="text-primary/70 font-medium">Begin</span> to turn the first page
+              Press{" "}
+              {onBegin ? (
+                <button
+                  onClick={onBegin}
+                  className="inline-flex items-center gap-1 text-primary/70 font-medium hover:text-primary transition-colors"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  Begin
+                </button>
+              ) : (
+                <span className="text-primary/70 font-medium">Begin</span>
+              )}{" "}
+              to turn the first page
             </p>
           </div>
         </motion.div>

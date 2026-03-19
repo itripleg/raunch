@@ -53,7 +53,7 @@ cd frontend && npm run dev
 
 **CLI only:**
 ```bash
-raunch start --scenario midnight_library
+raunch start --scenario the_living_library
 ```
 
 ## Authentication

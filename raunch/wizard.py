@@ -345,7 +345,7 @@ def list_scenarios() -> List[Dict[str, Any]]:
                     results.append({
                         "file": fname,
                         "name": data.get("scenario_name", "?"),
-                        "setting": (data.get("setting", "")[:80] + "...") if len(data.get("setting", "")) > 80 else data.get("setting", ""),
+                        "setting": data.get("setting", ""),
                         "characters": len(data.get("characters", [])),
                         "themes": data.get("themes", []),
                         "source": "file",

@@ -209,3 +209,64 @@ async def cleanup_invalid_books(req: AdminEmailRequest):
         deleted_count=len(deleted_books),
         deleted_books=deleted_books,
     )
+
+
+@router.post("/api/v1/admin/purge")
+async def purge_all(req: AdminEmailRequest):
+    """Hard reset — wipe all books, saves, and user scenarios. Admin only."""
+    if req.admin_email.lower() != ADMIN_EMAIL.lower():
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from raunch.config import SAVES_DIR
+    from ..library import get_library
+
+    deleted = {"books": 0, "saves": 0, "scenarios": 0}
+
+    # Stop all running orchestrators
+    library = get_library()
+    for book_id in list(library.books.keys()):
+        book = library.books.get(book_id)
+        if book and book.orchestrator:
+            book.orchestrator.stop()
+    library.books.clear()
+
+    # Wipe books from database
+    try:
+        from raunch.config import DB_BACKEND
+        if DB_BACKEND == "sqlite":
+            from raunch.db_sqlite import _get_conn
+            conn = _get_conn()
+            count = conn.execute("SELECT COUNT(*) FROM books").fetchone()[0]
+            conn.execute("DELETE FROM book_access")
+            conn.execute("DELETE FROM character_pages")
+            conn.execute("DELETE FROM pages")
+            conn.execute("DELETE FROM books")
+            conn.commit()
+            deleted["books"] = count
+    except Exception as e:
+        logger.warning(f"Purge DB error: {e}")
+
+    # Wipe save files
+    try:
+        save_files = [f for f in os.listdir(SAVES_DIR) if f.endswith(".json")]
+        for f in save_files:
+            os.remove(os.path.join(SAVES_DIR, f))
+        deleted["saves"] = len(save_files)
+    except Exception as e:
+        logger.warning(f"Purge saves error: {e}")
+
+    # Wipe user scenarios
+    try:
+        from raunch.config import DB_BACKEND
+        if DB_BACKEND == "sqlite":
+            from raunch.db_sqlite import _get_conn
+            conn = _get_conn()
+            count = conn.execute("SELECT COUNT(*) FROM scenarios").fetchone()[0]
+            conn.execute("DELETE FROM scenarios")
+            conn.commit()
+            deleted["scenarios"] = count
+    except Exception:
+        pass
+
+    logger.info(f"Admin purge: {deleted}")
+    return {"purged": True, "deleted": deleted}

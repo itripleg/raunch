@@ -3,9 +3,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 import { useGame } from "./hooks/useGame";
 import { useLibrary } from "./hooks/useLibrary";
+import { useMockMode } from "./context/MockMode";
 import { SplashScreen } from "./components/SplashScreen";
 import { AlphaDashboard } from "./components/AlphaDashboard";
-import { AdminSettings } from "./components/AdminSettings";
 import { FeedbackKanban } from "./components/FeedbackKanban";
 import { VotingPolls } from "./components/VotingPolls";
 import { AboutPage } from "./components/AboutPage";
@@ -14,7 +14,7 @@ import { NicknamePrompt } from "./components/NicknamePrompt";
 import { CharacterWizard } from "./components/CharacterWizard";
 import { WizardPage } from "./components/WizardPage";
 import { ScenarioSelector } from "./components/ScenarioSelector";
-import { UserDashboard as DebugPanel } from "./components/UserDashboard";
+import { CommandCenter, CommandCenterTrigger } from "./components/CommandCenter";
 
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
 const HAS_PLAYED_KEY = "raunch_has_played";
@@ -171,8 +171,18 @@ function App() {
 
   // View state — skip presplash if user has played before
   const [view, setView] = useState<AppView>(() => hasPlayedBefore() ? "splash" : "presplash");
-  const [showSettings, setShowSettings] = useState(false);
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [showCommandCenter, setShowCommandCenter] = useState(false);
+
+  // Global keyboard shortcuts
+  const { toggleMockMode } = useMockMode();
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "M") { e.preventDefault(); toggleMockMode(); }
+      if (e.key === "Escape" && showCommandCenter) setShowCommandCenter(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [toggleMockMode, showCommandCenter]);
 
   // Nickname state with localStorage persistence
   const [nickname, setNickname] = useState<string>(() => getStoredNickname() ?? "");
@@ -496,7 +506,7 @@ function App() {
             <AlphaDashboard
               onNavigate={handleNavigate}
               isAdmin={isAuthenticated}
-              onOpenSettings={() => setShowSettings(true)}
+              onOpenSettings={() => setShowCommandCenter(true)}
               apiUrl={apiUrl}
               userEmail={user?.email}
               hasActiveBook={library.currentBook !== null}
@@ -733,7 +743,7 @@ function App() {
                   onDeleteCharacter={handleDeleteCharacter}
                   onResetBook={handleResetBook}
                   onStopWorld={handleStopWorld}
-                  onOpenDebug={() => setShowDebugPanel(true)}
+                  onOpenDebug={() => setShowCommandCenter(true)}
                 />
               </ErrorBoundary>
             )}
@@ -754,37 +764,39 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Admin settings modal */}
-      <AdminSettings
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        onOpenDebug={() => setShowDebugPanel(true)}
-        apiUrl={apiUrl}
-        overrideEmail={user?.email}
-      />
+      {/* Command Center trigger */}
+      <CommandCenterTrigger onClick={() => setShowCommandCenter(true)} />
 
-      {/* Debug panel - available from any view */}
-      <DebugPanel
-        isOpen={showDebugPanel}
-        onClose={() => setShowDebugPanel(false)}
-        sendCommand={actions.sendCommand ?? (() => {})}
-        bookId={library.currentBook?.book_id}
-        apiUrl={apiUrl}
-        authInfo={{
-          isAuthenticated,
-          userEmail: user?.email ?? undefined,
-          userName: user?.givenName ? `${user.givenName} ${user.familyName ?? ""}`.trim() : undefined,
-          accessToken,
-          librarianId: library.librarianId,
-        }}
-        onSelectBook={async (bookId) => {
-          const book = await library.getBook(bookId);
-          library.setCurrentBook(book);
-          setShowDebugPanel(false);
-          setGameSubView("connecting");
-          setView("game");
-        }}
-      />
+      {/* Command Center panel */}
+      {showCommandCenter && (
+        <CommandCenter
+          isOpen={showCommandCenter}
+          onClose={() => setShowCommandCenter(false)}
+            apiUrl={apiUrl}
+            authInfo={{
+              isAuthenticated,
+              userEmail: user?.email ?? undefined,
+              userName: user?.givenName ? `${user.givenName} ${user.familyName ?? ""}`.trim() : undefined,
+              accessToken,
+              librarianId: library.librarianId,
+            }}
+            bookId={library.currentBook?.book_id}
+            sendCommand={actions.sendCommand}
+            onSelectBook={async (bookId) => {
+              const book = await library.getBook(bookId);
+              library.setCurrentBook(book);
+              setShowCommandCenter(false);
+              setGameSubView("connecting");
+              setView("game");
+            }}
+            wsState={wsState}
+            gamePaused={game.paused}
+            gameManualMode={game.manualMode}
+            pageCount={game.pages.length}
+            characterCount={game.characterNames.length}
+            pageInterval={game.pageInterval}
+          />
+      )}
     </>
   );
 }

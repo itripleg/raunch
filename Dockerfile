@@ -8,6 +8,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN pip install -e .
 
-EXPOSE 7666
+EXPOSE 8000
 
-CMD ["python", "-m", "raunch.main", "start"]
+CMD ["uvicorn", "raunch.server.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

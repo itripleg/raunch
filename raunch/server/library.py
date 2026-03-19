@@ -61,14 +61,24 @@ class Library:
                 f"Maximum {self.MAX_BOOKS_PER_LIBRARIAN} books per librarian"
             )
 
+        # Resolve display name from scenario data
+        display_name = scenario_name
+        try:
+            from raunch.wizard import load_scenario
+            scenario_data = load_scenario(scenario_name)
+            if scenario_data and scenario_data.get("scenario_name"):
+                display_name = scenario_data["scenario_name"]
+        except Exception:
+            pass
+
         # Create in database
-        book_data = db.create_book(scenario_name, owner_id, private)
+        book_data = db.create_book(display_name, owner_id, private)
 
         # Create in-memory Book
         book = Book(
             book_id=book_data["id"],
             bookmark=book_data["bookmark"],
-            scenario_name=scenario_name,
+            scenario_name=display_name,
             owner_id=owner_id,
             private=private,
         )

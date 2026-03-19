@@ -109,23 +109,49 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
 
       <Separator className="bg-border/30" />
 
-      {/* Reset Book button */}
-      {onResetBook && (
-        <div className="p-4 pb-3">
-          <motion.button
-            onClick={handleReset}
-            animate={confirmReset ? { scale: [1, 1.02, 1] } : {}}
-            transition={{ duration: 0.3 }}
-            className={`w-full text-left px-3 py-2 rounded-lg transition-all text-xs ${
-              confirmReset
-                ? "bg-destructive/20 text-destructive border border-destructive/50 font-medium"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50 border border-transparent"
-            }`}
-          >
-            {confirmReset ? "Click again to confirm reset" : "Reset Book"}
-          </motion.button>
-        </div>
-      )}
+      {/* Director */}
+      <div className="px-4 pt-3 pb-1">
+        <motion.button
+          onClick={() => {
+            if (game.directorMode) {
+              actions.toggleDirectorMode?.();
+            } else {
+              if (game.attachedTo) actions.detach();
+              actions.toggleDirectorMode?.();
+            }
+          }}
+          whileTap={{ scale: 0.98 }}
+          layout
+          className={`w-full text-left p-2 rounded-lg transition-all duration-200 group ${
+            game.directorMode
+              ? "bg-amber-500/15 border border-amber-500/30"
+              : "hover:bg-secondary/50 border border-transparent"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <svg
+              className={`w-4 h-4 shrink-0 ${game.directorMode ? "text-amber-400" : "text-muted-foreground/50 group-hover:text-muted-foreground"}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M3 11l18-5v12L3 13v-2z" />
+              <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+            </svg>
+            <span className={`text-sm font-medium ${game.directorMode ? "text-amber-400" : "text-foreground/80 group-hover:text-foreground"}`}>
+              Director
+            </span>
+            {game.directorMode && (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse ml-auto"
+              />
+            )}
+          </div>
+        </motion.button>
+      </div>
 
       <Separator className="bg-border/30" />
 
@@ -151,49 +177,6 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
 
       <ScrollArea className="flex-1 px-4">
         <div className="space-y-1.5 pb-4">
-          {/* Narrator - compact entry for director mode */}
-          <motion.button
-            onClick={() => {
-              if (game.directorMode) {
-                actions.toggleDirectorMode?.();
-              } else {
-                if (game.attachedTo) actions.detach();
-                actions.toggleDirectorMode?.();
-              }
-            }}
-            whileTap={{ scale: 0.98 }}
-            layout
-            className={`w-full text-left p-2 rounded-lg transition-all duration-200 group ${
-              game.directorMode
-                ? "bg-amber-500/15 border border-amber-500/30"
-                : "hover:bg-secondary/50 border border-transparent"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <svg
-                className={`w-4 h-4 shrink-0 ${game.directorMode ? "text-amber-400" : "text-muted-foreground/50 group-hover:text-muted-foreground"}`}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M3 11l18-5v12L3 13v-2z" />
-                <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
-              </svg>
-              <span className={`text-sm font-medium ${game.directorMode ? "text-amber-400" : "text-foreground/80 group-hover:text-foreground"}`}>
-                Director
-              </span>
-              {game.directorMode && (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse ml-auto"
-                />
-              )}
-            </div>
-          </motion.button>
-
-          <Separator className="bg-border/20 my-2" />
 
           <AnimatePresence mode="popLayout">
             {game.characterNames.map((name, index) => {
@@ -282,6 +265,27 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
           </AnimatePresence>
         </div>
       </ScrollArea>
+
+      {/* Reset Book button */}
+      {onResetBook && (
+        <>
+          <Separator className="bg-border/30" />
+          <div className="p-4">
+            <motion.button
+              onClick={handleReset}
+              animate={confirmReset ? { scale: [1, 1.02, 1] } : {}}
+              transition={{ duration: 0.3 }}
+              className={`w-full text-left px-3 py-2 rounded-lg transition-all text-xs ${
+                confirmReset
+                  ? "bg-destructive/20 text-destructive border border-destructive/50 font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/50 border border-transparent"
+              }`}
+            >
+              {confirmReset ? "Click again to confirm reset" : "Reset Book"}
+            </motion.button>
+          </div>
+        </>
+      )}
 
     </aside>
   );
