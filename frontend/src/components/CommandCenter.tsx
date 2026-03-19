@@ -369,13 +369,9 @@ export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectB
                       characterCount={characterCount}
                       gamePaused={gamePaused}
                       gameManualMode={gameManualMode}
-                      wsState={wsState}
                       mockMode={mockMode}
                       books={books}
                       onSelectBook={onSelectBook}
-                      isAdmin={isAdmin}
-                      authInfo={authInfo}
-                      apiUrl={apiUrl}
                     />
                   </motion.div>
                 )}
@@ -482,11 +478,11 @@ function StatusPill({ active, label, color, pulse }: { active: boolean; label: s
 
 // ─── Status Section ──────────────────────────────────────────────────────────
 
-function StatusSection({ bookId, pageCount, characterCount, gamePaused, gameManualMode, wsState, mockMode, books, onSelectBook, isAdmin, authInfo, apiUrl }: {
+function StatusSection({ bookId, pageCount, characterCount, gamePaused, gameManualMode, mockMode, books, onSelectBook }: {
   bookId?: string; pageCount?: number; characterCount?: number;
-  gamePaused?: boolean; gameManualMode?: boolean; wsState?: string; mockMode: boolean;
+  gamePaused?: boolean; gameManualMode?: boolean; mockMode: boolean;
   books: { id: string; bookmark: string; scenario_name?: string; page_count?: number }[];
-  onSelectBook?: (id: string) => void; isAdmin: boolean; authInfo?: AuthInfo; apiUrl: string;
+  onSelectBook?: (id: string) => void;
 }) {
   const currentBook = books.find(b => b.id === bookId);
 
@@ -1024,7 +1020,7 @@ function ConsoleSection({ wsCommands, consoleResults, runCommand, logResult, boo
                       transition={{ duration: 0.15 }}
                       className="overflow-hidden text-[9px] font-mono text-muted-foreground/40 bg-black/20 rounded px-2 py-1.5 overflow-x-auto"
                     >
-                      {JSON.stringify(r.data, null, 2)}
+                      {JSON.stringify(r.data as object, null, 2)}
                     </motion.pre>
                   )}
                 </AnimatePresence>
