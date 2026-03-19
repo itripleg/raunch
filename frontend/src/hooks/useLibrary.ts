@@ -212,7 +212,18 @@ export function useLibrary(apiUrl: string, accessToken?: string | null, kindeUse
   // Auto-create librarian on mount if none exists, or validate cached one
   useEffect(() => {
     const initLibrarian = async () => {
-      // First check localStorage
+      // If we have a Kinde user ID, always prefer the Kinde-linked librarian
+      // This ensures switching accounts or devices resolves to the correct identity
+      if (kindeUserId) {
+        const existingId = await lookupLibrarianByKinde(kindeUserId);
+        if (existingId) {
+          setStoredLibrarianId(apiUrl, existingId);
+          setLibrarianId(existingId);
+          return;
+        }
+      }
+
+      // No Kinde match — fall back to cached localStorage ID
       const storedId = getStoredLibrarianId(apiUrl);
       if (storedId) {
         // Validate the cached librarian still exists on the server
@@ -232,20 +243,9 @@ export function useLibrary(apiUrl: string, accessToken?: string | null, kindeUse
         }
       }
 
-      // If we have a Kinde user ID, try to find their existing librarian
-      if (kindeUserId) {
-        const existingId = await lookupLibrarianByKinde(kindeUserId);
-        if (existingId) {
-          setStoredLibrarianId(apiUrl, existingId);
-          setLibrarianId(existingId);
-          return;
-        }
-      }
-
       // No existing librarian found, create a new one (linked to Kinde if available)
       try {
         await createLibrarian(kindeUserId);
-        // createLibrarian already stores and sets the ID
       } catch (err) {
         console.error("Failed to auto-create librarian:", err);
       }
