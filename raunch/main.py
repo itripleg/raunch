@@ -843,7 +843,14 @@ def connect(host, port, bookmark, nickname):
     # Build server URL
     if not host.startswith("http"):
         host = f"http://{host}"
-    if port != 80 and port != 443:
+    # Don't append port if host already has one or if using default HTTPS (443)
+    if ":///" in host or host.count(":") >= 2:
+        # URL already has a port
+        server_url = host
+    elif host.startswith("https://") and port == 8000:
+        # HTTPS with default port — don't append (cloud services use 443)
+        server_url = host
+    elif port != 80 and port != 443:
         server_url = f"{host}:{port}"
     else:
         server_url = host
