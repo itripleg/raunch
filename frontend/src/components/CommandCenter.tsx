@@ -51,6 +51,9 @@ export function CommandCenterTrigger({ onClick }: { onClick: () => void }) {
   return (
     <motion.button
       onClick={onClick}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: 1, duration: 0.5 }}
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
       className="fixed bottom-4 right-4 z-50 group"

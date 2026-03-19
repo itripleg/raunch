@@ -167,6 +167,9 @@ function App() {
     }
   }, [isAuthenticated, kindeAuth.getToken, LOCAL_DEMO]);
 
+  const ADMIN_EMAIL = "joshua.bell.828@gmail.com";
+  const isAdmin = LOCAL_DEMO || user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
   const library = useLibrary(apiUrl, accessToken, user?.id);
   const { wsState, game, actions } = useGame(apiUrl, library.currentBook?.book_id);
 
@@ -802,6 +805,7 @@ function App() {
                   game={game}
                   actions={actions}
                   bookId={library.currentBook?.book_id}
+                  isAdmin={isAdmin}
                   onAddCharacter={() => {
                     actions.listCharacters();
                     setShowCharacterWizard(true);
@@ -830,8 +834,8 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Command Center trigger - hidden during splash */}
-      {view !== "splash" && (
+      {/* Command Center trigger - hidden during splash and dashboard (dashboard has its own gear) */}
+      {view !== "splash" && view !== "dashboard" && (
         <CommandCenterTrigger onClick={() => setShowCommandCenter(true)} />
       )}
 

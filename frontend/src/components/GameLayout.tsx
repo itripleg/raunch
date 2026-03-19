@@ -63,6 +63,7 @@ type Props = {
   game: GameState;
   actions: Actions;
   bookId?: string;
+  isAdmin?: boolean;
   onAddCharacter?: () => void;
   onDeleteCharacter?: (name: string) => Promise<void>;
   onResetBook?: () => void;
@@ -70,7 +71,7 @@ type Props = {
   onOpenDebug?: () => void;
 };
 
-export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteCharacter, onResetBook, onStopWorld, onOpenDebug }: Props) {
+export function GameLayout({ game, actions, bookId, isAdmin, onAddCharacter, onDeleteCharacter, onResetBook, onStopWorld, onOpenDebug }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [focusedPageNum, setFocusedPageNum] = useState<number | null>(null);
@@ -264,8 +265,8 @@ export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteChar
             />
           )}
 
-          {/* Page interval selector */}
-          {actions.setPageInterval && (
+          {/* Page interval selector - admin only */}
+          {isAdmin && actions.setPageInterval && (
             <select
               value={game.pageInterval ?? 0}
               onChange={(e) => actions.setPageInterval?.(parseInt(e.target.value))}
@@ -284,7 +285,7 @@ export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteChar
             </select>
           )}
 
-          {/* Manual: Next button / Auto: Pause/Resume button - same position */}
+          {/* Manual: Next button / Auto: Pause/Resume button (pause/resume admin only) */}
           {game.manualMode ? (
             actions.triggerPage && (
               <motion.button
@@ -319,7 +320,7 @@ export function GameLayout({ game, actions, bookId, onAddCharacter, onDeleteChar
               </motion.button>
             )
           ) : (
-            actions.togglePause && (
+            isAdmin && actions.togglePause && (
               <button
                 onClick={actions.togglePause}
                 className={`flex items-center gap-1 text-xs font-medium transition-colors ${
