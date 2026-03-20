@@ -806,6 +806,8 @@ function App() {
                   actions={actions}
                   bookId={library.currentBook?.book_id}
                   isAdmin={isAdmin}
+                  apiUrl={apiUrl}
+                  librarianId={library.librarianId}
                   onAddCharacter={() => {
                     actions.listCharacters();
                     setShowCharacterWizard(true);

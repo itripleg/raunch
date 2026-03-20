@@ -64,6 +64,8 @@ type Props = {
   actions: Actions;
   bookId?: string;
   isAdmin?: boolean;
+  apiUrl?: string;
+  librarianId?: string | null;
   onAddCharacter?: () => void;
   onDeleteCharacter?: (name: string) => Promise<void>;
   onResetBook?: () => void;
@@ -71,7 +73,7 @@ type Props = {
   onOpenDebug?: () => void;
 };
 
-export function GameLayout({ game, actions, bookId, isAdmin, onAddCharacter, onDeleteCharacter, onResetBook, onStopWorld, onOpenDebug }: Props) {
+export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId, onAddCharacter, onDeleteCharacter, onResetBook, onStopWorld, onOpenDebug }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Start open by default
   const [characterPanelOpen, setCharacterPanelOpen] = useState(true); // Start open by default
   const [focusedPageNum, setFocusedPageNum] = useState<number | null>(null);
@@ -81,6 +83,36 @@ export function GameLayout({ game, actions, bookId, isAdmin, onAddCharacter, onD
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const { mockMode, toggleMockMode } = useMockMode();
   const feedRef = useRef<HTMLDivElement>(null);
+
+  // Potential characters (NPCs that can be promoted)
+  type PotentialChar = { name: string; description?: string; first_page: number; times_mentioned?: number };
+  const [potentialCharacters, setPotentialCharacters] = useState<PotentialChar[]>([]);
+
+  // Fetch potential characters when pages change
+  useEffect(() => {
+    if (!apiUrl) return;
+    fetch(`${apiUrl}/api/v1/potential-characters`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setPotentialCharacters(data))
+      .catch(() => {});
+  }, [apiUrl, game.pages.length]);
+
+  // Grab/promote an NPC to a full character
+  const handleGrabCharacter = useCallback(async (name: string) => {
+    if (!apiUrl || !bookId || !librarianId) return;
+    try {
+      const res = await fetch(`${apiUrl}/api/v1/books/${bookId}/characters/grab`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Librarian-ID": librarianId },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        actions.listCharacters();
+        // Refresh potential characters list
+        setPotentialCharacters(prev => prev.filter(pc => pc.name !== name));
+      }
+    } catch { /* */ }
+  }, [apiUrl, bookId, librarianId, actions]);
 
   // Handle next button click with animation
   const handleNextClick = useCallback(() => {
@@ -440,6 +472,8 @@ export function GameLayout({ game, actions, bookId, isAdmin, onAddCharacter, onD
                 onCharacterAttached={handleCharacterAttached}
                 onAddCharacter={onAddCharacter}
                 onDeleteCharacter={handleDeleteCharacter}
+                onGrabCharacter={handleGrabCharacter}
+                potentialCharacters={potentialCharacters}
                 onResetBook={onResetBook}
               />
             </motion.div>

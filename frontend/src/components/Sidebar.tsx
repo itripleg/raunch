@@ -10,6 +10,13 @@ type CharacterPage = {
   inner_thoughts?: string;
 };
 
+type PotentialCharacter = {
+  name: string;
+  description?: string;
+  first_page: number;
+  times_mentioned?: number;
+};
+
 type Props = {
   game: {
     world: Record<string, unknown> | null;
@@ -31,10 +38,12 @@ type Props = {
   onCharacterAttached?: () => void;
   onAddCharacter?: () => void;
   onDeleteCharacter?: (name: string) => void;
+  onGrabCharacter?: (name: string) => void;
+  potentialCharacters?: PotentialCharacter[];
   onResetBook?: () => void;
 };
 
-export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddCharacter, onDeleteCharacter, onResetBook }: Props) {
+export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddCharacter, onDeleteCharacter, onGrabCharacter, potentialCharacters, onResetBook }: Props) {
   const world = game.world as Record<string, unknown> | null;
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -265,6 +274,37 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
           </AnimatePresence>
         </div>
       </ScrollArea>
+
+      {/* Mentioned NPCs — available to promote */}
+      {potentialCharacters && potentialCharacters.length > 0 && onGrabCharacter && (
+        <>
+          <Separator className="bg-border/30" />
+          <div className="p-4 pb-2">
+            <h2 className="text-xs uppercase tracking-wider text-muted-foreground/50 font-semibold mb-2">
+              Mentioned
+            </h2>
+            <div className="space-y-1">
+              {potentialCharacters.map(pc => (
+                <motion.button
+                  key={pc.name}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => onGrabCharacter(pc.name)}
+                  className="w-full text-left p-2 rounded-lg hover:bg-secondary/50 border border-transparent hover:border-primary/20 transition-all group"
+                  title={pc.description || `First appeared on page ${pc.first_page}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-foreground/60 group-hover:text-foreground/80">{pc.name}</span>
+                    <span className="text-[9px] text-primary/40 group-hover:text-primary/70 font-mono">grab</span>
+                  </div>
+                  {pc.description && (
+                    <p className="text-[10px] text-muted-foreground/40 truncate mt-0.5">{pc.description}</p>
+                  )}
+                </motion.button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Reset Book button */}
       {onResetBook && (
