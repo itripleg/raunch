@@ -437,11 +437,22 @@ async def handle_command(client: WSClient, book, data: Dict[str, Any]) -> None:
 
         existing = book.get_reader_by_character(character)
         if existing and existing.reader_id != client.reader.reader_id:
-            await client.send_error(
-                "character_taken",
-                f"{character} is controlled by another reader"
+            # Only block in multiplayer with an active connection
+            is_multiplayer = book.orchestrator and getattr(book.orchestrator, 'multiplayer', False)
+            # Check if the other reader still has an active WebSocket
+            other_still_connected = any(
+                c.reader and c.reader.reader_id == existing.reader_id
+                for clients in ws_manager.clients.get(book.book_id, {}).values()
+                for c in [clients]
             )
-            return
+            if is_multiplayer and other_still_connected:
+                await client.send_error(
+                    "character_taken",
+                    f"{character} is controlled by another reader"
+                )
+                return
+            # Stale reader or solo mode — detach them silently
+            existing.attached_to = None
 
         client.reader.attached_to = character
         await client.send({"type": "attached", "character": character})
