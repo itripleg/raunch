@@ -75,6 +75,48 @@ ws_manager = WSManager()
 def _ensure_orchestrator(book) -> bool:
     """Ensure book has an initialized orchestrator. Returns True if ready."""
     if book.orchestrator is not None:
+        if book.orchestrator.characters:
+            return True
+        # Orchestrator exists but has no characters (e.g. CLI --serve without --scenario)
+        # Load the scenario into the existing orchestrator to preserve its callbacks
+        logger.info(f"Existing orchestrator for {book.book_id} has no characters, loading scenario")
+        orch = book.orchestrator
+        scenario = load_scenario(book.scenario_name)
+        if scenario is None:
+            logger.error(f"Scenario '{book.scenario_name}' not found for book {book.book_id}")
+            return False
+        orch.world.scenario = scenario
+        orch.world.world_name = scenario.get("scenario_name", orch.world.world_name)
+        orch.world.world_id = book.book_id
+        setting = scenario.get("setting", "")
+        if setting:
+            loc_name = scenario.get("scenario_name", "The Scene")
+            orch.world.locations = {loc_name: {"description": setting, "characters": []}}
+            location = loc_name
+        else:
+            location = list(orch.world.locations.keys())[0] if orch.world.locations else "The Scene"
+        for char_data in scenario.get("characters", []):
+            char = Character(
+                name=char_data["name"],
+                species=char_data.get("species", "Human"),
+                personality=char_data.get("personality", ""),
+                appearance=char_data.get("appearance", ""),
+                desires=char_data.get("desires", ""),
+                backstory=char_data.get("backstory", ""),
+                kinks=char_data.get("kinks", ""),
+            )
+            orch.add_character(char, location=location)
+        existing_page_count = db.get_page_count(book.book_id)
+        if existing_page_count > 0:
+            orch.world.page_count = existing_page_count
+        try:
+            book_data = db.get_book(book.book_id)
+            if book_data:
+                mode = book_data.get("agent_mode", "default")
+                orch.unified_mode = (mode == "unified")
+                orch.dual_agent_mode = (mode == "dual")
+        except Exception:
+            pass
         return True
 
     # Load scenario and create orchestrator
