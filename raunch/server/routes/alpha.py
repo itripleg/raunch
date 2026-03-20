@@ -46,7 +46,7 @@ async def get_message():
     msg = db.get_alpha_message()
     if msg is None:
         return AlphaMessage(
-            content="🔥 Hey gorgeous — if you're seeing this, the database got a fresh wipe. It's alpha life, baby. 💋 Persistence upgrades coming soon™ so your spicy stories won't vanish into the void. For now: don't get too attached (to the data, get attached to the characters all you want 😏). Huge love to our testers — you're the real ones. Keep breaking things so we can make them unbreakable. 🖤✨",
+            content="🔥 If you're seeing this, we had to wipe the database for a backend upgrade 😏 Persistence coming soon — for now, get in, get dirty, don't get attached. 💋 Love to our testers 🖤",
             updated_at=None,
         )
     return AlphaMessage(content=msg["content"], updated_at=msg["updated_at"])
