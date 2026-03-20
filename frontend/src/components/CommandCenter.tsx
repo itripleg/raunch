@@ -866,7 +866,7 @@ function TokensSection({ tokens, newTokenName, setNewTokenName, newTokenValue, s
 
 type CharPageEntry = { id: number; page: number; character_name: string; inner_thoughts: string | null; action: string | null; dialogue: string | null; emotional_state: string | null; desires_update: string | null; is_refusal: boolean; parse_error: string | null; has_extracted_data: boolean; raw_json?: Record<string, unknown>; created_at: string };
 
-type PageDebugEntry = { id: number; page: number; narration: string; events: string[]; world_time: string; mood: string; created_at: string };
+type PageDebugEntry = { id: number; page: number; narration: string; raw_narrator?: string; events: string[]; world_time: string; mood: string; created_at: string };
 
 function CharactersRawSection({ debugData }: {
   debugData: { pages: PageDebugEntry[]; character_pages: CharPageEntry[] } | null;
@@ -989,6 +989,16 @@ function CharactersRawSection({ debugData }: {
                                           ))}
                                         </div>
                                       </div>
+                                    )}
+                                    {narratorPage.raw_narrator && (
+                                      <details>
+                                        <summary className="text-[8px] font-mono uppercase text-muted-foreground/20 cursor-pointer hover:text-muted-foreground/35 select-none">
+                                          Raw Narrator
+                                        </summary>
+                                        <pre className="text-[9px] font-mono text-muted-foreground/35 bg-black/20 rounded p-2 mt-1 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap">
+                                          {narratorPage.raw_narrator}
+                                        </pre>
+                                      </details>
                                     )}
                                     <p className="text-[8px] font-mono text-muted-foreground/20">
                                       {narratorPage.world_time} · {narratorPage.mood} · ID: {narratorPage.id}

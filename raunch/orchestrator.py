@@ -429,6 +429,9 @@ class Orchestrator:
             # Final cleanup - strip any remaining JSON artifacts
             narration = _clean_narration(narration)
 
+            # Save raw narrator output before stripping tags
+            results["_raw_narrator"] = narrator_result.get("raw", "") or narration
+
             # Parse and save new character tags before stripping them
             new_chars = _parse_newchar_tags(narration)
             for char_info in new_chars:
@@ -503,6 +506,7 @@ class Orchestrator:
                 db.save_page(
                     self.world.world_id, page_num, narration,
                     results.get("events", []), self.world.world_time, self.world.mood,
+                    raw_narrator=results.get("_raw_narrator", ""),
                 )
                 for cname, cdata in results.get("characters", {}).items():
                     if isinstance(cdata, dict) and not cdata.get("waiting_for_player"):
@@ -665,6 +669,9 @@ class Orchestrator:
             narration = _extract_narration_from_raw(raw)
         narration = _clean_narration(narration)
 
+        # Save raw before stripping tags
+        results["_raw_narrator"] = raw
+
         # Parse and save new character tags before stripping them
         new_chars = _parse_newchar_tags(narration)
         for char_info in new_chars:
@@ -747,6 +754,7 @@ class Orchestrator:
                 db.save_page(
                     self.world.world_id, page_num, narration,
                     results.get("events", []), self.world.world_time, self.world.mood,
+                    raw_narrator=results.get("_raw_narrator", ""),
                 )
                 for cname, cdata in results.get("characters", {}).items():
                     if isinstance(cdata, dict) and not cdata.get("waiting_for_player"):
@@ -832,6 +840,9 @@ class Orchestrator:
                 narration = _extract_narration_from_raw(raw)
             # Final cleanup - strip any remaining JSON artifacts
             narration = _clean_narration(narration)
+
+            # Save raw narrator output before stripping tags
+            results["_raw_narrator"] = narrator_result.get("raw", "") or narration
 
             # Parse and save new character tags before stripping them
             new_chars = _parse_newchar_tags(narration)
@@ -1028,6 +1039,7 @@ class Orchestrator:
                 db.save_page(
                     self.world.world_id, page_num, narration,
                     results.get("events", []), self.world.world_time, self.world.mood,
+                    raw_narrator=results.get("_raw_narrator", ""),
                 )
                 for cname, cdata in results.get("characters", {}).items():
                     if isinstance(cdata, dict) and not cdata.get("waiting_for_player"):

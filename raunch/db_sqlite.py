@@ -293,18 +293,24 @@ def init_db() -> None:
     try:
         conn.execute("ALTER TABLE books ADD COLUMN agent_mode TEXT DEFAULT 'default'")
     except sqlite3.OperationalError:
-        pass  # Column already exists
+        pass
+
+    # Migration: add raw_narrator column to pages
+    try:
+        conn.execute("ALTER TABLE pages ADD COLUMN raw_narrator TEXT")
+    except sqlite3.OperationalError:
+        pass
 
     conn.commit()
 
 
 def save_page(world_id: str, page_num: int, narration: str, events: List[str],
-              world_time: str, mood: str) -> None:
+              world_time: str, mood: str, raw_narrator: str = "") -> None:
     """Record a narrator page."""
     conn = _get_conn()
     conn.execute(
-        "INSERT INTO pages (world_id, page_num, narration, events, world_time, mood) VALUES (?, ?, ?, ?, ?, ?)",
-        (world_id, page_num, narration, json.dumps(events), world_time, mood),
+        "INSERT INTO pages (world_id, page_num, narration, events, world_time, mood, raw_narrator) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (world_id, page_num, narration, json.dumps(events), world_time, mood, raw_narrator),
     )
     conn.commit()
 
@@ -410,7 +416,7 @@ def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
 
     # Get page data
     page_rows = conn.execute(
-        "SELECT id, page_num, narration, events, world_time, mood, created_at "
+        "SELECT id, page_num, narration, events, world_time, mood, created_at, raw_narrator "
         "FROM pages WHERE world_id = ? ORDER BY page_num DESC LIMIT ? OFFSET ?",
         (world_id, limit, offset),
     ).fetchall()
@@ -419,8 +425,9 @@ def get_debug_data(world_id: str, limit: int = 20, offset: int = 0,
     for r in page_rows:
         pages.append({
             "id": r["id"],
-            "page": r["page_num"],  # API uses 'page', DB column is 'page_num'
+            "page": r["page_num"],
             "narration": r["narration"],
+            "raw_narrator": r["raw_narrator"],
             "events": json.loads(r["events"]) if r["events"] else [],
             "world_time": r["world_time"],
             "mood": r["mood"],
