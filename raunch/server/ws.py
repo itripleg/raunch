@@ -366,6 +366,7 @@ async def handle_websocket(websocket: WebSocket, book_id: str):
         "paused": orch._paused,
         "page_interval": orch.page_interval,
         "manual": orch.page_interval == 0,
+        "unified_mode": getattr(orch, "unified_mode", False),
     })
 
     try:
@@ -607,6 +608,11 @@ async def handle_command(client: WSClient, book, data: Dict[str, Any]) -> None:
                 await client.send({
                     "type": "director_cleared",
                 })
+
+    elif cmd == "toggle_unified":
+        if orch:
+            orch.unified_mode = not getattr(orch, "unified_mode", False)
+            await client.send({"type": "unified_mode", "enabled": orch.unified_mode})
 
     elif cmd == "ready":
         if client.reader:

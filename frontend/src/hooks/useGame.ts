@@ -96,6 +96,8 @@ type State = {
   streaming: StreamingState;
   // Non-streaming page generation
   pageGenerating: number | null;
+  // Unified mode
+  unifiedMode: boolean;
   // Multiplayer
   multiplayer: boolean;
   playerId: string | null;
@@ -139,6 +141,8 @@ type Action =
   | { type: "PLAYERS"; players: Player[] }
   | { type: "WORLD_LOADED"; world_id: string; name: string; characters: string[] }
   | { type: "TURN_STATE"; countdown: number; waiting_for: string[]; all_ready: boolean }
+  // Unified mode
+  | { type: "UNIFIED_MODE"; enabled: boolean }
   // Debug/Mock mode
   | { type: "INJECT_MOCK_PAGE" };
 
@@ -168,6 +172,8 @@ const initial: State = {
     charactersDone: [],
   },
   pageGenerating: null,
+  // Unified mode
+  unifiedMode: false,
   // Multiplayer
   multiplayer: false,
   playerId: null,
@@ -440,6 +446,8 @@ function reducer(state: State, action: Action): State {
           all_ready: action.all_ready,
         },
       };
+    case "UNIFIED_MODE":
+      return { ...state, unifiedMode: action.enabled };
     case "RESET":
       return initial;
     case "INJECT_MOCK_PAGE": {
@@ -555,6 +563,9 @@ export function useGame(apiUrl: string, bookId?: string | null) {
         }
         if (typeof msg.paused === "boolean") {
           dispatch({ type: "PAUSE_STATE", paused: msg.paused });
+        }
+        if (typeof msg.unified_mode === "boolean") {
+          dispatch({ type: "UNIFIED_MODE", enabled: msg.unified_mode });
         }
         return;
       }
@@ -726,6 +737,9 @@ export function useGame(apiUrl: string, bookId?: string | null) {
           waiting_for: msg.waiting_for as string[],
           all_ready: msg.all_ready as boolean,
         });
+        break;
+      case "unified_mode":
+        dispatch({ type: "UNIFIED_MODE", enabled: msg.enabled as boolean });
         break;
       case "debug":
         // Dispatch custom event for DebugPanel to receive
