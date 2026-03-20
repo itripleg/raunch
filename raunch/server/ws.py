@@ -127,6 +127,18 @@ def _ensure_orchestrator(book) -> bool:
         orch.world.page_count = existing_page_count
         logger.info(f"Restored page_count={existing_page_count} for book {book.book_id}")
 
+    # Restore agent mode from database
+    try:
+        book_data = db.get_book(book.book_id)
+        if book_data:
+            mode = book_data.get("agent_mode", "default")
+            orch.unified_mode = (mode == "unified")
+            orch.dual_agent_mode = (mode == "dual")
+            if mode != "default":
+                logger.info(f"Restored agent_mode={mode} for book {book.book_id}")
+    except Exception:
+        pass
+
     # Set up streaming callback - capture the event loop for thread-safe calls
     import asyncio
     try:
@@ -614,6 +626,11 @@ async def handle_command(client: WSClient, book, data: Dict[str, Any]) -> None:
             mode = data.get("mode", "default")
             orch.unified_mode = (mode == "unified")
             orch.dual_agent_mode = (mode == "dual")
+            # Persist to DB
+            try:
+                db.set_book_agent_mode(book.book_id, mode)
+            except Exception:
+                pass
             await client.send({"type": "agent_mode", "mode": mode})
 
     elif cmd == "toggle_unified":

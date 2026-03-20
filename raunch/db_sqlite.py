@@ -288,6 +288,13 @@ def init_db() -> None:
 
     # Create index after migration
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_librarians_kinde ON librarians(kinde_user_id)")
+
+    # Migration: add agent_mode column to books
+    try:
+        conn.execute("ALTER TABLE books ADD COLUMN agent_mode TEXT DEFAULT 'default'")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     conn.commit()
 
 
@@ -1197,7 +1204,7 @@ def get_book(book_id: str) -> Optional[Dict[str, Any]]:
     conn = _get_conn()
     row = conn.execute(
         """SELECT id, bookmark, scenario_name, owner_id, private,
-                  created_at, last_active, page_count
+                  created_at, last_active, page_count, agent_mode
            FROM books WHERE id = ?""",
         (book_id,)
     ).fetchone()
@@ -1214,7 +1221,15 @@ def get_book(book_id: str) -> Optional[Dict[str, Any]]:
         "created_at": row["created_at"],
         "last_active": row["last_active"],
         "page_count": row["page_count"],
+        "agent_mode": row["agent_mode"] or "default",
     }
+
+
+def set_book_agent_mode(book_id: str, mode: str) -> None:
+    """Set the agent mode for a book."""
+    conn = _get_conn()
+    conn.execute("UPDATE books SET agent_mode = ? WHERE id = ?", (mode, book_id))
+    conn.commit()
 
 
 def get_book_by_bookmark(bookmark: str) -> Optional[Dict[str, Any]]:

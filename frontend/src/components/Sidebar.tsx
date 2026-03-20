@@ -47,6 +47,8 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
   const world = game.world as Record<string, unknown> | null;
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [expandedNpc, setExpandedNpc] = useState<string | null>(null);
+  const [npcsCollapsed, setNpcsCollapsed] = useState(false);
 
   const handleDelete = (name: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Don't toggle attachment
@@ -303,40 +305,59 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
             return (
               <>
                 <Separator className="bg-border/20 my-2" />
-                <p className="text-[9px] uppercase tracking-wider text-muted-foreground/30 font-semibold mb-1 px-0.5">NPCs</p>
-                {npcs.map(npc => (
-                  <motion.button
-                    key={`npc-${npc.name}`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => {
-                      // Attach to view their responses in the character panel
-                      actions.attach(npc.name);
-                      onCharacterAttached?.();
-                    }}
-                    className="w-full text-left p-2 rounded-lg hover:bg-secondary/30 border border-transparent hover:border-border/20 transition-all group"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-muted-foreground/15 shrink-0" />
-                      <span className="text-sm text-foreground/50 group-hover:text-foreground/70 flex-1 truncate">{npc.name}</span>
-                      {onGrabCharacter && (
-                        <span
-                          onClick={(e) => { e.stopPropagation(); onGrabCharacter(npc.name); }}
-                          className="text-[9px] text-primary/40 hover:text-primary font-mono shrink-0"
-                        >
-                          promote
-                        </span>
-                      )}
-                    </div>
-                    {npc.description && (
-                      <p className="text-[10px] text-muted-foreground/25 truncate ml-4 mt-0.5">{npc.description}</p>
-                    )}
-                    {npc.liveState && (
-                      <p className="text-[10px] text-amber-400/40 italic truncate ml-4">{npc.liveState}</p>
-                    )}
-                  </motion.button>
-                ))}
+                <button
+                  onClick={() => setNpcsCollapsed(!npcsCollapsed)}
+                  className="flex items-center gap-1.5 w-full text-left px-0.5 mb-1"
+                >
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`text-muted-foreground/30 transition-transform ${npcsCollapsed ? "" : "rotate-90"}`}>
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                  <span className="text-[9px] uppercase tracking-wider text-muted-foreground/30 font-semibold">NPCs</span>
+                  <span className="text-[9px] text-muted-foreground/20">{npcs.length}</span>
+                </button>
+                {!npcsCollapsed && npcs.map(npc => {
+                  const isExpanded = expandedNpc === npc.name;
+                  return (
+                    <motion.div
+                      key={`npc-${npc.name}`}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="w-full text-left p-2 rounded-lg hover:bg-secondary/30 border border-transparent hover:border-border/20 transition-all group cursor-pointer"
+                      onClick={() => setExpandedNpc(isExpanded ? null : npc.name)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-muted-foreground/15 shrink-0" />
+                        <span className="text-sm text-foreground/50 group-hover:text-foreground/70 flex-1 truncate">{npc.name}</span>
+                        {onGrabCharacter && (
+                          <span
+                            onClick={(e) => { e.stopPropagation(); onGrabCharacter(npc.name); }}
+                            className="text-[9px] text-primary/40 hover:text-primary font-mono shrink-0"
+                          >
+                            promote
+                          </span>
+                        )}
+                      </div>
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="ml-4 mt-1 space-y-0.5 overflow-hidden"
+                          >
+                            {npc.description && (
+                              <p className="text-[10px] text-muted-foreground/40">{npc.description}</p>
+                            )}
+                            {npc.liveState && (
+                              <p className="text-[10px] text-amber-400/50 italic">{npc.liveState}</p>
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  );
+                })}
               </>
             );
           })()}
