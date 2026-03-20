@@ -743,7 +743,7 @@ export function useGame(apiUrl: string, bookId?: string | null) {
         send({ cmd: "character_history", character: name, count }),
       replay: (page: number) => send({ cmd: "replay", page }),
       submitAction: (text: string, autoReady = false) => {
-        send({ cmd: "action", text });
+        send({ cmd: "whisper", text });
         if (autoReady) {
           send({ cmd: "ready" });
         }

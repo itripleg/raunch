@@ -73,24 +73,13 @@ export function useWebSocket(baseUrl: string, bookId?: string | null) {
   const send = useCallback((data: Record<string, unknown>) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) return;
 
-    // Determine rate-limit group and interval
-    const command = data.command as string | undefined;
-    let group: string | null = null;
-    let interval = 0;
-
-    if (command === "action" || command === "director") {
-      group = "whisper";
-      interval = 500;
-    } else if (command === "page") {
-      group = "page";
-      interval = 3000;
-    }
-
-    if (group) {
+    // Rate limit only LLM-triggering commands (page generation)
+    const command = data.cmd as string | undefined;
+    if (command === "page") {
       const now = Date.now();
-      const last = lastSendTimesRef.current[group] ?? 0;
-      if (now - last < interval) return; // drop message, rate limited
-      lastSendTimesRef.current[group] = now;
+      const last = lastSendTimesRef.current["page"] ?? 0;
+      if (now - last < 3000) return;
+      lastSendTimesRef.current["page"] = now;
     }
 
     wsRef.current.send(JSON.stringify(data));
