@@ -278,6 +278,7 @@ function App() {
     try {
       const response = await fetch(`${apiUrl}/api/v1/books/${library.currentBook.book_id}/characters/${encodeURIComponent(name)}`, {
         method: "DELETE",
+        headers: { "X-Librarian-ID": library.librarianId || "" },
       });
       if (!response.ok) {
         const data = await response.json();

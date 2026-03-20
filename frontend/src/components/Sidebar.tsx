@@ -272,39 +272,76 @@ export function Sidebar({ game, actions, onClose, onCharacterAttached, onAddChar
               );
             })}
           </AnimatePresence>
+
+          {/* NPCs — from page data + potential characters API */}
+          {(() => {
+            const activeNames = new Set(game.characterNames.map(n => n.toLowerCase()));
+            // Merge: page-data NPCs + narrator-detected potential characters
+            const npcMap = new Map<string, { name: string; description?: string; liveState?: string }>();
+            // From potential characters API
+            potentialCharacters?.forEach(pc => {
+              if (!activeNames.has(pc.name.toLowerCase())) {
+                npcMap.set(pc.name.toLowerCase(), { name: pc.name, description: pc.description });
+              }
+            });
+            // From page data (may overlap)
+            game.pages?.forEach(page => {
+              Object.keys(page.characters).forEach(name => {
+                if (!activeNames.has(name.toLowerCase()) && !npcMap.has(name.toLowerCase())) {
+                  npcMap.set(name.toLowerCase(), { name });
+                }
+              });
+            });
+            // Add live emotional state from latest page
+            const latestPage = game.pages?.[game.pages.length - 1];
+            npcMap.forEach((npc, key) => {
+              const state = latestPage?.characters?.[npc.name]?.emotional_state;
+              if (state) npcMap.set(key, { ...npc, liveState: String(state) });
+            });
+            const npcs = Array.from(npcMap.values());
+            if (npcs.length === 0) return null;
+            return (
+              <>
+                <Separator className="bg-border/20 my-2" />
+                <p className="text-[9px] uppercase tracking-wider text-muted-foreground/30 font-semibold mb-1 px-0.5">NPCs</p>
+                {npcs.map(npc => (
+                  <motion.button
+                    key={`npc-${npc.name}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => {
+                      // Attach to view their responses in the character panel
+                      actions.attach(npc.name);
+                      onCharacterAttached?.();
+                    }}
+                    className="w-full text-left p-2 rounded-lg hover:bg-secondary/30 border border-transparent hover:border-border/20 transition-all group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-muted-foreground/15 shrink-0" />
+                      <span className="text-sm text-foreground/50 group-hover:text-foreground/70 flex-1 truncate">{npc.name}</span>
+                      {onGrabCharacter && (
+                        <span
+                          onClick={(e) => { e.stopPropagation(); onGrabCharacter(npc.name); }}
+                          className="text-[9px] text-primary/40 hover:text-primary font-mono shrink-0"
+                        >
+                          promote
+                        </span>
+                      )}
+                    </div>
+                    {npc.description && (
+                      <p className="text-[10px] text-muted-foreground/25 truncate ml-4 mt-0.5">{npc.description}</p>
+                    )}
+                    {npc.liveState && (
+                      <p className="text-[10px] text-amber-400/40 italic truncate ml-4">{npc.liveState}</p>
+                    )}
+                  </motion.button>
+                ))}
+              </>
+            );
+          })()}
         </div>
       </ScrollArea>
-
-      {/* Mentioned NPCs — available to promote */}
-      {potentialCharacters && potentialCharacters.length > 0 && onGrabCharacter && (
-        <>
-          <Separator className="bg-border/30" />
-          <div className="p-4 pb-2">
-            <h2 className="text-xs uppercase tracking-wider text-muted-foreground/50 font-semibold mb-2">
-              Mentioned
-            </h2>
-            <div className="space-y-1">
-              {potentialCharacters.map(pc => (
-                <motion.button
-                  key={pc.name}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => onGrabCharacter(pc.name)}
-                  className="w-full text-left p-2 rounded-lg hover:bg-secondary/50 border border-transparent hover:border-primary/20 transition-all group"
-                  title={pc.description || `First appeared on page ${pc.first_page}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-foreground/60 group-hover:text-foreground/80">{pc.name}</span>
-                    <span className="text-[9px] text-primary/40 group-hover:text-primary/70 font-mono">grab</span>
-                  </div>
-                  {pc.description && (
-                    <p className="text-[10px] text-muted-foreground/40 truncate mt-0.5">{pc.description}</p>
-                  )}
-                </motion.button>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
 
       {/* Reset Book button */}
       {onResetBook && (

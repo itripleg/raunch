@@ -84,18 +84,20 @@ export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId
   const { mockMode, toggleMockMode } = useMockMode();
   const feedRef = useRef<HTMLDivElement>(null);
 
-  // Potential characters (NPCs that can be promoted)
-  type PotentialChar = { name: string; description?: string; first_page: number; times_mentioned?: number };
+  // Potential characters (NPCs detected by narrator)
+  type PotentialChar = { name: string; description?: string; first_page: number };
   const [potentialCharacters, setPotentialCharacters] = useState<PotentialChar[]>([]);
 
-  // Fetch potential characters when pages change
   useEffect(() => {
     if (!apiUrl) return;
-    fetch(`${apiUrl}/api/v1/potential-characters`)
+    const url = bookId
+      ? `${apiUrl}/api/v1/potential-characters?book_id=${encodeURIComponent(bookId)}`
+      : `${apiUrl}/api/v1/potential-characters`;
+    fetch(url)
       .then(res => res.ok ? res.json() : [])
       .then(data => setPotentialCharacters(data))
       .catch(() => {});
-  }, [apiUrl, game.pages.length]);
+  }, [apiUrl, bookId, game.pages.length]);
 
   // Grab/promote an NPC to a full character
   const handleGrabCharacter = useCallback(async (name: string) => {
@@ -474,6 +476,7 @@ export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId
                 onDeleteCharacter={handleDeleteCharacter}
                 onGrabCharacter={handleGrabCharacter}
                 potentialCharacters={potentialCharacters}
+
                 onResetBook={onResetBook}
               />
             </motion.div>
