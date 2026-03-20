@@ -128,15 +128,27 @@ export function ActionBar({
           </button>
         </div>
 
-        {/* Pending guidance indicator */}
-        {pendingDirectorGuidance && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            className={`mx-auto mt-2 text-xs text-amber-400/70 italic transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
-          >
-            Queued: "{pendingDirectorGuidance}" — takes effect next page
-          </motion.div>
+        {/* Pending whisper or direction — show whichever is relevant to current mode */}
+        {directorMode ? (
+          pendingDirectorGuidance && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              className={`mx-auto mt-2 text-xs text-amber-400/70 italic transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
+            >
+              Direction: "{pendingDirectorGuidance}"
+            </motion.div>
+          )
+        ) : (
+          pendingInfluence && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              className={`mx-auto mt-2 text-xs text-amber-400/70 italic transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
+            >
+              Whispering to {pendingInfluence.character}: "{pendingInfluence.text}"
+            </motion.div>
+          )
         )}
 
         {/* Characters responding indicator */}
