@@ -114,7 +114,8 @@ export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectB
   // Debug data (refusal detection)
   type DebugStats = { total_pages: number; total_character_pages: number; refusals: number; successfully_parsed: number };
   type CharacterPageDebug = { id: number; page: number; character_name: string; inner_thoughts: string | null; action: string | null; dialogue: string | null; emotional_state: string | null; desires_update: string | null; is_refusal: boolean; parse_error: string | null; has_extracted_data: boolean; raw_json?: Record<string, unknown>; created_at: string };
-  type DebugData = { world_id: string; pages: unknown[]; character_pages: CharacterPageDebug[]; stats: DebugStats };
+  type PageDebug = { id: number; page: number; narration: string; events: string[]; world_time: string; mood: string; created_at: string };
+  type DebugData = { world_id: string; pages: PageDebug[]; character_pages: CharacterPageDebug[]; stats: DebugStats };
   const [debugData, setDebugData] = useState<DebugData | null>(null);
 
   // Fetch debug data on open
@@ -865,11 +866,14 @@ function TokensSection({ tokens, newTokenName, setNewTokenName, newTokenValue, s
 
 type CharPageEntry = { id: number; page: number; character_name: string; inner_thoughts: string | null; action: string | null; dialogue: string | null; emotional_state: string | null; desires_update: string | null; is_refusal: boolean; parse_error: string | null; has_extracted_data: boolean; raw_json?: Record<string, unknown>; created_at: string };
 
+type PageDebugEntry = { id: number; page: number; narration: string; events: string[]; world_time: string; mood: string; created_at: string };
+
 function CharactersRawSection({ debugData }: {
-  debugData: { character_pages: CharPageEntry[] } | null;
+  debugData: { pages: PageDebugEntry[]; character_pages: CharPageEntry[] } | null;
 }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [expandedPage, setExpandedPage] = useState<number | null>(null);
+  const [expandedNarrator, setExpandedNarrator] = useState<number | null>(null);
   const [filter, setFilter] = useState<"all" | "refusals" | "errors">("all");
 
   if (!debugData || debugData.character_pages.length === 0) {
@@ -937,7 +941,7 @@ function CharactersRawSection({ debugData }: {
                 </svg>
               </button>
 
-              {/* Characters under this page */}
+              {/* Page content */}
               <AnimatePresence>
                 {isPageOpen && (
                   <motion.div
@@ -948,6 +952,56 @@ function CharactersRawSection({ debugData }: {
                     className="overflow-hidden"
                   >
                     <div className="border-t border-white/[0.04] px-1 py-1 space-y-1">
+                      {/* Narrator */}
+                      {(() => {
+                        const narratorPage = debugData.pages.find(p => p.page === pageNum);
+                        if (!narratorPage) return null;
+                        const isNarratorOpen = expandedNarrator === pageNum;
+                        return (
+                          <div className="rounded bg-cyan-500/[0.03]">
+                            <button
+                              onClick={() => setExpandedNarrator(isNarratorOpen ? null : pageNum)}
+                              className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-white/[0.02] transition-colors rounded"
+                            >
+                              <span className="text-[10px] text-cyan-400/50">Narrator</span>
+                              <span className="text-[9px] text-muted-foreground/20 flex-1 truncate">{narratorPage.mood}</span>
+                            </button>
+                            <AnimatePresence>
+                              {isNarratorOpen && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.15 }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="px-2 pb-2 pt-1 border-t border-white/[0.03] space-y-2 ml-2">
+                                    <div>
+                                      <span className="text-[8px] font-mono uppercase text-cyan-400/30">Narration</span>
+                                      <p className="text-[10px] text-foreground/60 whitespace-pre-wrap leading-relaxed">{narratorPage.narration}</p>
+                                    </div>
+                                    {narratorPage.events.length > 0 && (
+                                      <div>
+                                        <span className="text-[8px] font-mono uppercase text-cyan-400/30">Events</span>
+                                        <div className="flex flex-wrap gap-1 mt-0.5">
+                                          {narratorPage.events.map((e, i) => (
+                                            <span key={i} className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/5 text-cyan-400/40">{e}</span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    <p className="text-[8px] font-mono text-muted-foreground/20">
+                                      {narratorPage.world_time} · {narratorPage.mood} · ID: {narratorPage.id}
+                                    </p>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Characters */}
                       {chars.map(cp => (
                         <div
                           key={cp.id}
@@ -966,7 +1020,7 @@ function CharactersRawSection({ debugData }: {
                             {cp.emotional_state && <span className="text-[9px] text-amber-400/40 italic truncate max-w-24">{cp.emotional_state}</span>}
                           </button>
 
-                          {/* Expanded character detail */}
+                          {/* Expanded character detail — summary + collapsible pretty/raw */}
                           <AnimatePresence>
                             {expandedId === cp.id && (
                               <motion.div
@@ -976,62 +1030,76 @@ function CharactersRawSection({ debugData }: {
                                 transition={{ duration: 0.15 }}
                                 className="overflow-hidden"
                               >
-                                <div className="px-2 pb-2 pt-1 border-t border-white/[0.03] space-y-2 ml-2">
-                                  {cp.inner_thoughts && (
-                                    <div>
-                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Thoughts</span>
-                                      <p className="text-[10px] text-foreground/70 italic">{cp.inner_thoughts}</p>
-                                    </div>
-                                  )}
-                                  {cp.action && (
-                                    <div>
-                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Action</span>
-                                      <p className="text-[10px] text-foreground/70">{cp.action}</p>
-                                    </div>
-                                  )}
+                                <div className="px-2 pb-2 pt-1 border-t border-white/[0.03] ml-2 space-y-1">
+                                  {/* Summary line — always visible */}
                                   {cp.dialogue && (
-                                    <div>
-                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Dialogue</span>
-                                      <p className="text-[10px] text-foreground/70">"{cp.dialogue}"</p>
-                                    </div>
-                                  )}
-                                  {cp.emotional_state && (
-                                    <div>
-                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Emotion</span>
-                                      <p className="text-[10px] text-amber-400/60 italic">{cp.emotional_state}</p>
-                                    </div>
-                                  )}
-                                  {cp.desires_update && (
-                                    <div>
-                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Desires</span>
-                                      <p className="text-[10px] text-foreground/60">{cp.desires_update}</p>
-                                    </div>
-                                  )}
-                                  {cp.parse_error && (
-                                    <div>
-                                      <span className="text-[8px] font-mono uppercase text-red-400/50">Parse Error</span>
-                                      <p className="text-[10px] text-red-400/70">{cp.parse_error}</p>
-                                    </div>
+                                    <p className="text-[10px] text-foreground/50 italic truncate">"{cp.dialogue}"</p>
                                   )}
                                   {cp.raw_json && typeof cp.raw_json._influence === "string" && (
-                                    <div>
-                                      <span className="text-[8px] font-mono uppercase text-amber-400/50">Influence Applied</span>
-                                      <p className="text-[10px] text-amber-400/60 italic">{`"${cp.raw_json._influence}"`}</p>
-                                    </div>
+                                    <p className="text-[9px] text-amber-400/50 italic">Whisper: "{cp.raw_json._influence}"</p>
                                   )}
-                                  {cp.raw_json && typeof cp.raw_json._prompt_snippet === "string" && (
-                                    <div>
-                                      <span className="text-[8px] font-mono uppercase text-cyan-400/30">Prompt Snippet</span>
-                                      <p className="text-[9px] font-mono text-muted-foreground/30 whitespace-pre-wrap">{cp.raw_json._prompt_snippet as string}</p>
+
+                                  {/* Pretty print — collapsed by default */}
+                                  <details className="group">
+                                    <summary className="text-[8px] font-mono uppercase text-muted-foreground/25 cursor-pointer hover:text-muted-foreground/40 select-none">
+                                      Details
+                                    </summary>
+                                    <div className="space-y-2 mt-1">
+                                      {cp.inner_thoughts && (
+                                        <div>
+                                          <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Thoughts</span>
+                                          <p className="text-[10px] text-foreground/70 italic">{cp.inner_thoughts}</p>
+                                        </div>
+                                      )}
+                                      {cp.action && (
+                                        <div>
+                                          <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Action</span>
+                                          <p className="text-[10px] text-foreground/70">{cp.action}</p>
+                                        </div>
+                                      )}
+                                      {cp.dialogue && (
+                                        <div>
+                                          <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Dialogue</span>
+                                          <p className="text-[10px] text-foreground/70">"{cp.dialogue}"</p>
+                                        </div>
+                                      )}
+                                      {cp.emotional_state && (
+                                        <div>
+                                          <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Emotion</span>
+                                          <p className="text-[10px] text-amber-400/60 italic">{cp.emotional_state}</p>
+                                        </div>
+                                      )}
+                                      {cp.desires_update && (
+                                        <div>
+                                          <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Desires</span>
+                                          <p className="text-[10px] text-foreground/60">{cp.desires_update}</p>
+                                        </div>
+                                      )}
+                                      {cp.parse_error && (
+                                        <div>
+                                          <span className="text-[8px] font-mono uppercase text-red-400/50">Parse Error</span>
+                                          <p className="text-[10px] text-red-400/70">{cp.parse_error}</p>
+                                        </div>
+                                      )}
+                                      {cp.raw_json && typeof cp.raw_json._prompt_snippet === "string" && (
+                                        <div>
+                                          <span className="text-[8px] font-mono uppercase text-cyan-400/30">Prompt Snippet</span>
+                                          <p className="text-[9px] font-mono text-muted-foreground/30 whitespace-pre-wrap">{cp.raw_json._prompt_snippet as string}</p>
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
+                                  </details>
+
+                                  {/* Raw JSON — also collapsed */}
                                   {cp.raw_json && (
-                                    <div>
-                                      <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Raw JSON</span>
+                                    <details>
+                                      <summary className="text-[8px] font-mono uppercase text-muted-foreground/20 cursor-pointer hover:text-muted-foreground/35 select-none">
+                                        Raw JSON
+                                      </summary>
                                       <pre className="text-[9px] font-mono text-muted-foreground/40 bg-black/20 rounded p-2 mt-1 overflow-x-auto max-h-40 overflow-y-auto">
                                         {String(JSON.stringify(cp.raw_json, null, 2))}
                                       </pre>
-                                    </div>
+                                    </details>
                                   )}
                                   <p className="text-[8px] font-mono text-muted-foreground/20">ID: {cp.id} · {cp.created_at}</p>
                                 </div>
