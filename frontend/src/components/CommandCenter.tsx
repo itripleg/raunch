@@ -39,7 +39,7 @@ type Props = {
   pageCount?: number;
   characterCount?: number;
   pageInterval?: number;
-  unifiedMode?: boolean;
+  agentMode?: "default" | "dual" | "unified";
 };
 
 type Section = "status" | "controls" | "tokens" | "console" | "characters";
@@ -78,7 +78,7 @@ export function CommandCenterTrigger({ onClick }: { onClick: () => void }) {
 
 // ─── Main Panel ──────────────────────────────────────────────────────────────
 
-export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectBook, wsState, gamePaused, gameManualMode, pageCount, characterCount, pageInterval: _pageInterval, unifiedMode, onClose }: Props & { isOpen: boolean; onClose: () => void }) {
+export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectBook, wsState, gamePaused, gameManualMode, pageCount, characterCount, pageInterval: _pageInterval, agentMode, onClose }: Props & { isOpen: boolean; onClose: () => void }) {
   const { user, logout } = useKindeAuth();
   const { mockMode, toggleMockMode } = useMockMode();
   const email = authInfo?.userEmail || user?.email;
@@ -405,7 +405,7 @@ export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectB
                       setIsPaused={setIsPaused}
                       intervalInput={intervalInput}
                       setIntervalInput={setIntervalInput}
-                      unifiedMode={unifiedMode}
+                      agentMode={agentMode}
                     />
                   </motion.div>
                 )}
@@ -591,19 +591,19 @@ function StatusSection({ bookId, pageCount, characterCount, gamePaused, gameManu
 
 // ─── Controls Section ────────────────────────────────────────────────────────
 
-function ControlsSection({ sendCommand, runCommand, bookId, isPaused, setIsPaused, intervalInput, setIntervalInput, unifiedMode }: {
+function ControlsSection({ sendCommand, runCommand, bookId, isPaused, setIsPaused, intervalInput, setIntervalInput, agentMode }: {
   sendCommand?: (cmd: string, data?: Record<string, unknown>) => void;
   runCommand: (cmd: string, data?: Record<string, unknown>) => void;
   bookId?: string; isPaused: boolean; setIsPaused: (v: boolean) => void;
   intervalInput: string; setIntervalInput: (v: string) => void;
-  unifiedMode?: boolean;
+  agentMode?: "default" | "dual" | "unified";
 }) {
-  const [localUnified, setLocalUnified] = useState(unifiedMode ?? false);
+  const [localAgentMode, setLocalAgentMode] = useState<"default" | "dual" | "unified">(agentMode ?? "default");
 
   // Sync local state when prop changes (e.g. from WS response)
   useEffect(() => {
-    if (unifiedMode !== undefined) setLocalUnified(unifiedMode);
-  }, [unifiedMode]);
+    if (agentMode !== undefined) setLocalAgentMode(agentMode);
+  }, [agentMode]);
   return (
     <div className="space-y-5">
       {/* Playback */}
@@ -681,29 +681,48 @@ function ControlsSection({ sendCommand, runCommand, bookId, isPaused, setIsPause
         </div>
       </DataBlock>
 
-      {/* Unified Mode (experimental) */}
-      <DataBlock title="Experimental">
-        <button
-          onClick={() => { runCommand("toggle_unified"); setLocalUnified(!localUnified); }}
-          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-xs font-mono transition-all ${
-            localUnified
-              ? "bg-purple-500/15 text-purple-300 border-purple-500/30 hover:bg-purple-500/20"
-              : "bg-purple-500/5 text-purple-400/60 border-purple-500/15 hover:bg-purple-500/10"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full transition-colors ${localUnified ? "bg-purple-400 animate-pulse" : "bg-purple-500/30"}`} />
-            <span>Unified Mode</span>
-            <span className="text-[9px] uppercase tracking-wider opacity-60">(experimental)</span>
-          </div>
-          <span className={`px-1.5 py-0.5 text-[9px] font-mono uppercase rounded ${
-            localUnified
-              ? "bg-purple-400/20 text-purple-300"
-              : "bg-white/[0.04] text-muted-foreground/40"
-          }`}>
-            {localUnified ? "on" : "off"}
-          </span>
-        </button>
+      {/* Agent Mode */}
+      <DataBlock title="Agent Mode">
+        <div className="flex gap-1.5">
+          {([
+            { mode: "default" as const, label: "Default", color: "cyan", desc: "Each agent separate" },
+            { mode: "dual" as const, label: "Dual", color: "blue", desc: "Characters batched" },
+            { mode: "unified" as const, label: "Unified", color: "purple", desc: "Single LLM call" },
+          ]).map(({ mode, label, color, desc }) => {
+            const isActive = localAgentMode === mode;
+            const colorMap: Record<string, { active: string; inactive: string; dot: string }> = {
+              cyan: {
+                active: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+                inactive: "bg-white/[0.02] text-muted-foreground/40 border-white/[0.06] hover:bg-white/[0.04]",
+                dot: "bg-cyan-400",
+              },
+              blue: {
+                active: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+                inactive: "bg-white/[0.02] text-muted-foreground/40 border-white/[0.06] hover:bg-white/[0.04]",
+                dot: "bg-blue-400",
+              },
+              purple: {
+                active: "bg-purple-500/15 text-purple-300 border-purple-500/30",
+                inactive: "bg-white/[0.02] text-muted-foreground/40 border-white/[0.06] hover:bg-white/[0.04]",
+                dot: "bg-purple-400",
+              },
+            };
+            const c = colorMap[color];
+            return (
+              <button
+                key={mode}
+                onClick={() => { runCommand("set_agent_mode", { mode }); setLocalAgentMode(mode); }}
+                title={desc}
+                className={`flex-1 flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-lg border text-[10px] font-mono transition-all ${
+                  isActive ? c.active : c.inactive
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full transition-colors ${isActive ? `${c.dot} animate-pulse` : "bg-white/10"}`} />
+                <span>{label}</span>
+              </button>
+            );
+          })}
+        </div>
       </DataBlock>
     </div>
   );

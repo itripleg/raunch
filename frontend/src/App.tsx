@@ -870,7 +870,7 @@ function App() {
             pageCount={game.pages.length}
             characterCount={game.characterNames.length}
             pageInterval={game.pageInterval}
-            unifiedMode={game.unifiedMode}
+            agentMode={game.agentMode}
           />
       )}
     </>

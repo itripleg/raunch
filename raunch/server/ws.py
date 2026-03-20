@@ -366,7 +366,7 @@ async def handle_websocket(websocket: WebSocket, book_id: str):
         "paused": orch._paused,
         "page_interval": orch.page_interval,
         "manual": orch.page_interval == 0,
-        "unified_mode": getattr(orch, "unified_mode", False),
+        "agent_mode": "unified" if getattr(orch, "unified_mode", False) else "dual" if getattr(orch, "dual_agent_mode", False) else "default",
     })
 
     try:
@@ -609,10 +609,27 @@ async def handle_command(client: WSClient, book, data: Dict[str, Any]) -> None:
                     "type": "director_cleared",
                 })
 
+    elif cmd == "set_agent_mode":
+        if orch:
+            mode = data.get("mode", "default")
+            orch.unified_mode = (mode == "unified")
+            orch.dual_agent_mode = (mode == "dual")
+            await client.send({"type": "agent_mode", "mode": mode})
+
     elif cmd == "toggle_unified":
         if orch:
             orch.unified_mode = not getattr(orch, "unified_mode", False)
-            await client.send({"type": "unified_mode", "enabled": orch.unified_mode})
+            orch.dual_agent_mode = False
+            mode = "unified" if orch.unified_mode else "default"
+            await client.send({"type": "agent_mode", "mode": mode})
+
+    elif cmd == "toggle_dual_agent":
+        if orch:
+            orch.dual_agent_mode = not getattr(orch, "dual_agent_mode", False)
+            if orch.dual_agent_mode:
+                orch.unified_mode = False
+            mode = "dual" if orch.dual_agent_mode else "unified" if getattr(orch, "unified_mode", False) else "default"
+            await client.send({"type": "agent_mode", "mode": mode})
 
     elif cmd == "ready":
         if client.reader:
