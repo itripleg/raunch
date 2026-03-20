@@ -574,24 +574,39 @@ async def handle_command(client: WSClient, book, data: Dict[str, Any]) -> None:
             await client.send_error("not_attached", "Attach to a character first")
             return
 
-        text = data.get("text", "")
+        text = data.get("text", "").strip()
         character = client.reader.attached_to
         if orch:
-            orch.submit_influence(character, text)
-            await client.send({
-                "type": "influence_queued",
-                "character": character,
-                "text": text,
-            })
+            if text:
+                orch.submit_influence(character, text)
+                await client.send({
+                    "type": "influence_queued",
+                    "character": character,
+                    "text": text,
+                })
+            else:
+                # Clear pending influence
+                orch._influences.pop(character, None)
+                await client.send({
+                    "type": "influence_cleared",
+                    "character": character,
+                })
 
     elif cmd == "director":
-        text = data.get("text", "")
+        text = data.get("text", "").strip()
         if orch:
-            orch.submit_director_guidance(text)
-            await client.send({
-                "type": "director_queued",
-                "text": text,
-            })
+            if text:
+                orch.submit_director_guidance(text)
+                await client.send({
+                    "type": "director_queued",
+                    "text": text,
+                })
+            else:
+                # Clear pending guidance
+                orch._director_guidance = None
+                await client.send({
+                    "type": "director_cleared",
+                })
 
     elif cmd == "ready":
         if client.reader:

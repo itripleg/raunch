@@ -120,10 +120,12 @@ type Action =
   | { type: "ERROR"; message: string }
   | { type: "CLEAR_ERROR" }
   | { type: "INFLUENCE_QUEUED"; character: string; text: string }
+  | { type: "INFLUENCE_CLEARED" }
   | { type: "RESET" }
   // Director mode
   | { type: "TOGGLE_DIRECTOR_MODE" }
   | { type: "DIRECTOR_QUEUED"; text: string }
+  | { type: "DIRECTOR_CLEARED" }
   // Streaming
   | { type: "PAGE_START"; page: number }
   | { type: "STREAM_SYNC"; page: number; narrator: string; characters: Record<string, string> }
@@ -364,10 +366,14 @@ function reducer(state: State, action: Action): State {
       return { ...state, error: null };
     case "INFLUENCE_QUEUED":
       return { ...state, pendingInfluence: { character: action.character, text: action.text } };
+    case "INFLUENCE_CLEARED":
+      return { ...state, pendingInfluence: null };
     case "TOGGLE_DIRECTOR_MODE":
       return { ...state, directorMode: !state.directorMode };
     case "DIRECTOR_QUEUED":
       return { ...state, pendingDirectorGuidance: action.text };
+    case "DIRECTOR_CLEARED":
+      return { ...state, pendingDirectorGuidance: null };
     case "PAGE_START":
       return {
         ...state,
@@ -688,6 +694,12 @@ export function useGame(apiUrl: string, bookId?: string | null) {
           type: "DIRECTOR_QUEUED",
           text: (msg as Record<string, unknown>).text as string || "",
         });
+        break;
+      case "influence_cleared":
+        dispatch({ type: "INFLUENCE_CLEARED" });
+        break;
+      case "director_cleared":
+        dispatch({ type: "DIRECTOR_CLEARED" });
         break;
       case "joined":
         dispatch({

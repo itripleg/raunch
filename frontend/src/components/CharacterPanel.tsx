@@ -55,15 +55,6 @@ export function CharacterPanel({ name, data: rawData, pendingInfluence, streamin
                 preview
               </span>
             )}
-            {/* Whisper queued indicator - subtle dot */}
-            {pendingInfluence && (
-              <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-pulse"
-                title={`Whisper queued: "${pendingInfluence}"`}
-              />
-            )}
           </div>
           {/* Close button - mobile only */}
           {onClose && (
@@ -78,13 +69,12 @@ export function CharacterPanel({ name, data: rawData, pendingInfluence, streamin
             </button>
           )}
         </div>
-        <p className="text-[10px] mt-1 h-4 italic truncate text-muted-foreground/30">
-          {pendingInfluence ? (
-            <span>"{pendingInfluence}"</span>
-          ) : (
-            <span>&nbsp;</span>
-          )}
-        </p>
+        {pendingInfluence && (
+          <p className="text-[10px] mt-1 truncate">
+            <span className="text-amber-400/70">Whispering:</span>{" "}
+            <span className="text-amber-400/50 italic">{pendingInfluence}</span>
+          </p>
+        )}
       </div>
 
       <ScrollArea className="flex-1 overflow-hidden">

@@ -37,9 +37,8 @@ export function ActionBar({
 
   const handleSubmit = useCallback(() => {
     const text = value.trim();
-    if (!text) return;
 
-    // Only clear and flash if we actually submitted something
+    // Allow blank submit to clear queued whisper/direction
     let submitted = false;
     if (directorMode) {
       onSubmitDirector(text);
@@ -118,7 +117,7 @@ export function ActionBar({
 
           <button
             onClick={handleSubmit}
-            disabled={!value.trim()}
+            disabled={!value.trim() && !pendingInfluence && !pendingDirectorGuidance}
             className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-30 ${
               directorMode
                 ? "bg-amber-500/80 hover:bg-amber-500 text-black hover:shadow-[0_0_20px_oklch(0.7_0.15_80_/_0.3)]"
