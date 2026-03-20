@@ -257,6 +257,11 @@ function CharacterDialogueEntry({
 
   if (!dialogue) return null;
 
+  // Clean up dialogue: if it contains embedded quotes with action beats
+  // (e.g. '"Janus," Maven breathes'), extract just the first spoken line
+  // and trim leading/trailing quote marks the LLM included
+  dialogue = dialogue.replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g, "").trim();
+
   return (
     <motion.div
       initial={{ opacity: 0 }}

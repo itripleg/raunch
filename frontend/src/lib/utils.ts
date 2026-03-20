@@ -40,13 +40,30 @@ export function extractCharacterFromRaw<T extends Record<string, unknown>>(data:
     const first = text.indexOf("{");
     const last = text.lastIndexOf("}");
     if (first !== -1 && last !== -1) {
-      const parsed = JSON.parse(text.slice(first, last + 1));
-      Object.assign(extracted, parsed);
+      let jsonStr = text.slice(first, last + 1);
+      try {
+        const parsed = JSON.parse(jsonStr);
+        Object.assign(extracted, parsed);
+      } catch {
+        // LLM sometimes outputs unescaped quotes inside values — try fixing
+        const fields = ["inner_thoughts", "action", "dialogue", "emotional_state", "desires_update"];
+        const fieldPattern = fields.join("|");
+        const fixed = jsonStr.replace(
+          new RegExp(`("(?:${fieldPattern})":\\s*")(.*?)("\\s*[,}])`, "gs"),
+          (_m, pre, content, post) => pre + content.replace(/"/g, '\\"') + post,
+        );
+        const parsed = JSON.parse(fixed);
+        Object.assign(extracted, parsed);
+      }
     }
   } catch {
-    // Regex fallback
+    // Regex fallback — use greedy match between field boundaries
+    const fields = ["inner_thoughts", "action", "dialogue", "emotional_state", "desires_update"];
+    const fieldPattern = fields.join("|");
     const extractField = (field: string): string | undefined => {
-      const match = raw.match(new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`, "s"));
+      // Match from field to next field or closing brace
+      const pattern = new RegExp(`"${field}"\\s*:\\s*"(.*?)"\\s*(?:,\\s*"(?:${fieldPattern})"|})`,"s");
+      const match = raw.match(pattern);
       if (match?.[1]) {
         return match[1]
           .replace(/\\n/g, "\n")
@@ -56,11 +73,10 @@ export function extractCharacterFromRaw<T extends Record<string, unknown>>(data:
       }
       return undefined;
     };
-    extracted.inner_thoughts = extractField("inner_thoughts");
-    extracted.action = extractField("action");
-    extracted.dialogue = extractField("dialogue");
-    extracted.emotional_state = extractField("emotional_state");
-    extracted.desires_update = extractField("desires_update");
+    for (const field of fields) {
+      const val = extractField(field);
+      if (val) (extracted as Record<string, unknown>)[field] = val;
+    }
   }
 
   return extracted as T;

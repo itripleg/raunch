@@ -14,6 +14,16 @@ from .agents.base import _is_refusal
 from .config import SAVES_DIR
 
 
+def _fix_mojibake(text: str) -> str:
+    """Fix UTF-8 mojibake (double-encoded characters like â€" instead of —)."""
+    if "â€" not in text:
+        return text
+    try:
+        return text.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+
+
 def _extract_character_fields(data: Dict[str, Any]) -> Dict[str, Any]:
     """Extract character fields from raw JSON if needed."""
     # If already parsed, return as-is
@@ -24,6 +34,11 @@ def _extract_character_fields(data: Dict[str, Any]) -> Dict[str, Any]:
     raw = data.get("raw")
     if not raw or not isinstance(raw, str):
         return data
+
+    # Fix mojibake before parsing
+    raw = _fix_mojibake(raw)
+    data = dict(data)
+    data["raw"] = raw
 
     extracted = dict(data)
 
@@ -39,11 +54,29 @@ def _extract_character_fields(data: Dict[str, Any]) -> Dict[str, Any]:
         first = text.find("{")
         last = text.rfind("}")
         if first != -1 and last != -1:
-            parsed = json.loads(text[first:last + 1])
+            json_str = text[first:last + 1]
+            try:
+                parsed = json.loads(json_str)
+            except json.JSONDecodeError:
+                # LLM sometimes outputs unescaped quotes inside values
+                # Try fixing by re-escaping quotes between field boundaries
+                fixed = re.sub(
+                    r'("(?:inner_thoughts|action|dialogue|emotional_state|desires_update)":\s*")(.*?)("\s*[,}])',
+                    lambda m: m.group(1) + m.group(2).replace('"', '\\"') + m.group(3),
+                    json_str,
+                    flags=re.DOTALL,
+                )
+                parsed = json.loads(fixed)
             extracted.update(parsed)
     except (json.JSONDecodeError, IndexError, ValueError):
-        # Regex fallback
+        # Regex fallback — use greedy match between field boundaries
         def extract_field(field: str) -> Optional[str]:
+            # Match from field opening quote to the next field or closing brace
+            pattern = rf'"{field}"\s*:\s*"(.*?)"\s*(?:,\s*"(?:inner_thoughts|action|dialogue|emotional_state|desires_update)"|\}})'
+            match = re.search(pattern, raw, re.DOTALL)
+            if match:
+                return match.group(1).replace("\\n", "\n").replace('\\"', '"').replace("\\'", "'")
+            # Simple fallback
             match = re.search(rf'"{field}"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
             if match:
                 return match.group(1).replace("\\n", "\n").replace('\\"', '"')
