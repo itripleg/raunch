@@ -339,22 +339,37 @@ def get_page_history(world_id: str, limit: int = 50, offset: int = 0) -> List[Di
     results = []
     for r in reversed(rows):  # Return in chronological order
         page_number = r["page_num"]
-        # Fetch character data for this page
+        # Fetch character data for this page — re-extract from raw_json to fix
+        # any previously truncated data (e.g. inner quotes breaking extraction)
         char_rows = conn.execute(
-            "SELECT character_name, inner_thoughts, action, dialogue, emotional_state, desires_update "
+            "SELECT character_name, inner_thoughts, action, dialogue, emotional_state, desires_update, raw_json "
             "FROM character_pages WHERE world_id = ? AND page_num = ?",
             (world_id, page_number),
         ).fetchall()
 
         characters = {}
         for cr in char_rows:
-            characters[cr["character_name"]] = {
+            # Prefer re-extraction from raw_json if available
+            char_data = {
                 "inner_thoughts": cr["inner_thoughts"],
                 "action": cr["action"],
                 "dialogue": cr["dialogue"],
                 "emotional_state": cr["emotional_state"],
                 "desires_update": cr["desires_update"],
             }
+            if cr["raw_json"]:
+                try:
+                    raw_data = json.loads(cr["raw_json"])
+                    re_extracted = _extract_character_fields(raw_data)
+                    # Use re-extracted values if they're longer (fixes truncation)
+                    for field in ["inner_thoughts", "action", "dialogue", "emotional_state", "desires_update"]:
+                        new_val = re_extracted.get(field)
+                        old_val = char_data.get(field)
+                        if new_val and (not old_val or len(str(new_val)) > len(str(old_val))):
+                            char_data[field] = new_val
+                except (json.JSONDecodeError, Exception):
+                    pass
+            characters[cr["character_name"]] = char_data
 
         results.append({
             "page": page_number,  # API uses 'page', DB column is 'page_num'
