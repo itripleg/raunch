@@ -499,6 +499,7 @@ export function GameLayout({ game, actions, bookId, isAdmin, onAddCharacter, onD
               waitingForPage={isWaitingForPage}
               nextPageNum={game.pageGenerating ?? (game.pages.length > 0 ? game.pages[game.pages.length - 1].page + 1 : 1)}
               onBegin={actions.triggerPage ? handleNextClick : undefined}
+              onTapBorder={() => setSidebarOpen(true)}
             />
           </div>
 
@@ -512,6 +513,7 @@ export function GameLayout({ game, actions, bookId, isAdmin, onAddCharacter, onD
             pendingDirectorGuidance={game.pendingDirectorGuidance}
             isStreaming={game.streaming?.isStreaming}
             wideMode={wideMode}
+            onNextPage={actions.triggerPage ? handleNextClick : undefined}
           />
 
           {/* Turn state indicator - only in multiplayer */}

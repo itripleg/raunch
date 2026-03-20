@@ -763,9 +763,10 @@ type Props = {
   waitingForPage?: boolean;
   onBegin?: () => void;
   nextPageNum?: number;
+  onTapBorder?: () => void;
 };
 
-export function PageFeed({ pages, bookId, focusedPage, onPageFocus, containerRef, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1, onBegin }: Props) {
+export function PageFeed({ pages, bookId, focusedPage, onPageFocus, containerRef, onHoverCharacter, onTapCharacter, wideMode, mood = "anticipation", waitingForPage = false, nextPageNum = 1, onBegin, onTapBorder }: Props) {
   const pageRefs = useRef<Map<number, HTMLElement>>(new Map());
   const storageKey = bookId ? `raunch-last-page-${bookId}` : null;
 
@@ -878,6 +879,23 @@ export function PageFeed({ pages, bookId, focusedPage, onPageFocus, containerRef
     return () => clearTimeout(timer);
   }, [pages.length, storageKey]);
 
+  // When new page replaces intermission, lock scroll to prevent jarring jump
+  const prevPageCountRef2 = useRef(pages.length);
+  useEffect(() => {
+    if (pages.length > prevPageCountRef2.current && pages.length > 0) {
+      // New page just arrived — scroll to it after DOM settles
+      const newestPageNum = pages[pages.length - 1].page;
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-page="${newestPageNum}"]`) as HTMLElement;
+        if (el) {
+          // Use instant scroll to avoid the jarring "catch-up" animation
+          el.scrollIntoView({ behavior: "instant" as ScrollBehavior, block: "start" });
+        }
+      });
+    }
+    prevPageCountRef2.current = pages.length;
+  }, [pages.length]);
+
   // Auto-scroll to intermission when page generation starts,
   // but only if the last page is currently visible (user hasn't scrolled away)
   const intermissionRef = useRef<HTMLDivElement>(null);
@@ -968,6 +986,7 @@ export function PageFeed({ pages, bookId, focusedPage, onPageFocus, containerRef
                 onTapCharacter={onTapCharacter}
                 characterNames={allCharacterNames}
                 moodStyle={moodStyle}
+                onTapBorder={onTapBorder}
               />
               {!isLast && (
                 <motion.div
@@ -1011,11 +1030,17 @@ export function PageFeed({ pages, bookId, focusedPage, onPageFocus, containerRef
       </AnimatePresence>
 
       {/* Intermission while waiting for generation */}
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
         {waitingForPage && (
-          <div ref={intermissionRef}>
+          <motion.div
+            ref={intermissionRef}
+            key="intermission-wrap"
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
             <IntermissionWrapper key="intermission" pageNum={nextPageNum} />
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -1031,6 +1056,7 @@ type PageEntryProps = {
   onTapCharacter?: (name: string) => void;
   characterNames: string[];
   moodStyle: { border: string; glow: string };
+  onTapBorder?: () => void;
 };
 
 /** Check if a timestamp is within the last N seconds */
@@ -1041,7 +1067,7 @@ function isRecentTimestamp(timestamp?: string | number, maxAgeSeconds = 60): boo
   return Date.now() - date.getTime() < maxAgeSeconds * 1000;
 }
 
-function PageEntry({ pageItem, isFocused, isNew, onHoverCharacter, onTapCharacter, characterNames, moodStyle }: PageEntryProps) {
+function PageEntry({ pageItem, isFocused, isNew, onHoverCharacter, onTapCharacter, characterNames, moodStyle, onTapBorder }: PageEntryProps) {
   // Use typewriter for recent pages (created < 1 min ago)
   const useTypewriter = isNew && isRecentTimestamp(pageItem.created_at, 60);
 
@@ -1083,27 +1109,78 @@ function PageEntry({ pageItem, isFocused, isNew, onHoverCharacter, onTapCharacte
 
       {/* Narration with highlighted dialogue and intensity words */}
       {/* Double-click to skip typewriter animation */}
-      <div
-        className={`text-sm leading-relaxed text-foreground/90 pl-3 border-l-2 ${moodStyle.border} whitespace-pre-line cursor-text`}
-        onDoubleClick={handleDoubleClick}
-        title={useTypewriter && !narrationComplete ? "Double-click to skip animation" : undefined}
-      >
+      <div className="relative">
+        {/* Mobile-only: tap the left border to open sidebar */}
+        {onTapBorder && (
+          <button
+            onClick={onTapBorder}
+            className="lg:hidden absolute left-0 top-0 bottom-0 w-4 -ml-1 z-10"
+            aria-label="Open sidebar"
+          />
+        )}
+        <div
+          className={`text-sm leading-relaxed text-foreground/90 pl-3 border-l-2 ${moodStyle.border} whitespace-pre-line cursor-text`}
+          onDoubleClick={handleDoubleClick}
+          title={useTypewriter && !narrationComplete ? "Double-click to skip animation" : undefined}
+        >
         <NarrationText
           text={pageItem.narration}
           isNew={useTypewriter}
           useTypewriter={useTypewriter && !typewriterSkipped}
           onComplete={() => setNarrationComplete(true)}
         />
+        </div>
       </div>
 
       {/* Character dialogue - wait for narration to finish, then show */}
-      {Object.keys(pageItem.characters).length > 0 && (narrationComplete || !useTypewriter) && (
-        <CharacterDialogueSequence
-          characters={pageItem.characters}
-          characterNames={characterNames}
-          onHoverCharacter={onHoverCharacter}
-          onTapCharacter={onTapCharacter}
-        />
+      {(narrationComplete || !useTypewriter) && (
+        <>
+          {Object.keys(pageItem.characters).length > 0 && (
+            <CharacterDialogueSequence
+              characters={pageItem.characters}
+              characterNames={characterNames}
+              onHoverCharacter={onHoverCharacter}
+              onTapCharacter={onTapCharacter}
+            />
+          )}
+          {/* Characters still thinking — show subtle loading for each */}
+          {isNew && (() => {
+            const responded = new Set(Object.keys(pageItem.characters));
+            const pending = characterNames.filter(n => !responded.has(n));
+            if (pending.length === 0) return null;
+            return (
+              <div className="space-y-2 pl-3 mt-3">
+                {pending.map(name => {
+                  const colors = getCharacterColor(name, characterNames);
+                  return (
+                    <motion.div
+                      key={`pending-${name}`}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex items-center gap-2"
+                    >
+                      <span className={`text-xs font-semibold ${colors.text}`} style={{ opacity: 0.4 }}>
+                        {name}
+                      </span>
+                      <div className="flex gap-0.5">
+                        {[0, 1, 2].map(i => (
+                          <motion.span
+                            key={i}
+                            className={`w-1 h-1 rounded-full ${colors.text.replace('text-', 'bg-')}`}
+                            style={{ opacity: 0.4 }}
+                            animate={{ opacity: [0.2, 0.6, 0.2] }}
+                            transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                          />
+                        ))}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </>
       )}
 
     </div>

@@ -289,6 +289,8 @@ class Orchestrator:
         """
         # Check for pending influence (whispered suggestion)
         influence = self.get_pending_influence(name)
+        if influence:
+            logger.info(f"[INFLUENCE] Applying whisper to {name}: {influence[:80]}")
 
         # Skip player character if waiting for input (legacy mode)
         if name == self.player_character:
@@ -342,6 +344,10 @@ class Orchestrator:
             else:
                 # Non-streaming mode - progressive rendering via character callbacks
                 char_result = char.page(char_input)
+            # Include prompt metadata for debugging
+            char_result["_prompt_snippet"] = char_input[:200]
+            if influence:
+                char_result["_influence"] = influence
             return (name, char_result)
         except Exception as e:
             logger.error(f"Character {name} page failed: {e}")

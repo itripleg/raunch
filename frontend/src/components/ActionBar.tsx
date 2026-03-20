@@ -10,6 +10,7 @@ type Props = {
   pendingDirectorGuidance?: string | null;
   isStreaming?: boolean;
   wideMode?: boolean;
+  onNextPage?: () => void;
 };
 
 export function ActionBar({
@@ -21,16 +22,22 @@ export function ActionBar({
   pendingDirectorGuidance,
   isStreaming,
   wideMode,
+  onNextPage,
 }: Props) {
   const [value, setValue] = useState("");
   const [flash, setFlash] = useState(false);
 
   // Populate input with pending influence text so user can see/edit it
+  // But skip if we just submitted this exact text (avoid repopulating after our own submit)
   const prevInfluenceRef = useRef<string | null>(null);
+  const justSubmittedRef = useRef<string | null>(null);
   useEffect(() => {
     const influenceText = pendingInfluence?.text ?? null;
     if (influenceText && influenceText !== prevInfluenceRef.current) {
-      setValue(influenceText);
+      if (influenceText !== justSubmittedRef.current) {
+        setValue(influenceText);
+      }
+      justSubmittedRef.current = null;
     }
     prevInfluenceRef.current = influenceText;
   }, [pendingInfluence]);
@@ -44,6 +51,7 @@ export function ActionBar({
       onSubmitDirector(text);
       submitted = true;
     } else if (attachedTo) {
+      justSubmittedRef.current = text;
       onSubmitInfluence(text);
       submitted = true;
     }
@@ -126,6 +134,20 @@ export function ActionBar({
           >
             {directorMode ? "Direct" : "Whisper"}
           </button>
+
+          {/* Next page - mobile only */}
+          {onNextPage && (
+            <button
+              onClick={onNextPage}
+              disabled={isStreaming}
+              className="lg:hidden p-2.5 rounded-lg text-muted-foreground/40 hover:text-primary/70 bg-secondary/30 border border-border/30 transition-all disabled:opacity-20"
+              aria-label="Next page"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Pending whisper or direction — show whichever is relevant to current mode */}

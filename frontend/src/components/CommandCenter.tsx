@@ -960,6 +960,18 @@ function CharactersRawSection({ debugData }: {
                                       <p className="text-[10px] text-red-400/70">{cp.parse_error}</p>
                                     </div>
                                   )}
+                                  {cp.raw_json && typeof cp.raw_json._influence === "string" && (
+                                    <div>
+                                      <span className="text-[8px] font-mono uppercase text-amber-400/50">Influence Applied</span>
+                                      <p className="text-[10px] text-amber-400/60 italic">{`"${cp.raw_json._influence}"`}</p>
+                                    </div>
+                                  )}
+                                  {cp.raw_json && typeof cp.raw_json._prompt_snippet === "string" && (
+                                    <div>
+                                      <span className="text-[8px] font-mono uppercase text-cyan-400/30">Prompt Snippet</span>
+                                      <p className="text-[9px] font-mono text-muted-foreground/30 whitespace-pre-wrap">{cp.raw_json._prompt_snippet as string}</p>
+                                    </div>
+                                  )}
                                   {cp.raw_json && (
                                     <div>
                                       <span className="text-[8px] font-mono uppercase text-muted-foreground/30">Raw JSON</span>
