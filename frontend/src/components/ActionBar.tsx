@@ -107,15 +107,11 @@ export function ActionBar({
             placeholder={
               directorMode
                 ? "Direct the scene... (e.g., 'make it rain', 'introduce tension')"
-                : pendingInfluence
-                ? `Whisper queued for ${pendingInfluence.character}...`
                 : `Whisper to ${attachedTo}...`
             }
             className={`flex-1 px-4 py-2.5 bg-secondary/50 border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 transition-all ${
               directorMode
                 ? "border-amber-500/30 focus:ring-amber-500/50 focus:border-amber-500/40"
-                : pendingInfluence
-                ? "border-amber-500/30 bg-amber-500/5 focus:ring-amber-500/50 focus:border-amber-500/40 placeholder:text-amber-400/40"
                 : "border-border/50 focus:ring-primary/50 focus:border-primary/30"
             }`}
           />

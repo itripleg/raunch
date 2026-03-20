@@ -66,14 +66,16 @@ const MOOD_COLORS: Record<string, { border: string; glow: string }> = {
   default: { border: "border-primary/20", glow: "" },
 };
 
-// Character colors for distinct dialogue styling
+// Character colors — bright neon names, shared muted quote color
 const CHARACTER_COLORS = [
-  { text: "text-emerald-400", quote: "text-emerald-400/70" },
-  { text: "text-violet-400", quote: "text-violet-400/70" },
-  { text: "text-amber-400", quote: "text-amber-400/70" },
-  { text: "text-cyan-400", quote: "text-cyan-400/70" },
-  { text: "text-rose-400", quote: "text-rose-400/70" },
-  { text: "text-lime-400", quote: "text-lime-400/70" },
+  { text: "text-fuchsia-400", quote: "text-muted-foreground/60" },
+  { text: "text-cyan-400", quote: "text-muted-foreground/60" },
+  { text: "text-amber-300", quote: "text-muted-foreground/60" },
+  { text: "text-violet-400", quote: "text-muted-foreground/60" },
+  { text: "text-rose-400", quote: "text-muted-foreground/60" },
+  { text: "text-lime-300", quote: "text-muted-foreground/60" },
+  { text: "text-orange-400", quote: "text-muted-foreground/60" },
+  { text: "text-sky-400", quote: "text-muted-foreground/60" },
 ];
 
 // Decorative scene break patterns
