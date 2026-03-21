@@ -61,7 +61,7 @@ class Library:
                 f"Maximum {self.MAX_BOOKS_PER_LIBRARIAN} books per librarian"
             )
 
-        # Create in database
+        # Create in database (store original identifier for load_scenario lookup)
         book_data = db.create_book(scenario_name, owner_id, private)
 
         # Create in-memory Book

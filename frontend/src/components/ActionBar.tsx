@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 
 type Props = {
@@ -6,8 +6,11 @@ type Props = {
   onSubmitDirector: (text: string) => void;
   attachedTo?: string | null;
   directorMode: boolean;
+  pendingInfluence?: { character: string; text: string } | null;
   pendingDirectorGuidance?: string | null;
+  isStreaming?: boolean;
   wideMode?: boolean;
+  onNextPage?: () => void;
 };
 
 export function ActionBar({
@@ -15,22 +18,40 @@ export function ActionBar({
   onSubmitDirector,
   attachedTo,
   directorMode,
+  pendingInfluence,
   pendingDirectorGuidance,
+  isStreaming,
   wideMode,
+  onNextPage,
 }: Props) {
   const [value, setValue] = useState("");
   const [flash, setFlash] = useState(false);
 
+  // Populate input with pending influence text so user can see/edit it
+  // But skip if we just submitted this exact text (avoid repopulating after our own submit)
+  const prevInfluenceRef = useRef<string | null>(null);
+  const justSubmittedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const influenceText = pendingInfluence?.text ?? null;
+    if (influenceText && influenceText !== prevInfluenceRef.current) {
+      if (influenceText !== justSubmittedRef.current) {
+        setValue(influenceText);
+      }
+      justSubmittedRef.current = null;
+    }
+    prevInfluenceRef.current = influenceText;
+  }, [pendingInfluence]);
+
   const handleSubmit = useCallback(() => {
     const text = value.trim();
-    if (!text) return;
 
-    // Only clear and flash if we actually submitted something
+    // Allow blank submit to clear queued whisper/direction
     let submitted = false;
     if (directorMode) {
       onSubmitDirector(text);
       submitted = true;
     } else if (attachedTo) {
+      justSubmittedRef.current = text;
       onSubmitInfluence(text);
       submitted = true;
     }
@@ -104,7 +125,7 @@ export function ActionBar({
 
           <button
             onClick={handleSubmit}
-            disabled={!value.trim()}
+            disabled={!value.trim() && !pendingInfluence && !pendingDirectorGuidance}
             className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-30 ${
               directorMode
                 ? "bg-amber-500/80 hover:bg-amber-500 text-black hover:shadow-[0_0_20px_oklch(0.7_0.15_80_/_0.3)]"
@@ -113,18 +134,68 @@ export function ActionBar({
           >
             {directorMode ? "Direct" : "Whisper"}
           </button>
+
+          {/* Next page - mobile only */}
+          {onNextPage && (
+            <button
+              onClick={onNextPage}
+              disabled={isStreaming}
+              className="lg:hidden p-2.5 rounded-lg text-muted-foreground/40 hover:text-primary/70 bg-secondary/30 border border-border/30 transition-all disabled:opacity-20"
+              aria-label="Next page"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </button>
+          )}
         </div>
 
-        {/* Pending guidance indicator */}
-        {pendingDirectorGuidance && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            className={`mx-auto mt-2 text-xs text-amber-400/70 italic transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
-          >
-            Queued: "{pendingDirectorGuidance}" — takes effect next page
-          </motion.div>
+        {/* Pending whisper or direction — show whichever is relevant to current mode */}
+        {directorMode ? (
+          pendingDirectorGuidance && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              className={`mx-auto mt-2 text-xs text-amber-400/70 italic transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
+            >
+              Direction: "{pendingDirectorGuidance}"
+            </motion.div>
+          )
+        ) : (
+          pendingInfluence && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              className={`mx-auto mt-2 text-xs text-amber-400/70 italic transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
+            >
+              Whispering to {pendingInfluence.character}: "{pendingInfluence.text}"
+            </motion.div>
+          )
         )}
+
+        {/* Characters responding indicator */}
+        <AnimatePresence>
+          {isStreaming && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className={`mx-auto mt-2 flex items-center gap-2 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
+            >
+              <div className="flex gap-1">
+                {[0, 1, 2].map(i => (
+                  <motion.div
+                    key={i}
+                    className="w-1 h-1 rounded-full bg-primary/50"
+                    animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }}
+                    transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                  />
+                ))}
+              </div>
+              <span className="text-[10px] text-muted-foreground/40">characters responding...</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </AnimatePresence>
   );

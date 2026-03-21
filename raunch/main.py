@@ -830,7 +830,8 @@ def attach(character, host, port, book_id):
 @click.option("--port", default=8000, type=int, help="Server port (default: 8000)")
 @click.option("--bookmark", default=None, help="Book bookmark to join")
 @click.option("--nickname", default=None, help="Your display name")
-def connect(host, port, bookmark, nickname):
+@click.option("--librarian", default=None, help="Use existing librarian ID (from web session)")
+def connect(host, port, bookmark, nickname, librarian):
     """Connect to a remote Living Library server.
 
     Examples:
@@ -843,7 +844,14 @@ def connect(host, port, bookmark, nickname):
     # Build server URL
     if not host.startswith("http"):
         host = f"http://{host}"
-    if port != 80 and port != 443:
+    # Don't append port if host already has one or if using default HTTPS (443)
+    if ":///" in host or host.count(":") >= 2:
+        # URL already has a port
+        server_url = host
+    elif host.startswith("https://") and port == 8000:
+        # HTTPS with default port — don't append (cloud services use 443)
+        server_url = host
+    elif port != 80 and port != 443:
         server_url = f"{host}:{port}"
     else:
         server_url = host
@@ -882,7 +890,7 @@ def connect(host, port, bookmark, nickname):
         return
 
     try:
-        client = RemoteClient(server_url, nickname=nickname)
+        client = RemoteClient(server_url, nickname=nickname, librarian_id=librarian)
         console.print(f"[green]Connected as {nickname}[/green]")
         console.print(f"[dim]Librarian ID: {client.librarian_id}[/dim]")
     except Exception as e:

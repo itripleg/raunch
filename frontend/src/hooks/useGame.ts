@@ -96,6 +96,8 @@ type State = {
   streaming: StreamingState;
   // Non-streaming page generation
   pageGenerating: number | null;
+  // Agent mode
+  agentMode: "default" | "dual" | "unified";
   // Multiplayer
   multiplayer: boolean;
   playerId: string | null;
@@ -120,10 +122,12 @@ type Action =
   | { type: "ERROR"; message: string }
   | { type: "CLEAR_ERROR" }
   | { type: "INFLUENCE_QUEUED"; character: string; text: string }
+  | { type: "INFLUENCE_CLEARED" }
   | { type: "RESET" }
   // Director mode
   | { type: "TOGGLE_DIRECTOR_MODE" }
   | { type: "DIRECTOR_QUEUED"; text: string }
+  | { type: "DIRECTOR_CLEARED" }
   // Streaming
   | { type: "PAGE_START"; page: number }
   | { type: "STREAM_SYNC"; page: number; narrator: string; characters: Record<string, string> }
@@ -137,6 +141,8 @@ type Action =
   | { type: "PLAYERS"; players: Player[] }
   | { type: "WORLD_LOADED"; world_id: string; name: string; characters: string[] }
   | { type: "TURN_STATE"; countdown: number; waiting_for: string[]; all_ready: boolean }
+  // Agent mode
+  | { type: "AGENT_MODE"; mode: "default" | "dual" | "unified" }
   // Debug/Mock mode
   | { type: "INJECT_MOCK_PAGE" };
 
@@ -166,6 +172,8 @@ const initial: State = {
     charactersDone: [],
   },
   pageGenerating: null,
+  // Agent mode
+  agentMode: "default",
   // Multiplayer
   multiplayer: false,
   playerId: null,
@@ -364,10 +372,14 @@ function reducer(state: State, action: Action): State {
       return { ...state, error: null };
     case "INFLUENCE_QUEUED":
       return { ...state, pendingInfluence: { character: action.character, text: action.text } };
+    case "INFLUENCE_CLEARED":
+      return { ...state, pendingInfluence: null };
     case "TOGGLE_DIRECTOR_MODE":
       return { ...state, directorMode: !state.directorMode };
     case "DIRECTOR_QUEUED":
       return { ...state, pendingDirectorGuidance: action.text };
+    case "DIRECTOR_CLEARED":
+      return { ...state, pendingDirectorGuidance: null };
     case "PAGE_START":
       return {
         ...state,
@@ -434,6 +446,8 @@ function reducer(state: State, action: Action): State {
           all_ready: action.all_ready,
         },
       };
+    case "AGENT_MODE":
+      return { ...state, agentMode: action.mode };
     case "RESET":
       return initial;
     case "INJECT_MOCK_PAGE": {
@@ -549,6 +563,9 @@ export function useGame(apiUrl: string, bookId?: string | null) {
         }
         if (typeof msg.paused === "boolean") {
           dispatch({ type: "PAUSE_STATE", paused: msg.paused });
+        }
+        if (typeof msg.agent_mode === "string") {
+          dispatch({ type: "AGENT_MODE", mode: msg.agent_mode as "default" | "dual" | "unified" });
         }
         return;
       }
@@ -689,6 +706,12 @@ export function useGame(apiUrl: string, bookId?: string | null) {
           text: (msg as Record<string, unknown>).text as string || "",
         });
         break;
+      case "influence_cleared":
+        dispatch({ type: "INFLUENCE_CLEARED" });
+        break;
+      case "director_cleared":
+        dispatch({ type: "DIRECTOR_CLEARED" });
+        break;
       case "joined":
         dispatch({
           type: "JOINED",
@@ -714,6 +737,9 @@ export function useGame(apiUrl: string, bookId?: string | null) {
           waiting_for: msg.waiting_for as string[],
           all_ready: msg.all_ready as boolean,
         });
+        break;
+      case "agent_mode":
+        dispatch({ type: "AGENT_MODE", mode: msg.mode as "default" | "dual" | "unified" });
         break;
       case "debug":
         // Dispatch custom event for DebugPanel to receive
@@ -743,7 +769,7 @@ export function useGame(apiUrl: string, bookId?: string | null) {
         send({ cmd: "character_history", character: name, count }),
       replay: (page: number) => send({ cmd: "replay", page }),
       submitAction: (text: string, autoReady = false) => {
-        send({ cmd: "action", text });
+        send({ cmd: "whisper", text });
         if (autoReady) {
           send({ cmd: "ready" });
         }

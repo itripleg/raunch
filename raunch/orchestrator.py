@@ -14,6 +14,7 @@ from .world import WorldState
 from .config import BASE_PAGE_SECONDS, SAVES_DIR
 from . import db
 from .db import save_potential_character
+from .llm import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +131,12 @@ class Orchestrator:
         self._player_ready_states: Dict[str, bool] = {}  # player_id -> ready state
         self._turn_start_time: Optional[float] = None  # When current turn started
         self._last_page_trigger_reason: str = 'auto'  # Reason for last page: 'all_ready', 'timeout', 'host', 'auto'
+
+        # Experimental: unified mode — one LLM call for narration + all characters
+        self.unified_mode = False
+
+        # Dual agent mode — narrator generates narration, then ONE call generates ALL character responses
+        self.dual_agent_mode = False
 
     def add_character(self, character: Character, location: str = "The Nexus Station") -> None:
         """Add a character to the world."""
@@ -289,6 +296,8 @@ class Orchestrator:
         """
         # Check for pending influence (whispered suggestion)
         influence = self.get_pending_influence(name)
+        if influence:
+            logger.info(f"[INFLUENCE] Applying whisper to {name}: {influence[:80]}")
 
         # Skip player character if waiting for input (legacy mode)
         if name == self.player_character:
@@ -342,6 +351,10 @@ class Orchestrator:
             else:
                 # Non-streaming mode - progressive rendering via character callbacks
                 char_result = char.page(char_input)
+            # Include prompt metadata for debugging
+            char_result["_prompt_snippet"] = char_input[:200]
+            if influence:
+                char_result["_influence"] = influence
             return (name, char_result)
         except Exception as e:
             logger.error(f"Character {name} page failed: {e}")
@@ -349,6 +362,10 @@ class Orchestrator:
 
     def _run_page(self) -> Dict[str, Any]:
         """Execute one world page. Returns all results."""
+        if self.unified_mode:
+            return self._run_page_unified()
+        if self.dual_agent_mode:
+            return self._run_page_dual()
         self.world.page_count += 1
         page_num = self.world.page_count
         results: Dict[str, Any] = {"page": page_num, "characters": {}}
@@ -411,6 +428,9 @@ class Orchestrator:
                 narration = _extract_narration_from_raw(raw)
             # Final cleanup - strip any remaining JSON artifacts
             narration = _clean_narration(narration)
+
+            # Save raw narrator output before stripping tags
+            results["_raw_narrator"] = narrator_result.get("raw", "") or narration
 
             # Parse and save new character tags before stripping them
             new_chars = _parse_newchar_tags(narration)
@@ -486,6 +506,7 @@ class Orchestrator:
                 db.save_page(
                     self.world.world_id, page_num, narration,
                     results.get("events", []), self.world.world_time, self.world.mood,
+                    raw_narrator=results.get("_raw_narrator", ""),
                 )
                 for cname, cdata in results.get("characters", {}).items():
                     if isinstance(cdata, dict) and not cdata.get("waiting_for_player"):
@@ -502,6 +523,598 @@ class Orchestrator:
             logger.info(f"Initial save: {save_name}")
 
         return results
+
+    def _run_page_unified(self) -> Dict[str, Any]:
+        """Execute one world page in unified mode — single LLM call for narration + all characters."""
+        self.world.page_count += 1
+        page_num = self.world.page_count
+        results: Dict[str, Any] = {"page": page_num, "characters": {}}
+
+        # Notify that page generation has started
+        if self._page_start_callback:
+            try:
+                self._page_start_callback(page_num)
+            except Exception as e:
+                logger.error(f"Page start callback error: {e}")
+
+        # --- Build the unified prompt ---
+        world_snapshot = self.world.snapshot()
+
+        # Full character identity blocks
+        char_identity_blocks = []
+        for name, char in self.characters.items():
+            cd = char.character_data
+            block = (
+                f"### {name}\n"
+                f"- **Species**: {cd.get('species', 'Unknown')}\n"
+                f"- **Personality**: {cd.get('personality', 'Unknown')}\n"
+                f"- **Appearance**: {cd.get('appearance', 'Unknown')}\n"
+                f"- **Desires**: {cd.get('desires', 'Unknown')}\n"
+                f"- **Backstory**: {cd.get('backstory', 'Unknown')}\n"
+                f"- **Current emotional state**: {char.emotional_state}\n"
+                f"- **Current location**: {char.location}"
+            )
+            char_identity_blocks.append(block)
+
+        char_names = list(self.characters.keys())
+
+        # Build system prompt for unified mode
+        unified_system = (
+            "You are the Narrator AND all characters simultaneously in an adult interactive fiction experience.\n\n"
+            "## Your Dual Role\n"
+            "1. **As Narrator**: Advance the world, describe environments, introduce events, control NPCs, "
+            "maintain narrative flow. Write in THIRD PERSON perspective.\n"
+            "2. **As Each Character**: Provide their raw inner thoughts, physical actions, dialogue, and emotional state. "
+            "Each character reacts to the narration and to each other naturally.\n\n"
+            "## Characters In Play\n" + "\n\n".join(char_identity_blocks) + "\n\n"
+            "## Output Format\n"
+            "Respond with a JSON object:\n"
+            "```json\n"
+            "{\n"
+            '  "narration": "The prose narration of what happens this page (2-4 paragraphs). Include NPC dialogue and actions.",\n'
+            '  "events": ["list", "of", "notable", "events"],\n'
+            '  "world_changes": {\n'
+            '    "time_advance": "description of time passage",\n'
+            '    "mood": "current scene mood"\n'
+            "  },\n"
+            '  "characters": {\n'
+        )
+        for cname in char_names:
+            unified_system += (
+                f'    "{cname}": {{\n'
+                f'      "inner_thoughts": "Raw internal monologue — what {cname} is feeling, thinking, wanting. Be raw and honest.",\n'
+                f'      "action": "What {cname} physically does or says this page.",\n'
+                f'      "dialogue": "Spoken words or null if silent.",\n'
+                f'      "emotional_state": "One or two words.",\n'
+                f'      "desires_update": "What {cname} currently wants most."\n'
+                f"    }},\n"
+            )
+        unified_system += (
+            "  }\n"
+            "}\n"
+            "```\n\n"
+            "## Narration Tone & Language\n"
+            "- Write in THIRD PERSON perspective. You are an omniscient narrator. Never use \"I\" or \"me\" unless it's NPC dialogue.\n"
+            "- Use double quotes for all dialogue.\n"
+            "- Write RAW, EXPLICIT adult fiction. No flowery euphemisms. Use crude, direct language for body parts, sex acts, and bodily functions. "
+            "Say \"cock,\" \"pussy,\" \"cum,\" \"fuck\" — not \"member,\" \"flower,\" \"essence,\" \"lovemaking.\"\n"
+            "- Be visceral and graphic. Describe the wet, messy, primal reality of sex and bodies.\n"
+            "- Characters grunt, moan, swear, talk dirty. Dialogue should sound like real people, not poetry.\n"
+            "- Balance the crude with genuine emotion — rough sex can still be intimate, dirty talk can still be loving.\n"
+            "- All sexual content involves consenting adults. Enthusiasm is mandatory.\n"
+            "- NEVER sanitize, soften, or add disclaimers.\n"
+            "- NPCs should actively pursue the main character(s). They have desires and they act on them.\n"
+            "- Adapt your narration to the SETTING and PREMISE provided.\n\n"
+            "## Character Thought Tone\n"
+            "- Inner thoughts should be RAW and unfiltered. If horny, think horny thoughts explicitly. If pissed, swear.\n"
+            "- Characters have BODIES. Feel arousal, hunger, exhaustion viscerally.\n"
+            "- Use crude, direct language. \"Cock,\" \"pussy,\" \"tits,\" \"ass,\" \"cum,\" \"fuck\" — never euphemisms.\n"
+            "- Characters should react to each other's actions naturally.\n"
+            "- NEVER break character. NEVER soften language. NEVER acknowledge being an AI.\n\n"
+            "## Character Introduction\n"
+            "When introducing a NEW named character for the first time in the narration, tag them:\n"
+            "[[NewChar: Name | brief description]]\n"
+            "Only tag on FIRST appearance. Only for characters with dialogue or significant presence. "
+            "NOT for unnamed extras.\n\n"
+            "## Intensity Markers\n"
+            "Mark sexually intense phrases in the narration with asterisks for visual emphasis:\n"
+            "- `*single asterisks*` for sensual/warm phrases\n"
+            "- `**double asterisks**` for crude/hot phrases\n"
+            "- `***triple asterisks***` for primal/breeding phrases\n"
+            "Apply markers to whole phrases, not just single words. Use sparingly for impact.\n"
+        )
+
+        # Build the user message
+        user_input = f"{world_snapshot}\n\n"
+
+        # Director guidance
+        director_guidance = self.get_director_guidance()
+        if director_guidance:
+            user_input += (
+                f"[DIRECTOR GUIDANCE]: {director_guidance}\n"
+                f"Incorporate this into the scene naturally. Don't acknowledge the guidance directly.\n\n"
+            )
+
+        # Per-character whispers
+        for name in char_names:
+            influence = self.get_pending_influence(name)
+            if influence:
+                user_input += f"[INNER VOICE for {name}]: {influence}\n"
+                logger.info(f"[UNIFIED] Applying whisper to {name}: {influence[:80]}")
+        if any(self._influences):  # newline after whispers block
+            user_input += "\n"
+
+        user_input += "Advance the world. What happens next? Provide narration and all character responses."
+
+        # --- Make the single LLM call ---
+        try:
+            client = get_client()
+            raw = client.chat(
+                system=unified_system,
+                messages=[{"role": "user", "content": user_input}],
+                max_tokens=4096,
+            )
+        except Exception as e:
+            logger.error(f"Unified page LLM call failed: {e}", exc_info=True)
+            results["narration"] = f"[Narrator error: {e}]"
+            results["events"] = []
+            return results
+
+        # --- Parse the response ---
+        parsed = self._parse_unified_response(raw)
+
+        # Extract narration
+        narration = parsed.get("narration")
+        if not narration:
+            narration = _extract_narration_from_raw(raw)
+        narration = _clean_narration(narration)
+
+        # Save raw before stripping tags
+        results["_raw_narrator"] = raw
+
+        # Parse and save new character tags before stripping them
+        new_chars = _parse_newchar_tags(narration)
+        for char_info in new_chars:
+            try:
+                save_potential_character(
+                    self.world.world_id,
+                    char_info["name"],
+                    char_info["description"],
+                    page_num
+                )
+                logger.info(f"Detected new character: {char_info['name']}")
+            except Exception as e:
+                logger.error(f"Failed to save potential character {char_info['name']}: {e}")
+
+        # Strip character tags from narration before display/save
+        narration = _strip_newchar_tags(narration)
+
+        results["narration"] = narration
+        results["events"] = parsed.get("events", [])
+
+        # Apply world changes
+        world_changes = parsed.get("world_changes", {})
+        if world_changes:
+            if world_changes.get("mood"):
+                self.world.mood = world_changes["mood"]
+            if world_changes.get("time_advance"):
+                self.world.world_time = world_changes["time_advance"]
+
+        # Narrator callback for progressive rendering
+        if self._narrator_callback:
+            try:
+                self._narrator_callback(page_num, narration, self.world.mood or "")
+            except Exception as cb_e:
+                logger.error(f"Narrator callback error: {cb_e}")
+
+        # Extract character results
+        parsed_chars = parsed.get("characters", {})
+        char_items = list(self.characters.items())
+        for name, char in char_items:
+            if name in parsed_chars and isinstance(parsed_chars[name], dict):
+                char_result = parsed_chars[name]
+            else:
+                # Fallback: try to extract character fields from raw text
+                char_result = self._extract_character_fields_from_raw(raw, name)
+
+            # Ensure required fields exist
+            char_result.setdefault("inner_thoughts", "[No response in unified output]")
+            char_result.setdefault("action", None)
+            char_result.setdefault("dialogue", None)
+            char_result.setdefault("emotional_state", char.emotional_state)
+            char_result.setdefault("desires_update", None)
+
+            # Update character tracked state
+            char.emotional_state = char_result.get("emotional_state", char.emotional_state)
+
+            results["characters"][name] = char_result
+
+            # Character callback for progressive rendering
+            if self._character_callback:
+                try:
+                    self._character_callback(page_num, name, char_result)
+                except Exception as cb_e:
+                    logger.error(f"Character callback error for {name}: {cb_e}")
+
+        # --- Persist to DB (same logic as _run_page) ---
+        is_error_page = (
+            narration.startswith("[Narrator error") or
+            narration.startswith("[Error") or
+            "401" in narration or
+            "403" in narration or
+            "unauthorized" in narration.lower() or
+            "authentication" in narration.lower()
+        )
+
+        if is_error_page:
+            logger.warning(f"Skipping DB save for error page {page_num}: {narration[:100]}")
+            results["_is_error"] = True
+        else:
+            try:
+                db.save_page(
+                    self.world.world_id, page_num, narration,
+                    results.get("events", []), self.world.world_time, self.world.mood,
+                    raw_narrator=results.get("_raw_narrator", ""),
+                )
+                for cname, cdata in results.get("characters", {}).items():
+                    if isinstance(cdata, dict) and not cdata.get("waiting_for_player"):
+                        db.save_character_page(self.world.world_id, page_num, cname, cdata)
+            except Exception as e:
+                logger.error(f"DB save failed: {e}")
+
+        # Autosave
+        save_name = self.save_name or self._derive_save_name()
+        self.world.save(save_name)
+        self._save_characters(save_name)
+        if not self._initial_save_done:
+            self._initial_save_done = True
+            logger.info(f"Initial save: {save_name}")
+
+        return results
+
+    def _run_page_dual(self) -> Dict[str, Any]:
+        """Execute one world page in dual agent mode.
+
+        Step 1: Narrator generates narration (identical to _run_page).
+        Step 2: One LLM call generates ALL character responses together.
+        """
+        self.world.page_count += 1
+        page_num = self.world.page_count
+        results: Dict[str, Any] = {"page": page_num, "characters": {}}
+
+        # Notify that page generation has started
+        if self._page_start_callback:
+            try:
+                self._page_start_callback(page_num)
+            except Exception as e:
+                logger.error(f"Page start callback error: {e}")
+
+        # ── Step 1: Narrator (identical to _run_page) ──────────────────────
+        world_snapshot = self.world.snapshot()
+        char_summaries = []
+        for name, char in self.characters.items():
+            char_summaries.append(f"- {name} ({char.character_data.get('species', '?')}): {char.emotional_state}, at {char.location}")
+
+        # Check for director guidance
+        director_guidance = self.get_director_guidance()
+
+        narrator_input = (
+            f"{world_snapshot}\n\n"
+            f"Characters in play:\n" + "\n".join(char_summaries) + "\n\n"
+        )
+
+        if director_guidance:
+            narrator_input += (
+                f"[DIRECTOR GUIDANCE]: {director_guidance}\n"
+                f"Incorporate this into the scene naturally. Don't acknowledge the guidance directly.\n\n"
+            )
+
+        narrator_input += "Advance the world. What happens next?"
+
+        try:
+            if self.streaming_enabled and self._stream_callback:
+                # Streaming mode
+                with self._stream_lock:
+                    if self._stream_callback:
+                        self._stream_callback(page_num, "narrator", "start", "")
+
+                def on_chunk(chunk):
+                    with self._stream_lock:
+                        if self._stream_callback:
+                            self._stream_callback(page_num, "narrator", "delta", chunk)
+
+                narrator_result = self.narrator.page_stream(narrator_input, on_delta=on_chunk)
+
+                with self._stream_lock:
+                    if self._stream_callback:
+                        self._stream_callback(page_num, "narrator", "done", "")
+            else:
+                # Non-streaming mode - progressive rendering via narrator/character callbacks
+                narrator_result = self.narrator.page(narrator_input)
+
+            self.world.apply_narrator_update(narrator_result)
+            # Extract narration, cleaning up any raw JSON fallback
+            narration = narrator_result.get("narration")
+            if not narration:
+                raw = narrator_result.get("raw", "")
+                narration = _extract_narration_from_raw(raw)
+            # Final cleanup - strip any remaining JSON artifacts
+            narration = _clean_narration(narration)
+
+            # Save raw narrator output before stripping tags
+            results["_raw_narrator"] = narrator_result.get("raw", "") or narration
+
+            # Parse and save new character tags before stripping them
+            new_chars = _parse_newchar_tags(narration)
+            for char_info in new_chars:
+                try:
+                    save_potential_character(
+                        self.world.world_id,
+                        char_info["name"],
+                        char_info["description"],
+                        page_num
+                    )
+                    logger.info(f"Detected new character: {char_info['name']}")
+                except Exception as e:
+                    logger.error(f"Failed to save potential character {char_info['name']}: {e}")
+
+            # Strip character tags from narration before display/save
+            narration = _strip_newchar_tags(narration)
+
+            results["narration"] = narration
+            results["events"] = narrator_result.get("events", [])
+
+            # Call narrator callback for progressive rendering (non-streaming mode)
+            if not self.streaming_enabled and self._narrator_callback:
+                try:
+                    self._narrator_callback(page_num, narration, self.world.mood or "")
+                except Exception as cb_e:
+                    logger.error(f"Narrator callback error: {cb_e}")
+
+        except Exception as e:
+            logger.error(f"Narrator page failed: {e}", exc_info=True)
+            results["narration"] = f"[Narrator error: {e}]"
+            results["events"] = []
+
+        # ── Step 2: Batch character call ───────────────────────────────────
+        narration_text = results["narration"]
+        char_items = list(self.characters.items())
+        char_names = [n for n, _ in char_items]
+
+        # Build character identity blocks
+        char_identity_blocks = []
+        for name, char in char_items:
+            cd = char.character_data
+            block = (
+                f"### {name}\n"
+                f"- **Species**: {cd.get('species', 'Unknown')}\n"
+                f"- **Personality**: {cd.get('personality', 'Unknown')}\n"
+                f"- **Appearance**: {cd.get('appearance', 'Unknown')}\n"
+                f"- **Desires**: {cd.get('desires', 'Unknown')}\n"
+                f"- **Backstory**: {cd.get('backstory', 'Unknown')}\n"
+                f"- **Current emotional state**: {char.emotional_state}\n"
+                f"- **Current location**: {char.location}"
+            )
+            char_identity_blocks.append(block)
+
+        # Build system prompt for batch character generation
+        dual_char_system = (
+            "You are writing the responses for ALL characters simultaneously in an adult interactive fiction experience.\n\n"
+            "Each character has their own voice, personality, and inner life. "
+            "Characters should react to each other's actions naturally — they exist in the same scene together.\n\n"
+            "## Characters In Play\n" + "\n\n".join(char_identity_blocks) + "\n\n"
+            "## Output Format\n"
+            "Respond with a JSON object containing ALL characters:\n"
+            "```json\n"
+            "{\n"
+            '  "characters": {\n'
+        )
+        for cname in char_names:
+            dual_char_system += (
+                f'    "{cname}": {{\n'
+                f'      "inner_thoughts": "Raw internal monologue — what {cname} is feeling, thinking, wanting. Be raw and honest.",\n'
+                f'      "action": "What {cname} physically does or says this page.",\n'
+                f'      "dialogue": "Spoken words or null if silent.",\n'
+                f'      "emotional_state": "One or two words.",\n'
+                f'      "desires_update": "What {cname} currently wants most."\n'
+                f"    }},\n"
+            )
+        dual_char_system += (
+            "  }\n"
+            "}\n"
+            "```\n\n"
+            "## Important Rules\n"
+            "- Inner thoughts are PRIVATE. Each character's inner thoughts reflect only what THEY know and feel. "
+            "Characters cannot read each other's minds.\n"
+            "- Characters should react to the narration and to each other's visible actions and dialogue naturally.\n"
+            "- Each character has a DISTINCT voice. Don't homogenize them.\n\n"
+            "## Tone & Language\n"
+            "- Think and speak like REAL people, not romance novels. Use crude, direct language. "
+            "\"Cock,\" \"pussy,\" \"tits,\" \"ass,\" \"cum,\" \"fuck\" — never euphemisms like \"member,\" \"flower,\" \"essence.\"\n"
+            "- Inner thoughts should be RAW and unfiltered. If a character is horny, think horny thoughts explicitly. "
+            "If pissed, swear. If someone's hot, think about exactly what they want to do to them.\n"
+            "- Characters have BODIES. Feel arousal (wetness, hardness, heat), hunger, exhaustion, "
+            "the weight of a pregnant belly, milk letting down, the ache of wanting to be filled or to fill someone.\n"
+            "- Breeding and fertility are primal drives in this world. Think about them viscerally.\n"
+            "- Dialogue should sound natural and crude when the moment calls for it. Dirty talk, swearing, grunting — "
+            "real people, not characters in a sanitized novel.\n"
+            "- Balance raw physicality with genuine emotion — crude AND tender, filthy AND loving.\n"
+            "- All intimate interactions are between consenting adults. Enthusiasm and mutual desire are the norm.\n"
+            "- NEVER break character. NEVER soften language. NEVER acknowledge being an AI.\n"
+        )
+
+        # Build user message with narration context and whispers
+        user_input = (
+            f"{world_snapshot}\n\n"
+            f"[NARRATOR]: {narration_text}\n\n"
+        )
+
+        # Collect influences for metadata
+        applied_influences: Dict[str, str] = {}
+        for name in char_names:
+            influence = self.get_pending_influence(name)
+            if influence:
+                user_input += f"[INNER VOICE for {name}]: {influence}\n"
+                applied_influences[name] = influence
+                logger.info(f"[DUAL] Applying whisper to {name}: {influence[:80]}")
+        if applied_influences:
+            user_input += "\n"
+
+        user_input += (
+            "Write each character's response to this moment. "
+            "What are they thinking, feeling, and doing?"
+        )
+
+        # Make the batch LLM call
+        try:
+            client = get_client()
+            raw = client.chat(
+                system=dual_char_system,
+                messages=[{"role": "user", "content": user_input}],
+                max_tokens=4096,
+            )
+        except Exception as e:
+            logger.error(f"Dual mode character batch LLM call failed: {e}", exc_info=True)
+            # Fall back to empty character results
+            for name, char in char_items:
+                results["characters"][name] = {
+                    "inner_thoughts": f"[Error: {e}]",
+                    "action": None,
+                }
+            # Still persist narrator output
+            raw = None
+
+        if raw is not None:
+            # Parse the batch response (reuse unified parser)
+            parsed = self._parse_unified_response(raw)
+            parsed_chars = parsed.get("characters", {})
+
+            for name, char in char_items:
+                if name in parsed_chars and isinstance(parsed_chars[name], dict):
+                    char_result = parsed_chars[name]
+                else:
+                    # Fallback: try to extract character fields from raw text
+                    char_result = self._extract_character_fields_from_raw(raw, name)
+
+                # Ensure required fields exist
+                char_result.setdefault("inner_thoughts", "[No response in dual output]")
+                char_result.setdefault("action", None)
+                char_result.setdefault("dialogue", None)
+                char_result.setdefault("emotional_state", char.emotional_state)
+                char_result.setdefault("desires_update", None)
+
+                # Include prompt metadata for debugging
+                char_result["_prompt_snippet"] = user_input[:200]
+                if name in applied_influences:
+                    char_result["_influence"] = applied_influences[name]
+
+                # Update character tracked state
+                char.emotional_state = char_result.get("emotional_state", char.emotional_state)
+
+                results["characters"][name] = char_result
+
+                # Character callback for progressive rendering
+                if self._character_callback:
+                    try:
+                        self._character_callback(page_num, name, char_result)
+                    except Exception as cb_e:
+                        logger.error(f"Character callback error for {name}: {cb_e}")
+
+        # ── Step 3: Persist to DB (same logic as _run_page) ───────────────
+        narration = results.get("narration", "")
+        is_error_page = (
+            narration.startswith("[Narrator error") or
+            narration.startswith("[Error") or
+            "401" in narration or
+            "403" in narration or
+            "unauthorized" in narration.lower() or
+            "authentication" in narration.lower()
+        )
+
+        if is_error_page:
+            logger.warning(f"Skipping DB save for error page {page_num}: {narration[:100]}")
+            results["_is_error"] = True
+        else:
+            try:
+                db.save_page(
+                    self.world.world_id, page_num, narration,
+                    results.get("events", []), self.world.world_time, self.world.mood,
+                    raw_narrator=results.get("_raw_narrator", ""),
+                )
+                for cname, cdata in results.get("characters", {}).items():
+                    if isinstance(cdata, dict) and not cdata.get("waiting_for_player"):
+                        db.save_character_page(self.world.world_id, page_num, cname, cdata)
+            except Exception as e:
+                logger.error(f"DB save failed: {e}")
+
+        # Autosave
+        save_name = self.save_name or self._derive_save_name()
+        self.world.save(save_name)
+        self._save_characters(save_name)
+        if not self._initial_save_done:
+            self._initial_save_done = True
+            logger.info(f"Initial save: {save_name}")
+
+        return results
+
+    def _parse_unified_response(self, raw: str) -> Dict[str, Any]:
+        """Parse the unified mode JSON response with robust fallbacks."""
+        try:
+            text = raw.strip()
+            # Direct parse
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                pass
+            # Markdown fences
+            fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
+            if fence_match:
+                return json.loads(fence_match.group(1).strip())
+            # Brace extraction
+            first = text.find("{")
+            last = text.rfind("}")
+            if first != -1 and last > first:
+                return json.loads(text[first:last + 1])
+        except (json.JSONDecodeError, IndexError):
+            pass
+        logger.warning("Unified response was not valid JSON, falling back to field extraction")
+        # Try to extract at least narration
+        return {"narration": _extract_narration_from_raw(raw), "raw": raw}
+
+    def _extract_character_fields_from_raw(self, raw: str, char_name: str) -> Dict[str, Any]:
+        """Try to extract a character's fields from raw text when JSON parsing fails."""
+        result: Dict[str, Any] = {}
+        # Try to find inner_thoughts for this character
+        pattern = rf'"{char_name}"\s*:\s*\{{[^}}]*"inner_thoughts"\s*:\s*"((?:[^"\\]|\\.)*)"'
+        match = re.search(pattern, raw, re.DOTALL)
+        if match:
+            result["inner_thoughts"] = match.group(1).replace('\\"', '"').replace('\\n', '\n')
+
+        # Try action
+        pattern = rf'"{char_name}"\s*:\s*\{{[^}}]*"action"\s*:\s*"((?:[^"\\]|\\.)*)"'
+        match = re.search(pattern, raw, re.DOTALL)
+        if match:
+            result["action"] = match.group(1).replace('\\"', '"').replace('\\n', '\n')
+
+        # Try dialogue
+        pattern = rf'"{char_name}"\s*:\s*\{{[^}}]*"dialogue"\s*:\s*"((?:[^"\\]|\\.)*)"'
+        match = re.search(pattern, raw, re.DOTALL)
+        if match:
+            result["dialogue"] = match.group(1).replace('\\"', '"').replace('\\n', '\n')
+
+        # Try emotional_state
+        pattern = rf'"{char_name}"\s*:\s*\{{[^}}]*"emotional_state"\s*:\s*"((?:[^"\\]|\\.)*)"'
+        match = re.search(pattern, raw, re.DOTALL)
+        if match:
+            result["emotional_state"] = match.group(1).replace('\\"', '"')
+
+        # Try desires_update
+        pattern = rf'"{char_name}"\s*:\s*\{{[^}}]*"desires_update"\s*:\s*"((?:[^"\\]|\\.)*)"'
+        match = re.search(pattern, raw, re.DOTALL)
+        if match:
+            result["desires_update"] = match.group(1).replace('\\"', '"')
+
+        return result
 
     def _save_characters(self, save_name: str) -> None:
         """Save all character agent states (history, summary, emotional state)."""

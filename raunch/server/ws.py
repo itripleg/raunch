@@ -75,6 +75,48 @@ ws_manager = WSManager()
 def _ensure_orchestrator(book) -> bool:
     """Ensure book has an initialized orchestrator. Returns True if ready."""
     if book.orchestrator is not None:
+        if book.orchestrator.characters:
+            return True
+        # Orchestrator exists but has no characters (e.g. CLI --serve without --scenario)
+        # Load the scenario into the existing orchestrator to preserve its callbacks
+        logger.info(f"Existing orchestrator for {book.book_id} has no characters, loading scenario")
+        orch = book.orchestrator
+        scenario = load_scenario(book.scenario_name)
+        if scenario is None:
+            logger.error(f"Scenario '{book.scenario_name}' not found for book {book.book_id}")
+            return False
+        orch.world.scenario = scenario
+        orch.world.world_name = scenario.get("scenario_name", orch.world.world_name)
+        orch.world.world_id = book.book_id
+        setting = scenario.get("setting", "")
+        if setting:
+            loc_name = scenario.get("scenario_name", "The Scene")
+            orch.world.locations = {loc_name: {"description": setting, "characters": []}}
+            location = loc_name
+        else:
+            location = list(orch.world.locations.keys())[0] if orch.world.locations else "The Scene"
+        for char_data in scenario.get("characters", []):
+            char = Character(
+                name=char_data["name"],
+                species=char_data.get("species", "Human"),
+                personality=char_data.get("personality", ""),
+                appearance=char_data.get("appearance", ""),
+                desires=char_data.get("desires", ""),
+                backstory=char_data.get("backstory", ""),
+                kinks=char_data.get("kinks", ""),
+            )
+            orch.add_character(char, location=location)
+        existing_page_count = db.get_page_count(book.book_id)
+        if existing_page_count > 0:
+            orch.world.page_count = existing_page_count
+        try:
+            book_data = db.get_book(book.book_id)
+            if book_data:
+                mode = book_data.get("agent_mode", "default")
+                orch.unified_mode = (mode == "unified")
+                orch.dual_agent_mode = (mode == "dual")
+        except Exception:
+            pass
         return True
 
     # Load scenario and create orchestrator
@@ -126,6 +168,18 @@ def _ensure_orchestrator(book) -> bool:
     if existing_page_count > 0:
         orch.world.page_count = existing_page_count
         logger.info(f"Restored page_count={existing_page_count} for book {book.book_id}")
+
+    # Restore agent mode from database
+    try:
+        book_data = db.get_book(book.book_id)
+        if book_data:
+            mode = book_data.get("agent_mode", "default")
+            orch.unified_mode = (mode == "unified")
+            orch.dual_agent_mode = (mode == "dual")
+            if mode != "default":
+                logger.info(f"Restored agent_mode={mode} for book {book.book_id}")
+    except Exception:
+        pass
 
     # Set up streaming callback - capture the event loop for thread-safe calls
     import asyncio
@@ -366,6 +420,7 @@ async def handle_websocket(websocket: WebSocket, book_id: str):
         "paused": orch._paused,
         "page_interval": orch.page_interval,
         "manual": orch.page_interval == 0,
+        "agent_mode": "unified" if getattr(orch, "unified_mode", False) else "dual" if getattr(orch, "dual_agent_mode", False) else "default",
     })
 
     try:
@@ -437,11 +492,22 @@ async def handle_command(client: WSClient, book, data: Dict[str, Any]) -> None:
 
         existing = book.get_reader_by_character(character)
         if existing and existing.reader_id != client.reader.reader_id:
-            await client.send_error(
-                "character_taken",
-                f"{character} is controlled by another reader"
+            # Only block in multiplayer with an active connection
+            is_multiplayer = book.orchestrator and getattr(book.orchestrator, 'multiplayer', False)
+            # Check if the other reader still has an active WebSocket
+            other_still_connected = any(
+                c.reader and c.reader.reader_id == existing.reader_id
+                for clients in ws_manager.clients.get(book.book_id, {}).values()
+                for c in [clients]
             )
-            return
+            if is_multiplayer and other_still_connected:
+                await client.send_error(
+                    "character_taken",
+                    f"{character} is controlled by another reader"
+                )
+                return
+            # Stale reader or solo mode — detach them silently
+            existing.attached_to = None
 
         client.reader.attached_to = character
         await client.send({"type": "attached", "character": character})
@@ -563,24 +629,66 @@ async def handle_command(client: WSClient, book, data: Dict[str, Any]) -> None:
             await client.send_error("not_attached", "Attach to a character first")
             return
 
-        text = data.get("text", "")
+        text = data.get("text", "").strip()
         character = client.reader.attached_to
         if orch:
-            orch.submit_influence(character, text)
-            await client.send({
-                "type": "influence_queued",
-                "character": character,
-                "text": text,
-            })
+            if text:
+                orch.submit_influence(character, text)
+                await client.send({
+                    "type": "influence_queued",
+                    "character": character,
+                    "text": text,
+                })
+            else:
+                # Clear pending influence
+                orch._influences.pop(character, None)
+                await client.send({
+                    "type": "influence_cleared",
+                    "character": character,
+                })
 
     elif cmd == "director":
-        text = data.get("text", "")
+        text = data.get("text", "").strip()
         if orch:
-            orch.submit_director_guidance(text)
-            await client.send({
-                "type": "director_queued",
-                "text": text,
-            })
+            if text:
+                orch.submit_director_guidance(text)
+                await client.send({
+                    "type": "director_queued",
+                    "text": text,
+                })
+            else:
+                # Clear pending guidance
+                orch._director_guidance = None
+                await client.send({
+                    "type": "director_cleared",
+                })
+
+    elif cmd == "set_agent_mode":
+        if orch:
+            mode = data.get("mode", "default")
+            orch.unified_mode = (mode == "unified")
+            orch.dual_agent_mode = (mode == "dual")
+            # Persist to DB
+            try:
+                db.set_book_agent_mode(book.book_id, mode)
+            except Exception:
+                pass
+            await client.send({"type": "agent_mode", "mode": mode})
+
+    elif cmd == "toggle_unified":
+        if orch:
+            orch.unified_mode = not getattr(orch, "unified_mode", False)
+            orch.dual_agent_mode = False
+            mode = "unified" if orch.unified_mode else "default"
+            await client.send({"type": "agent_mode", "mode": mode})
+
+    elif cmd == "toggle_dual_agent":
+        if orch:
+            orch.dual_agent_mode = not getattr(orch, "dual_agent_mode", False)
+            if orch.dual_agent_mode:
+                orch.unified_mode = False
+            mode = "dual" if orch.dual_agent_mode else "unified" if getattr(orch, "unified_mode", False) else "default"
+            await client.send({"type": "agent_mode", "mode": mode})
 
     elif cmd == "ready":
         if client.reader:

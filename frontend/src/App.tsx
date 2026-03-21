@@ -3,9 +3,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 import { useGame } from "./hooks/useGame";
 import { useLibrary } from "./hooks/useLibrary";
+import { useMockMode } from "./context/MockMode";
 import { SplashScreen } from "./components/SplashScreen";
 import { AlphaDashboard } from "./components/AlphaDashboard";
-import { AdminSettings } from "./components/AdminSettings";
 import { FeedbackKanban } from "./components/FeedbackKanban";
 import { VotingPolls } from "./components/VotingPolls";
 import { AboutPage } from "./components/AboutPage";
@@ -14,12 +14,13 @@ import { NicknamePrompt } from "./components/NicknamePrompt";
 import { CharacterWizard } from "./components/CharacterWizard";
 import { WizardPage } from "./components/WizardPage";
 import { ScenarioSelector } from "./components/ScenarioSelector";
-import { UserDashboard as DebugPanel } from "./components/UserDashboard";
+import { CommandCenter, CommandCenterTrigger } from "./components/CommandCenter";
+import { NotFoundPage } from "./components/NotFoundPage";
 
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
 const HAS_PLAYED_KEY = "raunch_has_played";
 
-type AppView = "presplash" | "splash" | "dashboard" | "kanban" | "voting" | "about" | "wizard" | "scenario" | "game";
+type AppView = "presplash" | "splash" | "dashboard" | "kanban" | "voting" | "about" | "wizard" | "scenario" | "game" | "notfound";
 
 // Smart URL detection for local vs remote/production
 function getApiUrl(): string {
@@ -166,13 +167,26 @@ function App() {
     }
   }, [isAuthenticated, kindeAuth.getToken, LOCAL_DEMO]);
 
+  const ADMIN_EMAIL = "joshua.bell.828@gmail.com";
+  const isAdmin = LOCAL_DEMO || user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
   const library = useLibrary(apiUrl, accessToken, user?.id);
   const { wsState, game, actions } = useGame(apiUrl, library.currentBook?.book_id);
 
   // View state — skip presplash if user has played before
   const [view, setView] = useState<AppView>(() => hasPlayedBefore() ? "splash" : "presplash");
-  const [showSettings, setShowSettings] = useState(false);
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [showCommandCenter, setShowCommandCenter] = useState(false);
+
+  // Global keyboard shortcuts
+  const { toggleMockMode } = useMockMode();
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "M") { e.preventDefault(); toggleMockMode(); }
+      if (e.key === "Escape" && showCommandCenter) setShowCommandCenter(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [toggleMockMode, showCommandCenter]);
 
   // Nickname state with localStorage persistence
   const [nickname, setNickname] = useState<string>(() => getStoredNickname() ?? "");
@@ -190,6 +204,18 @@ function App() {
 
   // Game sub-view: connecting vs actual game (scenario selection removed for alpha)
   const [gameSubView, setGameSubView] = useState<"connecting" | "playing">("connecting");
+
+  // Connection timeout: track how long we've been in "connecting" state
+  const [connectingTooLong, setConnectingTooLong] = useState(false);
+  useEffect(() => {
+    if (wsState === "connecting") {
+      setConnectingTooLong(false);
+      const timer = setTimeout(() => setConnectingTooLong(true), 10000);
+      return () => clearTimeout(timer);
+    } else {
+      setConnectingTooLong(false);
+    }
+  }, [wsState]);
 
   // Handle presplash (pre-auth splash) completion
   const handlePresplashComplete = useCallback(() => {
@@ -252,6 +278,7 @@ function App() {
     try {
       const response = await fetch(`${apiUrl}/api/v1/books/${library.currentBook.book_id}/characters/${encodeURIComponent(name)}`, {
         method: "DELETE",
+        headers: { "X-Librarian-ID": library.librarianId || "" },
       });
       if (!response.ok) {
         const data = await response.json();
@@ -496,7 +523,7 @@ function App() {
             <AlphaDashboard
               onNavigate={handleNavigate}
               isAdmin={isAuthenticated}
-              onOpenSettings={() => setShowSettings(true)}
+              onOpenSettings={() => setShowCommandCenter(true)}
               apiUrl={apiUrl}
               userEmail={user?.email}
               hasActiveBook={library.currentBook !== null}
@@ -596,6 +623,18 @@ function App() {
           </motion.div>
         )}
 
+        {view === "notfound" && (
+          <motion.div
+            key="notfound"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <NotFoundPage onBack={handleBackToDashboard} />
+          </motion.div>
+        )}
+
         {view === "game" && (
           <motion.div
             key="game"
@@ -625,8 +664,13 @@ function App() {
               <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center space-y-6">
                   {wsState === "connecting" && (
-                    <>
-                      <div className="flex gap-1.5 justify-center">
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.4 }}
+                      className="text-center space-y-5"
+                    >
+                      <div className="flex gap-2 justify-center">
                         {[0, 1, 2].map((i) => (
                           <motion.div
                             key={i}
@@ -643,31 +687,67 @@ function App() {
                           />
                         ))}
                       </div>
-                      <p className="text-xs text-muted-foreground/40">connecting to server</p>
-                    </>
+                      <p className="text-sm text-muted-foreground/60">
+                        Connecting to the story engine
+                        <motion.span
+                          animate={{ opacity: [0, 1, 0] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                        >...</motion.span>
+                      </p>
+                      <AnimatePresence>
+                        {connectingTooLong && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className="space-y-3"
+                          >
+                            <p className="text-xs text-muted-foreground/40 max-w-xs mx-auto">
+                              Taking longer than expected — the server may be waking up from sleep
+                            </p>
+                            <button
+                              onClick={handleBackToDashboard}
+                              className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              Back to dashboard
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
                   )}
 
                   {wsState === "disconnected" && (
-                    <>
-                      <p className="text-sm text-muted-foreground">Server not available</p>
-                      <p className="text-xs text-muted-foreground/50 max-w-xs">
-                        Start the server with <code className="font-mono text-primary/70">raunch start</code>
-                      </p>
-                      <div className="flex gap-3 justify-center">
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4 }}
+                      className="text-center space-y-5 max-w-sm mx-auto"
+                    >
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                          The Library is resting&hellip;
+                        </p>
+                        <p className="text-xs text-muted-foreground/50 leading-relaxed">
+                          Servers spin down when idle to save resources. Click below to wake it up.
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-center gap-3">
                         <button
                           onClick={() => actions.connect()}
-                          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm"
+                          className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
                         >
-                          Retry
+                          Wake Up Server
                         </button>
                         <button
                           onClick={handleBackToDashboard}
-                          className="px-4 py-2 text-muted-foreground hover:text-foreground text-sm"
+                          className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          Back
+                          Back to dashboard
                         </button>
                       </div>
-                    </>
+                    </motion.div>
                   )}
 
                   {isConnected && !hasWorld && (
@@ -726,6 +806,9 @@ function App() {
                   game={game}
                   actions={actions}
                   bookId={library.currentBook?.book_id}
+                  isAdmin={isAdmin}
+                  apiUrl={apiUrl}
+                  librarianId={library.librarianId}
                   onAddCharacter={() => {
                     actions.listCharacters();
                     setShowCharacterWizard(true);
@@ -733,7 +816,7 @@ function App() {
                   onDeleteCharacter={handleDeleteCharacter}
                   onResetBook={handleResetBook}
                   onStopWorld={handleStopWorld}
-                  onOpenDebug={() => setShowDebugPanel(true)}
+                  onOpenDebug={() => setShowCommandCenter(true)}
                 />
               </ErrorBoundary>
             )}
@@ -754,37 +837,42 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Admin settings modal */}
-      <AdminSettings
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        onOpenDebug={() => setShowDebugPanel(true)}
-        apiUrl={apiUrl}
-        overrideEmail={user?.email}
-      />
+      {/* Command Center trigger - hidden during splash and dashboard (dashboard has its own gear) */}
+      {view !== "splash" && view !== "dashboard" && (
+        <CommandCenterTrigger onClick={() => setShowCommandCenter(true)} />
+      )}
 
-      {/* Debug panel - available from any view */}
-      <DebugPanel
-        isOpen={showDebugPanel}
-        onClose={() => setShowDebugPanel(false)}
-        sendCommand={actions.sendCommand ?? (() => {})}
-        bookId={library.currentBook?.book_id}
-        apiUrl={apiUrl}
-        authInfo={{
-          isAuthenticated,
-          userEmail: user?.email ?? undefined,
-          userName: user?.givenName ? `${user.givenName} ${user.familyName ?? ""}`.trim() : undefined,
-          accessToken,
-          librarianId: library.librarianId,
-        }}
-        onSelectBook={async (bookId) => {
-          const book = await library.getBook(bookId);
-          library.setCurrentBook(book);
-          setShowDebugPanel(false);
-          setGameSubView("connecting");
-          setView("game");
-        }}
-      />
+      {/* Command Center panel */}
+      {showCommandCenter && (
+        <CommandCenter
+          isOpen={showCommandCenter}
+          onClose={() => setShowCommandCenter(false)}
+            apiUrl={apiUrl}
+            authInfo={{
+              isAuthenticated,
+              userEmail: user?.email ?? undefined,
+              userName: user?.givenName ? `${user.givenName} ${user.familyName ?? ""}`.trim() : undefined,
+              accessToken,
+              librarianId: library.librarianId,
+            }}
+            bookId={library.currentBook?.book_id}
+            sendCommand={actions.sendCommand}
+            onSelectBook={async (bookId) => {
+              const book = await library.getBook(bookId);
+              library.setCurrentBook(book);
+              setShowCommandCenter(false);
+              setGameSubView("connecting");
+              setView("game");
+            }}
+            wsState={wsState}
+            gamePaused={game.paused}
+            gameManualMode={game.manualMode}
+            pageCount={game.pages.length}
+            characterCount={game.characterNames.length}
+            pageInterval={game.pageInterval}
+            agentMode={game.agentMode}
+          />
+      )}
     </>
   );
 }

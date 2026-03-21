@@ -55,25 +55,6 @@ export function CharacterPanel({ name, data: rawData, pendingInfluence, streamin
                 preview
               </span>
             )}
-            {/* Influence badge - shows pending whisper */}
-            {pendingInfluence && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20 }}
-              className="relative group/badge"
-            >
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] bg-amber-500/20 text-amber-400 cursor-help">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                </svg>
-                queued
-              </span>
-              <div className="absolute left-0 top-full mt-1.5 px-2 py-1.5 bg-popover border border-border rounded text-[10px] text-popover-foreground max-w-56 opacity-0 group-hover/badge:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg break-words">
-                <span className="italic text-amber-400/80">"{pendingInfluence}"</span>
-              </div>
-              </motion.div>
-            )}
           </div>
           {/* Close button - mobile only */}
           {onClose && (
@@ -88,7 +69,12 @@ export function CharacterPanel({ name, data: rawData, pendingInfluence, streamin
             </button>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-1">Inner thoughts</p>
+        {pendingInfluence && (
+          <p className="text-[10px] mt-1 truncate">
+            <span className="text-amber-400/70">Whispering:</span>{" "}
+            <span className="text-amber-400/50 italic">{pendingInfluence}</span>
+          </p>
+        )}
       </div>
 
       <ScrollArea className="flex-1 overflow-hidden">

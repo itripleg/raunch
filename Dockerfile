@@ -8,6 +8,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN pip install -e .
 
-EXPOSE 7666
+EXPOSE 8000
 
-CMD ["python", "-m", "raunch.main", "start"]
+ENTRYPOINT ["python", "-c", "import os, uvicorn; uvicorn.run('raunch.server.app:create_app', factory=True, host='0.0.0.0', port=int(os.environ.get('PORT', '8000')))"]

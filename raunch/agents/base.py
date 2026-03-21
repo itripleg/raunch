@@ -29,6 +29,14 @@ REFUSAL_PHRASES = [
     "i can't participate",
     "i can't engage",
     "i cannot engage",
+    "i'm not comfortable",
+    "i am not comfortable",
+    "i can't create content",
+    "i cannot create content",
+    "i can't write",
+    "i cannot write this",
+    "not appropriate for me",
+    "against my guidelines",
     "as an ai",
     "i'm an ai",
 ]
@@ -45,7 +53,9 @@ def _is_refusal(text: str) -> bool:
     if not text:
         return False
     lower = text.lower()
-    return any(phrase in lower for phrase in REFUSAL_PHRASES)
+    # Normalize: collapse "role-play", "role play", "roleplay" all to "roleplay"
+    normalized = re.sub(r"role[\s-]*play", "roleplay", lower)
+    return any(phrase in lower or phrase in normalized for phrase in REFUSAL_PHRASES)
 
 
 class Agent:

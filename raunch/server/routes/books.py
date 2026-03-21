@@ -77,7 +77,18 @@ async def create_book(
 @router.get("", response_model=List[dict])
 async def list_books(librarian_id: str = Depends(get_librarian_id)):
     """List books accessible to the librarian."""
-    return db.list_books_for_librarian(librarian_id)
+    from raunch.wizard import load_scenario
+    books = db.list_books_for_librarian(librarian_id)
+    # Resolve display names from scenario data
+    for book in books:
+        raw_name = book.get("scenario_name", "")
+        try:
+            data = load_scenario(raw_name)
+            if data and data.get("scenario_name"):
+                book["scenario_name"] = data["scenario_name"]
+        except Exception:
+            pass
+    return books
 
 
 @router.get("/{book_id}", response_model=BookResponse)

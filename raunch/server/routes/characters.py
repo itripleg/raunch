@@ -228,27 +228,39 @@ class PotentialCharacter(BaseModel):
 
 
 @global_router.get("/api/v1/potential-characters", response_model=List[PotentialCharacter])
-async def get_potential_characters():
-    """List detected but not-yet-promoted characters across all books.
+async def get_potential_characters(book_id: Optional[str] = None):
+    """List detected but not-yet-promoted characters.
 
-    For backwards compatibility - finds the first active book and returns its potential characters.
+    If book_id is provided, uses that book's world_id.
+    Otherwise finds the first active book with an orchestrator.
     """
     library = get_library()
+    world_id = None
 
-    # Find first active book with an orchestrator
-    for book in library.books.values():
-        if book.orchestrator and book.orchestrator.world:
+    # Try specific book first
+    if book_id:
+        book = library.get_book(book_id)
+        if book and book.orchestrator and book.orchestrator.world:
             world_id = book.orchestrator.world.world_id
-            if world_id:
-                potential = db.get_potential_characters(world_id, include_promoted=False)
-                return [
-                    PotentialCharacter(
-                        name=p["name"],
-                        description=p.get("description"),
-                        first_page=p["first_page"],
-                        promoted=p.get("promoted", False),
-                    )
-                    for p in potential
-                ]
 
-    return []
+    # Fall back to first active book
+    if not world_id:
+        for book in library.books.values():
+            if book.orchestrator and book.orchestrator.world:
+                world_id = book.orchestrator.world.world_id
+                if world_id:
+                    break
+
+    if not world_id:
+        return []
+
+    potential = db.get_potential_characters(world_id, include_promoted=False)
+    return [
+        PotentialCharacter(
+            name=p["name"],
+            description=p.get("description"),
+            first_page=p["first_page"],
+            promoted=p.get("promoted", False),
+        )
+        for p in potential
+    ]

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, Trash2, Plus, Sparkles, Wand2 } from "lucide-react";
+import { useMockMode } from "@/context/MockMode";
 
 type Scenario = {
   file?: string;  // For file-based scenarios
@@ -25,7 +26,18 @@ type Props = {
   initialTab?: "my" | "public";
 };
 
+const MOCK_SCENARIOS: Scenario[] = [
+  { id: "mock-1", name: "Midnight at the Velvet Lounge", setting: "A dimly lit jazz club in 1920s Paris where the champagne flows freely and the music plays until dawn. Smoke curls through the air as strangers meet across crowded tables.", characters: 3, themes: ["jazz age", "forbidden romance", "secrets"], source: "db", public: true },
+  { id: "mock-2", name: "The Lighthouse Keeper's Secret", setting: "A remote lighthouse on the Scottish coast, battered by winter storms. The new assistant keeper discovers the previous occupant left behind more than just a logbook.", characters: 2, themes: ["isolation", "mystery", "slow burn"], source: "db", public: true },
+  { id: "mock-3", name: "Roommates with Benefits", setting: "A cramped NYC apartment shared by two grad students who made a pact to keep things purely professional. The thin walls and shared bathroom are making that increasingly difficult.", characters: 2, themes: ["modern", "tension", "comedy"], source: "db", public: true },
+  { id: "mock-4", name: "The Empress's Garden", setting: "An opulent imperial court in a fantasy realm inspired by Tang Dynasty China. Political intrigue and passionate rivalries bloom among the concubines vying for the empress's favor.", characters: 4, themes: ["fantasy", "political intrigue", "rivalry", "power dynamics"], source: "db", public: true },
+  { id: "mock-5", name: "Stranded After the Gala", setting: "A massive snowstorm traps the guests of a billionaire's charity gala inside a mountain estate. With the power out and no way to leave, old flames and new attractions ignite.", characters: 3, themes: ["locked room", "luxury", "rekindled flame"], source: "db", public: true },
+  { id: "mock-6", name: "The Botanist and the Beast", setting: "A reclusive creature living deep in an enchanted forest strikes an uneasy bargain with a wandering herbalist who needs rare ingredients. Neither expected what grew between them.", characters: 2, themes: ["fairy tale", "beauty and beast", "enchantment", "tenderness"], source: "db", public: true },
+  { id: "mock-7", name: "Overtime at Orion Corp", setting: "The last two employees working late on a Friday night in a gleaming corporate tower. The office is empty, the city glitters below, and the deadline isn't the only thing heating up.", characters: 2, themes: ["office", "tension", "after hours"], source: "db", public: true },
+];
+
 export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLoading, externalError, onBack, onOpenWizard, initialTab }: Props) {
+  const { mockMode } = useMockMode();
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,8 +51,14 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
   const getScenarioId = (scenario: Scenario) => scenario.file || scenario.id || "";
 
   useEffect(() => {
+    if (mockMode) {
+      setScenarios(MOCK_SCENARIOS);
+      setLoading(false);
+      setActiveTab("public");
+      return;
+    }
     fetchScenarios();
-  }, [apiUrl, librarianId]);
+  }, [apiUrl, librarianId, mockMode]);
 
   const fetchScenarios = async () => {
     setLoading(true);
@@ -201,12 +219,14 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
     return !id.startsWith("test_") && (s.source === "file" || (s.source === "db" && s.public));
   });
 
-  // Auto-switch to public tab if my scenarios is empty (so new users see the tutorial)
+  // Auto-switch to public tab on initial load only if my scenarios is empty
+  const [hasAutoSwitched, setHasAutoSwitched] = useState(false);
   useEffect(() => {
-    if (!loading && myScenarios.length === 0 && publicScenarios.length > 0 && activeTab === "my") {
+    if (!loading && !hasAutoSwitched && myScenarios.length === 0 && publicScenarios.length > 0 && activeTab === "my") {
       setActiveTab("public");
+      setHasAutoSwitched(true);
     }
-  }, [loading, myScenarios.length, publicScenarios.length, activeTab]);
+  }, [loading, myScenarios.length, publicScenarios.length, activeTab, hasAutoSwitched]);
 
   const visibleScenarios = activeTab === "my" ? myScenarios : publicScenarios;
   const selectedData = scenarios.find((s) => getScenarioId(s) === selectedScenario);
@@ -317,7 +337,7 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="w-full h-80 overflow-y-auto mb-6"
+          className="w-full overflow-y-auto mb-6"
         >
           <AnimatePresence mode="wait">
             {loading ? (
@@ -350,7 +370,6 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      layout
                       className={`relative group rounded-xl border transition-all ${
                         selectedScenario === scenarioId
                           ? "border-primary/40 bg-primary/[0.05]"
@@ -363,28 +382,21 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
                         className="w-full text-left px-4 py-3"
                       >
                         <div className="flex items-center gap-3">
-                          <p className={`text-base font-medium text-foreground/90 flex-1 ${selectedScenario === scenarioId ? "" : "truncate"}`}>
+                          <p className="text-base font-medium text-foreground/90 flex-1 truncate">
                             {scenario.name}
                           </p>
                           <span className="text-xs text-muted-foreground/50 flex-shrink-0">
                             {scenario.characters} {scenario.characters === 1 ? "char" : "chars"}
                           </span>
                         </div>
-                        {scenario.setting && (
-                          <p className={`text-sm text-muted-foreground/60 mt-1 ${selectedScenario === scenarioId ? "" : "line-clamp-1"}`}>
-                            {scenario.setting}
-                          </p>
-                        )}
-                        {/* Expanded details */}
-                        <AnimatePresence>
-                          {selectedScenario === scenarioId && scenario.themes && scenario.themes.length > 0 && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: "auto" }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.2 }}
-                              className="overflow-hidden"
-                            >
+                        {selectedScenario === scenarioId ? (
+                          <>
+                            {scenario.setting && (
+                              <p className="text-sm text-muted-foreground/60 mt-2">
+                                {scenario.setting}
+                              </p>
+                            )}
+                            {scenario.themes && scenario.themes.length > 0 && (
                               <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border/20">
                                 {scenario.themes.map((theme) => (
                                   <span
@@ -395,9 +407,13 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
                                   </span>
                                 ))}
                               </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
+                            )}
+                          </>
+                        ) : scenario.setting ? (
+                          <p className="text-sm text-muted-foreground/60 mt-1 line-clamp-1">
+                            {scenario.setting}
+                          </p>
+                        ) : null}
                       </button>
 
                       {/* Delete button - only show for user's own DB scenarios */}

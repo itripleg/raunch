@@ -46,7 +46,7 @@ async def get_message():
     msg = db.get_alpha_message()
     if msg is None:
         return AlphaMessage(
-            content="Welcome to the Raunch alpha! Your feedback shapes what we create.",
+            content="🔥 If you're seeing this, we had to wipe the database for a backend upgrade 😏 Persistence coming soon — for now, get in, get dirty, don't get attached. 💋 Love to our testers 🖤",
             updated_at=None,
         )
     return AlphaMessage(content=msg["content"], updated_at=msg["updated_at"])
