@@ -295,6 +295,12 @@ def init_db() -> None:
     except sqlite3.OperationalError:
         pass
 
+    # Migration: add page_interval column to books (0 = manual, >0 = auto-page seconds)
+    try:
+        conn.execute("ALTER TABLE books ADD COLUMN page_interval INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
     # Migration: add raw_narrator column to pages
     try:
         conn.execute("ALTER TABLE pages ADD COLUMN raw_narrator TEXT")
@@ -311,6 +317,11 @@ def save_page(world_id: str, page_num: int, narration: str, events: List[str],
     conn.execute(
         "INSERT INTO pages (world_id, page_num, narration, events, world_time, mood, raw_narrator) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (world_id, page_num, narration, json.dumps(events), world_time, mood, raw_narrator),
+    )
+    # Update the book's page_count
+    conn.execute(
+        "UPDATE books SET page_count = ?, last_active = CURRENT_TIMESTAMP WHERE id = ?",
+        (page_num, world_id),
     )
     conn.commit()
 
@@ -1211,7 +1222,7 @@ def get_book(book_id: str) -> Optional[Dict[str, Any]]:
     conn = _get_conn()
     row = conn.execute(
         """SELECT id, bookmark, scenario_name, owner_id, private,
-                  created_at, last_active, page_count, agent_mode
+                  created_at, last_active, page_count, agent_mode, page_interval
            FROM books WHERE id = ?""",
         (book_id,)
     ).fetchone()
@@ -1229,6 +1240,7 @@ def get_book(book_id: str) -> Optional[Dict[str, Any]]:
         "last_active": row["last_active"],
         "page_count": row["page_count"],
         "agent_mode": row["agent_mode"] or "default",
+        "page_interval": row["page_interval"] or 0,
     }
 
 
@@ -1244,7 +1256,7 @@ def get_book_by_bookmark(bookmark: str) -> Optional[Dict[str, Any]]:
     conn = _get_conn()
     row = conn.execute(
         """SELECT id, bookmark, scenario_name, owner_id, private,
-                  created_at, last_active, page_count
+                  created_at, last_active, page_count, page_interval
            FROM books WHERE UPPER(bookmark) = UPPER(?)""",
         (bookmark,)
     ).fetchone()
@@ -1261,6 +1273,7 @@ def get_book_by_bookmark(bookmark: str) -> Optional[Dict[str, Any]]:
         "created_at": row["created_at"],
         "last_active": row["last_active"],
         "page_count": row["page_count"],
+        "page_interval": row["page_interval"] or 0,
     }
 
 
@@ -1277,11 +1290,18 @@ def count_books_for_librarian(librarian_id: str) -> int:
 def list_books_for_librarian(librarian_id: str) -> List[Dict[str, Any]]:
     """List all books accessible to a librarian."""
     conn = _get_conn()
+    # Join with a subquery to get actual page counts from pages table
     rows = conn.execute(
         """SELECT b.id, b.bookmark, b.scenario_name, b.owner_id, b.private,
-                  b.created_at, b.last_active, b.page_count, ba.role
+                  b.created_at, b.last_active,
+                  COALESCE(p.actual_pages, b.page_count, 0) as page_count,
+                  ba.role
            FROM books b
            JOIN book_access ba ON b.id = ba.book_id
+           LEFT JOIN (
+               SELECT world_id, MAX(page_num) as actual_pages
+               FROM pages GROUP BY world_id
+           ) p ON b.id = p.world_id
            WHERE ba.librarian_id = ?
            ORDER BY b.last_active DESC""",
         (librarian_id,)
@@ -1296,7 +1316,7 @@ def list_books_for_librarian(librarian_id: str) -> List[Dict[str, Any]]:
             "private": bool(row["private"]),
             "created_at": row["created_at"],
             "last_active": row["last_active"],
-            "page_count": row["page_count"],
+            "page_count": row["page_count"] or 0,
             "role": row["role"],
         }
         for row in rows
@@ -1359,6 +1379,59 @@ def grant_book_access(book_id: str, librarian_id: str, role: str = "reader") -> 
         (book_id, librarian_id, role)
     )
     conn.commit()
+
+
+def list_public_books() -> List[Dict[str, Any]]:
+    """List all public books."""
+    conn = _get_conn()
+    rows = conn.execute(
+        """SELECT id, bookmark, scenario_name, owner_id, private, page_count,
+                  created_at, last_active, page_interval
+           FROM books WHERE private = 0
+           ORDER BY last_active DESC"""
+    ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "bookmark": r[1],
+            "scenario_name": r[2],
+            "owner_id": r[3],
+            "private": bool(r[4]),
+            "page_count": r[5] or 0,
+            "created_at": r[6],
+            "last_active": r[7],
+            "page_interval": r[8] or 0,
+        }
+        for r in rows
+    ]
+
+
+# Default public book configuration
+DEFAULT_PUBLIC_BOOK_ID = "public-library"
+DEFAULT_PUBLIC_BOOKMARK = "LIBR-0001"
+DEFAULT_PUBLIC_SCENARIO = "the_living_library"
+DEFAULT_PUBLIC_PAGE_INTERVAL = 3600  # 1 hour between auto-pages
+
+
+def ensure_default_public_book() -> Optional[Dict[str, Any]]:
+    """Ensure the default public book exists. Creates it if missing."""
+    existing = get_book(DEFAULT_PUBLIC_BOOK_ID)
+    if existing:
+        return existing
+
+    # Create the default public book with hourly auto-page
+    conn = _get_conn()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+
+    conn.execute(
+        """INSERT OR IGNORE INTO books (id, bookmark, scenario_name, owner_id, private, created_at, last_active, page_count, page_interval)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (DEFAULT_PUBLIC_BOOK_ID, DEFAULT_PUBLIC_BOOKMARK, DEFAULT_PUBLIC_SCENARIO, None, 0, now, now, 0, DEFAULT_PUBLIC_PAGE_INTERVAL)
+    )
+    conn.commit()
+
+    return get_book(DEFAULT_PUBLIC_BOOK_ID)
 
 
 # =============================================================================

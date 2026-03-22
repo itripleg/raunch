@@ -126,6 +126,23 @@ async def delete_book(
     return {"deleted": True}
 
 
+@router.get("/public", response_model=List[dict])
+async def list_public_books():
+    """List all public books available to join."""
+    from raunch.wizard import load_scenario
+    books = db.list_public_books()
+    # Resolve display names from scenario data
+    for book in books:
+        raw_name = book.get("scenario_name", "")
+        try:
+            data = load_scenario(raw_name)
+            if data and data.get("scenario_name"):
+                book["scenario_name"] = data["scenario_name"]
+        except Exception:
+            pass
+    return books
+
+
 @router.post("/join", response_model=JoinBookResponse)
 async def join_book(
     request: JoinBookRequest,

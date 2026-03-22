@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, Trash2, Plus, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, Trash2, Plus, Sparkles, Wand2, BookOpen, Play, Clock, FileText, Users, Search } from "lucide-react";
 import { useMockMode } from "@/context/MockMode";
 
 type Scenario = {
-  file?: string;  // For file-based scenarios
-  id?: string;    // For DB scenarios
+  file?: string;
+  id?: string;
   name: string;
   setting?: string;
   characters: number;
@@ -15,61 +15,115 @@ type Scenario = {
   owner_id?: string;
 };
 
+type Book = {
+  id: string;
+  scenario_name: string;
+  bookmark: string;
+  page_count: number;
+  paused: boolean;
+  created_at?: string;
+};
+
 type Props = {
   apiUrl: string;
   librarianId: string | null;
   onScenarioSelected: (scenario: string) => void;
+  onBookSelected?: (bookId: string) => void;
   isLoading?: boolean;
   externalError?: string | null;
   onBack?: () => void;
   onOpenWizard?: () => void;
-  initialTab?: "my" | "public";
+  initialTab?: "books" | "scenarios";
 };
 
 const MOCK_SCENARIOS: Scenario[] = [
-  { id: "mock-1", name: "Midnight at the Velvet Lounge", setting: "A dimly lit jazz club in 1920s Paris where the champagne flows freely and the music plays until dawn. Smoke curls through the air as strangers meet across crowded tables.", characters: 3, themes: ["jazz age", "forbidden romance", "secrets"], source: "db", public: true },
-  { id: "mock-2", name: "The Lighthouse Keeper's Secret", setting: "A remote lighthouse on the Scottish coast, battered by winter storms. The new assistant keeper discovers the previous occupant left behind more than just a logbook.", characters: 2, themes: ["isolation", "mystery", "slow burn"], source: "db", public: true },
-  { id: "mock-3", name: "Roommates with Benefits", setting: "A cramped NYC apartment shared by two grad students who made a pact to keep things purely professional. The thin walls and shared bathroom are making that increasingly difficult.", characters: 2, themes: ["modern", "tension", "comedy"], source: "db", public: true },
-  { id: "mock-4", name: "The Empress's Garden", setting: "An opulent imperial court in a fantasy realm inspired by Tang Dynasty China. Political intrigue and passionate rivalries bloom among the concubines vying for the empress's favor.", characters: 4, themes: ["fantasy", "political intrigue", "rivalry", "power dynamics"], source: "db", public: true },
-  { id: "mock-5", name: "Stranded After the Gala", setting: "A massive snowstorm traps the guests of a billionaire's charity gala inside a mountain estate. With the power out and no way to leave, old flames and new attractions ignite.", characters: 3, themes: ["locked room", "luxury", "rekindled flame"], source: "db", public: true },
-  { id: "mock-6", name: "The Botanist and the Beast", setting: "A reclusive creature living deep in an enchanted forest strikes an uneasy bargain with a wandering herbalist who needs rare ingredients. Neither expected what grew between them.", characters: 2, themes: ["fairy tale", "beauty and beast", "enchantment", "tenderness"], source: "db", public: true },
-  { id: "mock-7", name: "Overtime at Orion Corp", setting: "The last two employees working late on a Friday night in a gleaming corporate tower. The office is empty, the city glitters below, and the deadline isn't the only thing heating up.", characters: 2, themes: ["office", "tension", "after hours"], source: "db", public: true },
+  { id: "mock-1", name: "Midnight at the Velvet Lounge", setting: "A dimly lit jazz club in 1920s Paris", characters: 3, themes: ["jazz age", "forbidden romance"], source: "db", public: true },
+  { id: "mock-2", name: "The Lighthouse Keeper's Secret", setting: "A remote lighthouse on the Scottish coast", characters: 2, themes: ["isolation", "mystery"], source: "db", public: true },
+  { id: "mock-3", name: "Roommates with Benefits", setting: "A cramped NYC apartment shared by two grad students", characters: 2, themes: ["modern", "tension"], source: "db", public: true },
 ];
 
-export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLoading, externalError, onBack, onOpenWizard, initialTab }: Props) {
+const MOCK_BOOKS: Book[] = [
+  { id: "book-1", scenario_name: "Midnight at the Velvet Lounge", bookmark: "JAZZ-42", page_count: 12, paused: false },
+  { id: "book-2", scenario_name: "The Lighthouse Keeper's Secret", bookmark: "LITE-7X", page_count: 5, paused: true },
+];
+
+const MOCK_PUBLIC_BOOKS: Book[] = [
+  { id: "public-library", scenario_name: "Cozy Café Conversations", bookmark: "LIBR-0001", page_count: 42, paused: false },
+];
+
+export function ScenarioSelector({
+  apiUrl,
+  librarianId,
+  onScenarioSelected,
+  onBookSelected,
+  isLoading,
+  externalError,
+  onBack,
+  onOpenWizard,
+  initialTab
+}: Props) {
   const { mockMode } = useMockMode();
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
-  const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
+  const [books, setBooks] = useState<Book[]>([]);
+  const [publicBooks, setPublicBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"my" | "public">(initialTab ?? "my");
+  const [activeTab, setActiveTab] = useState<"books" | "scenarios">(initialTab ?? "books");
+  const [scenarioSubTab, setScenarioSubTab] = useState<"my" | "public">("my");
+  const [bookmarkInput, setBookmarkInput] = useState("");
+  const [joining, setJoining] = useState(false);
 
-  // Helper to get unique identifier for a scenario
   const getScenarioId = (scenario: Scenario) => scenario.file || scenario.id || "";
 
   useEffect(() => {
     if (mockMode) {
       setScenarios(MOCK_SCENARIOS);
+      setBooks(MOCK_BOOKS);
+      setPublicBooks(MOCK_PUBLIC_BOOKS);
       setLoading(false);
-      setActiveTab("public");
       return;
     }
-    fetchScenarios();
+    fetchData();
   }, [apiUrl, librarianId, mockMode]);
 
-  const fetchScenarios = async () => {
+  const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch public scenarios
+      // Fetch user's books
+      if (librarianId) {
+        try {
+          const booksRes = await fetch(`${apiUrl}/api/v1/books`, {
+            headers: { "X-Librarian-ID": librarianId },
+          });
+          if (booksRes.ok) {
+            const booksData = await booksRes.json();
+            setBooks(booksData);
+          }
+        } catch {
+          // Non-fatal
+        }
+      }
+
+      // Fetch public books
+      try {
+        const publicRes = await fetch(`${apiUrl}/api/v1/books/public`);
+        if (publicRes.ok) {
+          const publicData = await publicRes.json();
+          setPublicBooks(publicData);
+        }
+      } catch {
+        // Non-fatal
+      }
+
+      // Fetch scenarios
       const response = await fetch(`${apiUrl}/api/v1/scenarios`);
       if (!response.ok) throw new Error("Failed to fetch scenarios");
       const data: Scenario[] = await response.json();
 
-      // Also fetch user's own private scenarios if logged in
       let allScenarios = [...data];
       if (librarianId) {
         try {
@@ -78,7 +132,6 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
           });
           if (mineResponse.ok) {
             const mine = await mineResponse.json();
-            // mine returns ScenarioResponse shape — map to Scenario and deduplicate
             const existingIds = new Set(data.map((s) => s.id).filter(Boolean));
             for (const s of mine) {
               if (!existingIds.has(s.id)) {
@@ -96,34 +149,83 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
             }
           }
         } catch {
-          // Non-fatal — private scenarios just won't show
+          // Non-fatal
         }
       }
 
       setScenarios(allScenarios);
 
-      // Auto-select first non-test scenario
-      const visible = allScenarios.filter((s: Scenario) => {
-        const id = s.file || s.id || "";
-        return !id.startsWith("test_");
-      });
-      if (visible.length > 0 && !selectedScenario) {
-        const firstId = visible[0].file || visible[0].id || "";
-        setSelectedScenario(firstId);
+      // Auto-switch to scenarios tab if no books
+      if (books.length === 0 && allScenarios.length > 0) {
+        setActiveTab("scenarios");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load scenarios");
+      setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleResumeBook = (bookId: string) => {
+    if (onBookSelected) {
+      onBookSelected(bookId);
+    }
+  };
+
+  const handleJoinByBookmark = async () => {
+    if (!bookmarkInput.trim() || !librarianId) return;
+    setJoining(true);
+    setError(null);
+    try {
+      const response = await fetch(`${apiUrl}/api/v1/books/join`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Librarian-ID": librarianId,
+        },
+        body: JSON.stringify({ bookmark: bookmarkInput.trim() }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || "Book not found");
+      }
+      const { book_id } = await response.json();
+      setBookmarkInput("");
+      if (onBookSelected) {
+        onBookSelected(book_id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to join book");
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const handleDeleteBook = async (bookId: string) => {
+    setDeleting(bookId);
+    try {
+      const response = await fetch(`${apiUrl}/api/v1/books/${bookId}`, {
+        method: "DELETE",
+        headers: librarianId ? { "X-Librarian-ID": librarianId } : {},
+      });
+      if (!response.ok) throw new Error("Failed to delete");
+      setBooks(books.filter(b => b.id !== bookId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete book");
+    } finally {
+      setDeleting(null);
+      setConfirmDelete(null);
+    }
+  };
+
+  const handleNewBook = (scenarioId: string) => {
+    onScenarioSelected(scenarioId);
+  };
 
   const handleGenerate = async () => {
     setGenerating(true);
     setError(null);
     try {
-      // First generate the scenario
       const wizardResponse = await fetch(`${apiUrl}/api/v1/wizard/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -132,15 +234,13 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
       if (!wizardResponse.ok) throw new Error("Failed to generate scenario");
       const scenarioData = await wizardResponse.json();
 
-      // Save to database — try DB first, fall back to file save
-      const saveHeaders: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
       if (librarianId) {
-        saveHeaders["X-Librarian-ID"] = librarianId;
         const saveResponse = await fetch(`${apiUrl}/api/v1/scenarios`, {
           method: "POST",
-          headers: saveHeaders,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Librarian-ID": librarianId,
+          },
           body: JSON.stringify({
             name: scenarioData.scenario_name,
             description: scenarioData.premise,
@@ -149,67 +249,37 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
             public: false,
           }),
         });
-        if (!saveResponse.ok) {
-          const errorData = await saveResponse.json().catch(() => ({}));
-          throw new Error(errorData.detail || "Failed to save scenario");
-        }
-      } else {
-        // No librarian — save as file instead
-        const fileSaveResponse = await fetch(`${apiUrl}/api/v1/scenarios/save`, {
-          method: "POST",
-          headers: saveHeaders,
-          body: JSON.stringify(scenarioData),
-        });
-        if (!fileSaveResponse.ok) {
-          throw new Error("Failed to save scenario to file");
-        }
+        if (!saveResponse.ok) throw new Error("Failed to save scenario");
       }
 
-      await fetchScenarios();
-      // Switch to "My Scenarios" tab
-      setActiveTab("my");
+      await fetchData();
+      setActiveTab("scenarios");
+      setScenarioSubTab("my");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate scenario");
+      setError(err instanceof Error ? err.message : "Failed to generate");
     } finally {
       setGenerating(false);
     }
   };
 
-  const handleDelete = async (scenarioId: string) => {
+  const handleDeleteScenario = async (scenarioId: string) => {
     setDeleting(scenarioId);
-    setError(null);
     try {
-      const headers: Record<string, string> = {};
-      if (librarianId) {
-        headers["X-Librarian-ID"] = librarianId;
-      }
       const response = await fetch(`${apiUrl}/api/v1/scenarios/${encodeURIComponent(scenarioId)}`, {
         method: "DELETE",
-        headers,
+        headers: librarianId ? { "X-Librarian-ID": librarianId } : {},
       });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || "Failed to delete scenario");
-      }
-      // Clear selection if we deleted the selected scenario
-      if (selectedScenario === scenarioId) {
-        setSelectedScenario(null);
-      }
-      await fetchScenarios();
+      if (!response.ok) throw new Error("Failed to delete");
+      await fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete scenario");
+      setError(err instanceof Error ? err.message : "Failed to delete");
     } finally {
       setDeleting(null);
       setConfirmDelete(null);
     }
   };
 
-  const handlePlay = () => {
-    if (!selectedScenario) return;
-    onScenarioSelected(selectedScenario);
-  };
-
-  // Filter scenarios by tab and visibility
+  // Filter scenarios
   const myScenarios = scenarios.filter((s) => {
     const id = getScenarioId(s);
     return !id.startsWith("test_") && s.source === "db" && s.owner_id === librarianId;
@@ -218,18 +288,7 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
     const id = getScenarioId(s);
     return !id.startsWith("test_") && (s.source === "file" || (s.source === "db" && s.public));
   });
-
-  // Auto-switch to public tab on initial load only if my scenarios is empty
-  const [hasAutoSwitched, setHasAutoSwitched] = useState(false);
-  useEffect(() => {
-    if (!loading && !hasAutoSwitched && myScenarios.length === 0 && publicScenarios.length > 0 && activeTab === "my") {
-      setActiveTab("public");
-      setHasAutoSwitched(true);
-    }
-  }, [loading, myScenarios.length, publicScenarios.length, activeTab, hasAutoSwitched]);
-
-  const visibleScenarios = activeTab === "my" ? myScenarios : publicScenarios;
-  const selectedData = scenarios.find((s) => getScenarioId(s) === selectedScenario);
+  const visibleScenarios = scenarioSubTab === "my" ? myScenarios : publicScenarios;
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-background">
@@ -243,7 +302,7 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
         />
       </div>
 
-      <div className="relative z-10 flex flex-col items-center max-w-2xl w-full px-6">
+      <div className="relative z-10 flex flex-col items-center max-w-2xl w-full px-6 py-8">
         {onBack && (
           <motion.button
             initial={{ opacity: 0 }}
@@ -259,89 +318,69 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.2 }}
           className="text-center mb-6"
         >
-          <h2 className="text-3xl font-bold tracking-tight text-foreground/90">scenarios</h2>
-          <p className="text-muted-foreground/60 text-base mt-2">select or create a scenario</p>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground/90">library</h2>
+          <p className="text-muted-foreground/60 text-base mt-2">
+            {activeTab === "books" ? "resume a session or start fresh" : "choose a scenario template"}
+          </p>
         </motion.div>
 
-        {/* Tabs */}
+        {/* Main Tabs */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.15 }}
-          className="w-full flex gap-2 mb-4"
+          transition={{ delay: 0.1 }}
+          className="w-full flex gap-2 mb-6"
         >
           <button
-            onClick={() => setActiveTab("my")}
-            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === "my"
-                ? "bg-primary/10 text-primary border border-primary/30"
+            onClick={() => setActiveTab("books")}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              activeTab === "books"
+                ? "bg-primary/15 text-primary border border-primary/30"
                 : "bg-card/30 text-muted-foreground/70 border border-border/30 hover:border-border/50"
             }`}
           >
-            My Scenarios
-          </button>
-          <button
-            onClick={() => setActiveTab("public")}
-            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === "public"
-                ? "bg-primary/10 text-primary border border-primary/30"
-                : "bg-card/30 text-muted-foreground/70 border border-border/30 hover:border-border/50"
-            }`}
-          >
-            Public Scenarios
-          </button>
-        </motion.div>
-
-        {/* Create Buttons */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="w-full mb-4 flex gap-2"
-        >
-          <button
-            onClick={handleGenerate}
-            disabled={generating}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-primary/30 hover:border-primary/50 rounded-xl text-primary/70 hover:text-primary transition-all disabled:opacity-50"
-          >
-            {generating ? (
-              <>
-                <Sparkles className="w-4 h-4 animate-pulse" />
-                generating...
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4" />
-                quick generate <span className="text-muted-foreground/40">(vanilla)</span>
-              </>
+            <BookOpen className="w-4 h-4" />
+            My Books
+            {books.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-primary/20">
+                {books.length}
+              </span>
             )}
           </button>
-          {onOpenWizard && (
-            <button
-              onClick={onOpenWizard}
-              disabled={generating}
-              className="flex items-center justify-center gap-2 px-4 py-3 border border-amber-500/30 hover:border-amber-500/50 rounded-xl text-amber-500/70 hover:text-amber-500 transition-all disabled:opacity-50"
-              title="Open Smut Wizard for custom scenario creation"
-            >
-              <Wand2 className="w-4 h-4" />
-              <span className="hidden sm:inline">wizard</span>
-            </button>
-          )}
+          <button
+            onClick={() => setActiveTab("scenarios")}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              activeTab === "scenarios"
+                ? "bg-primary/15 text-primary border border-primary/30"
+                : "bg-card/30 text-muted-foreground/70 border border-border/30 hover:border-border/50"
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            Scenarios
+          </button>
         </motion.div>
 
-        {/* Scenario List */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="w-full overflow-y-auto mb-6"
-        >
+        {/* Error */}
+        <AnimatePresence>
+          {(error || externalError) && (
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+              className="w-full mb-4 px-4 py-3 rounded-xl border border-destructive/30 bg-destructive/5"
+            >
+              <p className="text-sm text-destructive/90 text-center">{externalError || error}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Content */}
+        <div className="w-full flex-1 overflow-y-auto max-h-[50vh]">
           <AnimatePresence mode="wait">
             {loading ? (
-              <motion.div key="loading" className="flex justify-center py-8">
+              <motion.div key="loading" className="flex justify-center py-12">
                 <div className="flex gap-1.5">
                   {[0, 1, 2].map((i) => (
                     <motion.div
@@ -353,149 +392,333 @@ export function ScenarioSelector({ apiUrl, librarianId, onScenarioSelected, isLo
                   ))}
                 </div>
               </motion.div>
-            ) : visibleScenarios.length === 0 ? (
-              <motion.p key="empty" className="text-center text-muted-foreground/50 py-8">
-                no scenarios available — generate one above
-              </motion.p>
-            ) : (
-              <motion.div key="list" className="space-y-2">
-                {visibleScenarios.map((scenario, index) => {
-                  const scenarioId = getScenarioId(scenario);
-                  const isDeleting = deleting === scenarioId;
-                  const isConfirming = confirmDelete === scenarioId;
+            ) : activeTab === "books" ? (
+              /* BOOKS TAB */
+              <motion.div key="books" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+                {/* Join by Bookmark */}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/40" />
+                    <input
+                      type="text"
+                      value={bookmarkInput}
+                      onChange={(e) => setBookmarkInput(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => e.key === "Enter" && handleJoinByBookmark()}
+                      placeholder="Enter bookmark (e.g. LIBR-0001)"
+                      className="w-full pl-9 pr-3 py-2.5 bg-card/40 border border-border/30 rounded-xl text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                  <button
+                    onClick={handleJoinByBookmark}
+                    disabled={!bookmarkInput.trim() || joining}
+                    className="px-4 py-2.5 text-sm font-medium text-primary bg-primary/10 border border-primary/30 rounded-xl hover:bg-primary/20 transition-all disabled:opacity-50"
+                  >
+                    {joining ? "..." : "Join"}
+                  </button>
+                </div>
 
-                  return (
-                    <motion.div
-                      key={scenarioId}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className={`relative group rounded-xl border transition-all ${
-                        selectedScenario === scenarioId
-                          ? "border-primary/40 bg-primary/[0.05]"
-                          : "border-border/30 bg-card/30 hover:border-border/50"
-                      }`}
-                    >
-                      {/* Main content - clickable */}
-                      <button
-                        onClick={() => setSelectedScenario(selectedScenario === scenarioId ? null : scenarioId)}
-                        className="w-full text-left px-4 py-3"
+                {/* Public Books Section */}
+                {publicBooks.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
+                      <Users className="w-3.5 h-3.5" />
+                      Public Library
+                    </h3>
+                    {publicBooks.map((book, index) => (
+                      <motion.div
+                        key={book.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className="group relative bg-gradient-to-r from-primary/5 to-transparent border border-primary/20 rounded-xl p-4 hover:border-primary/40 transition-all"
                       >
-                        <div className="flex items-center gap-3">
-                          <p className="text-base font-medium text-foreground/90 flex-1 truncate">
-                            {scenario.name}
-                          </p>
-                          <span className="text-xs text-muted-foreground/50 flex-shrink-0">
-                            {scenario.characters} {scenario.characters === 1 ? "char" : "chars"}
-                          </span>
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-medium text-foreground/90 truncate">
+                                {book.scenario_name}
+                              </h3>
+                              <span className="px-1.5 py-0.5 text-[10px] rounded bg-primary/20 text-primary">
+                                public
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground/50">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {book.page_count} pages
+                              </span>
+                              <span className="font-mono">{book.bookmark}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleResumeBook(book.id)}
+                            disabled={isLoading}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 border border-primary/30 rounded-lg hover:bg-primary/20 transition-all disabled:opacity-50"
+                          >
+                            <Play className="w-3.5 h-3.5" />
+                            Join
+                          </button>
                         </div>
-                        {selectedScenario === scenarioId ? (
-                          <>
-                            {scenario.setting && (
-                              <p className="text-sm text-muted-foreground/60 mt-2">
-                                {scenario.setting}
-                              </p>
-                            )}
-                            {scenario.themes && scenario.themes.length > 0 && (
-                              <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border/20">
-                                {scenario.themes.map((theme) => (
-                                  <span
-                                    key={theme}
-                                    className="px-2 py-0.5 text-[10px] rounded-full bg-primary/10 text-primary/70 border border-primary/20"
-                                  >
-                                    {theme}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </>
-                        ) : scenario.setting ? (
-                          <p className="text-sm text-muted-foreground/60 mt-1 line-clamp-1">
-                            {scenario.setting}
-                          </p>
-                        ) : null}
-                      </button>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
 
-                      {/* Delete button - only show for user's own DB scenarios */}
-                      {scenario.source === "db" && scenario.owner_id === librarianId && (
-                        <div className="absolute top-2 right-2">
-                          {isConfirming ? (
+                {/* My Books Section */}
+                {books.length > 0 && (
+                  <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider pt-2">
+                    <BookOpen className="w-3.5 h-3.5" />
+                    My Books
+                  </h3>
+                )}
+
+                {books.length === 0 && publicBooks.length === 0 ? (
+                  <div className="text-center py-12">
+                    <BookOpen className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
+                    <p className="text-muted-foreground/60 mb-2">No books yet</p>
+                    <p className="text-sm text-muted-foreground/40">
+                      Start a new book from the Scenarios tab
+                    </p>
+                    <button
+                      onClick={() => setActiveTab("scenarios")}
+                      className="mt-4 px-4 py-2 text-sm text-primary border border-primary/30 rounded-lg hover:bg-primary/10 transition-all"
+                    >
+                      Browse Scenarios
+                    </button>
+                  </div>
+                ) : books.length === 0 ? null : (
+                  books.map((book, index) => (
+                    <motion.div
+                      key={book.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      className="group relative bg-card/40 border border-border/30 rounded-xl p-4 hover:border-border/50 transition-all"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-medium text-foreground/90 truncate">
+                              {book.scenario_name}
+                            </h3>
+                            {book.paused && (
+                              <span className="px-1.5 py-0.5 text-[10px] rounded bg-amber-500/20 text-amber-400">
+                                paused
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground/50">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {book.page_count} pages
+                            </span>
+                            <span className="font-mono">{book.bookmark}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleResumeBook(book.id)}
+                            disabled={isLoading}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 border border-primary/30 rounded-lg hover:bg-primary/20 transition-all disabled:opacity-50"
+                          >
+                            <Play className="w-3.5 h-3.5" />
+                            Resume
+                          </button>
+
+                          {confirmDelete === book.id ? (
                             <div className="flex gap-1">
                               <button
-                                onClick={() => handleDelete(scenarioId)}
-                                disabled={isDeleting}
-                                className="px-2 py-1 text-xs bg-destructive/20 text-destructive rounded hover:bg-destructive/30 disabled:opacity-50"
+                                onClick={() => handleDeleteBook(book.id)}
+                                disabled={deleting === book.id}
+                                className="px-2 py-1.5 text-xs bg-destructive/20 text-destructive rounded hover:bg-destructive/30"
                               >
-                                {isDeleting ? "..." : "yes"}
+                                {deleting === book.id ? "..." : "delete"}
                               </button>
                               <button
                                 onClick={() => setConfirmDelete(null)}
-                                className="px-2 py-1 text-xs bg-muted/50 text-muted-foreground rounded hover:bg-muted"
+                                className="px-2 py-1.5 text-xs bg-muted/50 text-muted-foreground rounded hover:bg-muted"
                               >
-                                no
+                                cancel
                               </button>
                             </div>
                           ) : (
                             <button
-                              onClick={() => setConfirmDelete(scenarioId)}
+                              onClick={() => setConfirmDelete(book.id)}
                               className="p-1.5 text-muted-foreground/30 hover:text-destructive/70 transition-colors opacity-0 group-hover:opacity-100"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
                           )}
                         </div>
-                      )}
+                      </div>
                     </motion.div>
-                  );
-                })}
+                  ))
+                )}
+              </motion.div>
+            ) : (
+              /* SCENARIOS TAB */
+              <motion.div key="scenarios" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                {/* Scenario Sub-tabs */}
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() => setScenarioSubTab("my")}
+                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                      scenarioSubTab === "my"
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground/60 hover:text-muted-foreground"
+                    }`}
+                  >
+                    My Scenarios
+                  </button>
+                  <button
+                    onClick={() => setScenarioSubTab("public")}
+                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                      scenarioSubTab === "public"
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground/60 hover:text-muted-foreground"
+                    }`}
+                  >
+                    Public
+                  </button>
+                </div>
+
+                {/* Create Buttons */}
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 border border-dashed border-primary/30 hover:border-primary/50 rounded-xl text-sm text-primary/70 hover:text-primary transition-all disabled:opacity-50"
+                  >
+                    {generating ? (
+                      <>
+                        <Sparkles className="w-4 h-4 animate-pulse" />
+                        generating...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4" />
+                        quick generate
+                      </>
+                    )}
+                  </button>
+                  {onOpenWizard && (
+                    <button
+                      onClick={onOpenWizard}
+                      className="flex items-center justify-center gap-2 px-3 py-2.5 border border-amber-500/30 hover:border-amber-500/50 rounded-xl text-sm text-amber-500/70 hover:text-amber-500 transition-all"
+                    >
+                      <Wand2 className="w-4 h-4" />
+                      wizard
+                    </button>
+                  )}
+                </div>
+
+                {/* Scenario List */}
+                <div className="space-y-2">
+                  {visibleScenarios.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground/50">
+                        {scenarioSubTab === "my"
+                          ? "No scenarios yet — create one above"
+                          : "No public scenarios available"}
+                      </p>
+                    </div>
+                  ) : (
+                    visibleScenarios.map((scenario, index) => {
+                      const scenarioId = getScenarioId(scenario);
+                      const isConfirming = confirmDelete === scenarioId;
+                      const isDeleting = deleting === scenarioId;
+
+                      return (
+                        <motion.div
+                          key={scenarioId}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.03 }}
+                          className="group relative bg-card/40 border border-border/30 rounded-xl p-4 hover:border-border/50 transition-all"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-medium text-foreground/90 truncate">
+                                {scenario.name}
+                              </h3>
+                              {scenario.setting && (
+                                <p className="text-sm text-muted-foreground/60 mt-1 line-clamp-2">
+                                  {scenario.setting}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground/50">
+                                <span>{scenario.characters} chars</span>
+                                {scenario.themes?.slice(0, 2).map(t => (
+                                  <span key={t} className="px-1.5 py-0.5 rounded bg-primary/10 text-primary/60">
+                                    {t}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleNewBook(scenarioId)}
+                                disabled={isLoading}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                New Book
+                              </button>
+
+                              {scenario.source === "db" && scenario.owner_id === librarianId && (
+                                isConfirming ? (
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={() => handleDeleteScenario(scenarioId)}
+                                      disabled={isDeleting}
+                                      className="px-2 py-1.5 text-xs bg-destructive/20 text-destructive rounded"
+                                    >
+                                      {isDeleting ? "..." : "delete"}
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmDelete(null)}
+                                      className="px-2 py-1.5 text-xs bg-muted/50 text-muted-foreground rounded"
+                                    >
+                                      cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setConfirmDelete(scenarioId)}
+                                    className="p-1.5 text-muted-foreground/30 hover:text-destructive/70 transition-colors opacity-0 group-hover:opacity-100"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })
+                  )}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
+        </div>
 
-        {/* Error */}
-        <AnimatePresence>
-          {(error || externalError) && (
-            <motion.div
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -5 }}
-              className="w-full max-w-xs mb-4 px-4 py-3 rounded-xl border border-destructive/30 bg-destructive/5 text-center"
-            >
-              <p className="text-sm text-destructive/90">{externalError || error}</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Start Button */}
-        <motion.button
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          onClick={handlePlay}
-          disabled={!selectedScenario || isLoading}
-          className="w-full max-w-xs px-8 py-3 text-base text-primary/80 hover:text-primary border border-primary/20 hover:border-primary/40 rounded-full transition-all hover:shadow-[0_0_30px_oklch(0.65_0.22_340_/_0.12)] disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isLoading ? (
-            <span className="flex items-center justify-center gap-2">
-              <motion.span
-                className="inline-block w-1.5 h-1.5 rounded-full bg-primary/60"
-                animate={{ opacity: [0.3, 1, 0.3] }}
-                transition={{ duration: 1.2, repeat: Infinity }}
-              />
-              creating book...
-            </span>
-          ) : "start"}
-        </motion.button>
-
-        {selectedData && (
-          <motion.p
+        {/* Loading indicator for book creation */}
+        {isLoading && (
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-xs text-muted-foreground/40 mt-4 text-center"
+            className="mt-6 flex items-center gap-2 text-sm text-muted-foreground/60"
           >
-            {selectedData.name} • {selectedData.characters} character{selectedData.characters !== 1 ? "s" : ""}
-          </motion.p>
+            <motion.span
+              className="w-1.5 h-1.5 rounded-full bg-primary/60"
+              animate={{ opacity: [0.3, 1, 0.3] }}
+              transition={{ duration: 1.2, repeat: Infinity }}
+            />
+            creating book...
+          </motion.div>
         )}
       </div>
     </div>

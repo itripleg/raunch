@@ -169,7 +169,7 @@ def _ensure_orchestrator(book) -> bool:
         orch.world.page_count = existing_page_count
         logger.info(f"Restored page_count={existing_page_count} for book {book.book_id}")
 
-    # Restore agent mode from database
+    # Restore agent mode and page interval from database
     try:
         book_data = db.get_book(book.book_id)
         if book_data:
@@ -178,6 +178,12 @@ def _ensure_orchestrator(book) -> bool:
             orch.dual_agent_mode = (mode == "dual")
             if mode != "default":
                 logger.info(f"Restored agent_mode={mode} for book {book.book_id}")
+
+            # Restore page interval (0 = manual, >0 = auto-page seconds)
+            page_interval = book_data.get("page_interval", 0)
+            if page_interval > 0:
+                orch.set_page_interval(page_interval)
+                logger.info(f"Restored page_interval={page_interval}s for book {book.book_id}")
     except Exception:
         pass
 

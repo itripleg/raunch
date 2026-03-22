@@ -57,7 +57,7 @@ def init_db() -> None:
 # ===========================================================================
 
 def save_page(world_id: str, page_num: int, narration: str, events: List[str],
-              world_time: str, mood: str) -> None:
+              world_time: str, mood: str, raw_narrator: str = "") -> None:
     """Record a narrator page."""
     _db.collection("pages").add({
         "world_id": world_id,
@@ -66,7 +66,14 @@ def save_page(world_id: str, page_num: int, narration: str, events: List[str],
         "events": events,  # native list
         "world_time": world_time,
         "mood": mood,
+        "raw_narrator": raw_narrator,
         "created_at": _now_iso(),
+    })
+    # Update the book's page_count
+    book_ref = _db.collection("books").document(world_id)
+    book_ref.update({
+        "page_count": page_num,
+        "last_active": _now_iso(),
     })
 
 
@@ -1037,6 +1044,20 @@ def get_book(book_id: str) -> Optional[Dict[str, Any]]:
         return None
 
     r = doc.to_dict()
+    page_count = r.get("page_count", 0)
+
+    # Fallback: calculate page count from pages collection if stored count is 0
+    if page_count == 0:
+        pages_query = (
+            _db.collection("pages")
+            .where(filter=FieldFilter("world_id", "==", book_id))
+            .order_by("page_num", direction=firestore.Query.DESCENDING)
+            .limit(1)
+        )
+        pages = list(pages_query.stream())
+        if pages:
+            page_count = pages[0].to_dict().get("page_num", 0)
+
     return {
         "id": r.get("id", doc.id),
         "bookmark": r.get("bookmark"),
@@ -1045,7 +1066,8 @@ def get_book(book_id: str) -> Optional[Dict[str, Any]]:
         "private": bool(r.get("private", False)),
         "created_at": r.get("created_at"),
         "last_active": r.get("last_active"),
-        "page_count": r.get("page_count", 0),
+        "page_count": page_count,
+        "page_interval": r.get("page_interval", 0),
     }
 
 
@@ -1070,6 +1092,7 @@ def get_book_by_bookmark(bookmark: str) -> Optional[Dict[str, Any]]:
         "created_at": r.get("created_at"),
         "last_active": r.get("last_active"),
         "page_count": r.get("page_count", 0),
+        "page_interval": r.get("page_interval", 0),
     }
 
 
@@ -1157,6 +1180,50 @@ def grant_book_access(book_id: str, librarian_id: str, role: str = "reader") -> 
         "librarian_id": librarian_id,
         "role": role,
     }, merge=True)
+
+
+def list_public_books() -> List[Dict[str, Any]]:
+    """List all public books."""
+    query = _db.collection("books").where(filter=FieldFilter("private", "==", False))
+    results = []
+    for snap in query.stream():
+        book = get_book(snap.id)
+        if book:
+            results.append(book)
+    # Sort by last_active DESC
+    results.sort(key=lambda b: b.get("last_active") or "", reverse=True)
+    return results
+
+
+# Default public book configuration
+DEFAULT_PUBLIC_BOOK_ID = "public-library"
+DEFAULT_PUBLIC_BOOKMARK = "LIBR-0001"
+DEFAULT_PUBLIC_SCENARIO = "the_living_library"  # Use existing scenario
+DEFAULT_PUBLIC_PAGE_INTERVAL = 3600  # 1 hour between auto-pages
+
+
+def ensure_default_public_book() -> Optional[Dict[str, Any]]:
+    """Ensure the default public book exists. Creates it if missing."""
+    doc = _db.collection("books").document(DEFAULT_PUBLIC_BOOK_ID).get()
+    if doc.exists:
+        return get_book(DEFAULT_PUBLIC_BOOK_ID)
+
+    # Create the default public book with hourly auto-page
+    now = _now_iso()
+    _db.collection("books").document(DEFAULT_PUBLIC_BOOK_ID).set({
+        "id": DEFAULT_PUBLIC_BOOK_ID,
+        "bookmark": DEFAULT_PUBLIC_BOOKMARK,
+        "bookmark_upper": DEFAULT_PUBLIC_BOOKMARK.upper(),
+        "scenario_name": DEFAULT_PUBLIC_SCENARIO,
+        "owner_id": None,  # System-owned
+        "private": False,
+        "created_at": now,
+        "last_active": now,
+        "page_count": 0,
+        "page_interval": DEFAULT_PUBLIC_PAGE_INTERVAL,
+    })
+
+    return get_book(DEFAULT_PUBLIC_BOOK_ID)
 
 
 # ===========================================================================

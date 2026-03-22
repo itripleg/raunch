@@ -72,6 +72,15 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.error(f"  ✗ Database FAILED: {e}")
 
+        # Ensure default public book exists
+        try:
+            from .. import db as db_module
+            public_book = db_module.ensure_default_public_book()
+            if public_book:
+                logger.info(f"  ✓ Public Library: {public_book['bookmark']}")
+        except Exception as e:
+            logger.warning(f"  ✗ Public Library: {e}")
+
         # Check for LLM credentials
         llm_ok = False
         try:
