@@ -190,6 +190,26 @@ class RemoteClient:
         response.raise_for_status()
         return [BookInfo.from_dict(b) for b in response.json()]
 
+    def delete_book(self, book_id: str) -> bool:
+        """Delete a book by ID (owner only)."""
+        response = self._http.delete(
+            f"{self.server_url}/api/v1/books/{book_id}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return True
+
+    def get_book_info(self, book_id: str) -> Optional[BookInfo]:
+        """Get book info by ID."""
+        response = self._http.get(
+            f"{self.server_url}/api/v1/books/{book_id}",
+            headers=self._headers(),
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return BookInfo.from_dict(response.json())
+
     # --- POWER COMMANDS ---
 
     def pause(self) -> None:

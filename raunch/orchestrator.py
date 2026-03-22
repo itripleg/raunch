@@ -397,6 +397,15 @@ class Orchestrator:
                 f"Incorporate this into the scene naturally. Don't acknowledge the guidance directly.\n\n"
             )
 
+        # Language instruction from scenario
+        language = self.world.scenario.get("language") if self.world.scenario else None
+        if language:
+            narrator_input += (
+                f"[LANGUAGE]: Write ALL narration and dialogue in {language}. "
+                f"This includes character speech, descriptions, and internal prose. "
+                f"Maintain the explicit adult tone but in {language}.\n\n"
+            )
+
         narrator_input += "Advance the world. What happens next?"
 
         try:
@@ -644,6 +653,15 @@ class Orchestrator:
         if any(self._influences):  # newline after whispers block
             user_input += "\n"
 
+        # Language instruction from scenario
+        language = self.world.scenario.get("language") if self.world.scenario else None
+        if language:
+            user_input += (
+                f"[LANGUAGE]: Write ALL narration and dialogue in {language}. "
+                f"This includes character speech, descriptions, inner thoughts, and prose. "
+                f"Maintain the explicit adult tone but in {language}.\n\n"
+            )
+
         user_input += "Advance the world. What happens next? Provide narration and all character responses."
 
         # --- Make the single LLM call ---
@@ -807,6 +825,15 @@ class Orchestrator:
             narrator_input += (
                 f"[DIRECTOR GUIDANCE]: {director_guidance}\n"
                 f"Incorporate this into the scene naturally. Don't acknowledge the guidance directly.\n\n"
+            )
+
+        # Language instruction from scenario
+        language = self.world.scenario.get("language") if self.world.scenario else None
+        if language:
+            narrator_input += (
+                f"[LANGUAGE]: Write ALL narration and dialogue in {language}. "
+                f"This includes character speech, descriptions, and internal prose. "
+                f"Maintain the explicit adult tone but in {language}.\n\n"
             )
 
         narrator_input += "Advance the world. What happens next?"

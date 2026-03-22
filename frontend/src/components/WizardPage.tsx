@@ -248,6 +248,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
   const [customPrefs, setCustomPrefs] = useState("");
   const [numChars, setNumChars] = useState(2);
   const [multiplayer, setMultiplayer] = useState(false);
+  const [language, setLanguage] = useState("");
   const [showRaw, setShowRaw] = useState(false);
   const [rawJson, setRawJson] = useState("");
   const [saving, setSaving] = useState(false);
@@ -482,6 +483,9 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
 
       const data = await res.json();
       data.multiplayer = multiplayer;
+      if (language.trim()) {
+        data.language = language.trim();
+      }
       setResult(data);
       setRawJson(JSON.stringify(data, null, 2));
 
@@ -818,6 +822,23 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
                   <Users className="w-4 h-4" />
                   Multiplayer
                 </button>
+              </div>
+
+              {/* Language input */}
+              <div className="mt-4">
+                <label className="text-xs text-muted-foreground/70 mb-1.5 block">
+                  Language (optional)
+                </label>
+                <input
+                  type="text"
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  placeholder="English, Japanese, Pirate Speak, Elvish..."
+                  className="w-full bg-secondary/50 border border-border/50 rounded-xl px-4 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+                />
+                <p className="text-xs text-muted-foreground/50 mt-1.5">
+                  Output narration in any language or style
+                </p>
               </div>
             </div>
           </motion.section>

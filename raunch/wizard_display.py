@@ -157,12 +157,12 @@ def shimmer_text(text: str, duration: float = 2.0, colors: List[str] = None) -> 
                 color_idx = (i + j) % len(color_codes)
                 output += f"{BOLD}{_c256(color_codes[color_idx])}{char}"
             print(f"{output}{RESET}")
-            time.sleep(0.05)
+            time.sleep(0.10)
     finally:
         show_cursor()
 
 
-def matrix_reveal(text: str, duration: float = 1.5) -> None:
+def matrix_reveal(text: str, duration: float = 2.5) -> None:
     """Reveal text with matrix-style scramble effect using cursor control."""
     chars = "!@#$%^&*()_+-=[]{}|;:',.<>?/~`" + "".join(SPARKLES)
     frames = int(duration * 20)
@@ -189,7 +189,7 @@ def matrix_reveal(text: str, duration: float = 1.5) -> None:
                     output += f"{_c256(240)}{random.choice(chars)}"  # Dim
 
             print(f"{output}{RESET}")
-            time.sleep(0.04)
+            time.sleep(0.08)
     finally:
         show_cursor()
 
@@ -248,12 +248,12 @@ def wizard_entrance() -> None:
                     output += f"{_c256(color)}{glitch}"
 
             print(f"{output}{RESET}")
-            time.sleep(0.04)
+            time.sleep(0.08)
 
         # Final clean glitch line
         cursor_up(1)
         print(f"          {_c256(171)}{target}{RESET}")
-        time.sleep(0.3)
+        time.sleep(0.5)
         print()
 
         # Phase 2: Matrix rain into logo reveal
@@ -292,7 +292,7 @@ def wizard_entrance() -> None:
                         output += f"{_c256(240)}{char}"
                 print(f"{output}{RESET}")
 
-            time.sleep(0.035)
+            time.sleep(0.07)
 
         # Phase 3: Neon pulse animation
         for frame in range(25):
@@ -321,16 +321,16 @@ def wizard_entrance() -> None:
                         output += f"{_c256(240)}{char}"
                 print(f"{output}{RESET}")
 
-            time.sleep(0.03)
+            time.sleep(0.06)
 
         # Phase 4: Tagline
         print()
         print(f"          {_c256(245)}{WIZARD_TAGLINE}{RESET}")
         print()
-        time.sleep(0.2)
+        time.sleep(0.4)
 
         # Phase 5: Typewriter invitation
-        typewriter("Answer my questions... and I shall conjure your deepest fantasies.", delay=0.02)
+        typewriter("Answer my questions... and I shall conjure your deepest fantasies.", delay=0.04)
         print()
 
     finally:
@@ -356,7 +356,7 @@ def option_display(options: List[str], columns: int = 1) -> None:
         num_styled.append(f"  {i:2}. ", style=f"bold {random.choice(num_colors)}")
         num_styled.append(opt, style="white")
         console.print(num_styled)
-        time.sleep(0.03)  # Slight stagger for drama
+        time.sleep(0.06)  # Slight stagger for drama
 
 
 def selection_confirm(choice: str, category: str) -> None:
@@ -463,7 +463,7 @@ def conjuring_sequence(callback) -> Any:
             print(f"    {_c256(201)}{sparkle_line}{RESET}")
 
             frame += 1
-            time.sleep(0.1)
+            time.sleep(0.18)
 
     finally:
         show_cursor()
@@ -476,7 +476,7 @@ def conjuring_sequence(callback) -> Any:
     # Completion flourish
     print()
     divider = "* ======================================= *"
-    matrix_reveal(divider, duration=0.5)
+    matrix_reveal(divider, duration=0.8)
     print()
     shimmer_text(random.choice(REVEAL_MESSAGES), duration=1.0)
     print()
@@ -504,7 +504,7 @@ def scenario_reveal(scenario: Dict[str, Any]) -> None:
         padding=(1, 4),
     ))
 
-    time.sleep(0.3)
+    time.sleep(0.5)
 
     # Safe Unicode symbols
     fleur = "~*~" if not _supports_unicode() else "~*~"  # Keep simple, always works
@@ -522,7 +522,7 @@ def scenario_reveal(scenario: Dict[str, Any]) -> None:
         padding=(1, 2),
     ))
 
-    time.sleep(0.2)
+    time.sleep(0.4)
 
     # Premise
     premise = scenario.get("premise", "")
@@ -533,7 +533,7 @@ def scenario_reveal(scenario: Dict[str, Any]) -> None:
         padding=(1, 2),
     ))
 
-    time.sleep(0.2)
+    time.sleep(0.4)
 
     # Themes
     themes = scenario.get("themes", [])
@@ -545,7 +545,7 @@ def scenario_reveal(scenario: Dict[str, Any]) -> None:
             border_style="dim magenta",
         ))
 
-    time.sleep(0.2)
+    time.sleep(0.4)
 
     # Opening
     opening = scenario.get("opening_situation", "")
@@ -562,7 +562,7 @@ def scenario_reveal(scenario: Dict[str, Any]) -> None:
     # Characters - one by one with dramatic reveal
     characters = scenario.get("characters", [])
     for i, char in enumerate(characters):
-        time.sleep(0.3)
+        time.sleep(0.5)
 
         name = char.get("name", "Unknown")
         species = char.get("species", "Unknown")
@@ -689,9 +689,9 @@ def roll_dice_animation() -> None:
                     else:
                         output += char
                 print(f"{output}{RESET}")
-            time.sleep(0.05)
+            time.sleep(0.10)
 
-        time.sleep(0.3)
+        time.sleep(0.5)
 
         # Clear intro and start dice
         cursor_up(len(intro_lines))
@@ -728,11 +728,11 @@ def roll_dice_animation() -> None:
 
             # Speed: fast then slow down dramatically
             if frame < 20:
-                time.sleep(0.03)
+                time.sleep(0.06)
             elif frame < 30:
-                time.sleep(0.05)
+                time.sleep(0.10)
             else:
-                time.sleep(0.08 + (frame - 30) * 0.02)
+                time.sleep(0.15 + (frame - 30) * 0.03)
 
         # Phase 3: Dramatic pause - clear dice area
         cursor_up(DISPLAY_HEIGHT)
@@ -747,14 +747,14 @@ def roll_dice_animation() -> None:
         for i, char in enumerate(suspense):
             sys.stdout.write(f"{_c256(GOLD[i % len(GOLD)])}{char}")
             sys.stdout.flush()
-            time.sleep(0.03)
+            time.sleep(0.06)
         print(RESET)
 
         # Pad remaining lines
         for _ in range(DISPLAY_HEIGHT - 1):
             print()
 
-        time.sleep(0.8)
+        time.sleep(1.2)
 
         # Phase 4: EPIC REVEAL
         # Clear the suspense area and prepare for dice
@@ -780,7 +780,7 @@ def roll_dice_animation() -> None:
                     output += f"{BOLD}{_c256(intensity)}{dice_line}{RESET}  "
                 print(output)
 
-            time.sleep(0.08)
+            time.sleep(0.15)
 
         # Stable final display with gold - centered
         cursor_up(DISPLAY_HEIGHT)
@@ -806,10 +806,10 @@ def roll_dice_animation() -> None:
                 color_idx = (frame + i) % len(GOLD)
                 output += f"{BOLD}{_c256(GOLD[color_idx])}{char}"
             print(f"{output}{RESET}")
-            time.sleep(0.05)
+            time.sleep(0.10)
 
         print()
-        time.sleep(0.3)
+        time.sleep(0.5)
 
         # Fate message based on roll
         if total >= 15:
@@ -830,9 +830,134 @@ def roll_dice_animation() -> None:
             color = fate_colors[i % len(fate_colors)]
             sys.stdout.write(f"{_c256(color)}{char}")
             sys.stdout.flush()
-            time.sleep(0.02)
+            time.sleep(0.04)
         print(RESET)
         print()
 
     finally:
         show_cursor()
+
+
+def roll_dice_with_generation(generate_fn) -> Any:
+    """Run dice animation while LLM generates in background.
+
+    Starts the generation immediately, runs the dice animation,
+    and waits for completion with a premium loading experience.
+
+    Returns the generated scenario.
+    """
+    import threading
+
+    result = [None]
+    error = [None]
+    done = threading.Event()
+
+    def run_generation():
+        try:
+            result[0] = generate_fn()
+        except Exception as e:
+            error[0] = e
+        finally:
+            done.set()
+
+    # Start generation IMMEDIATELY in background
+    thread = threading.Thread(target=run_generation, daemon=True)
+    thread.start()
+
+    # Run the dice animation (generation running in parallel)
+    roll_dice_animation()
+
+    # Check if generation is done
+    if done.is_set():
+        # Perfect timing! Generation finished during animation
+        if error[0]:
+            raise error[0]
+        return result[0]
+
+    # Generation still running — show waiting animation
+    width = console.size.width
+    SEXY = [53, 90, 127, 163, 199, 206, 213, 219]
+    SPARKLES = ["✦", "✧", "✶", "✷", "✸", "✹", "⋆", "★", "☆"]
+
+    messages = [
+        "The fates are weaving your destiny...",
+        "Conjuring characters from the void...",
+        "Spinning threads of desire...",
+        "The cosmos aligns your fantasy...",
+        "Dark magic takes form...",
+    ]
+
+    hide_cursor()
+    try:
+        frame = 0
+        msg_idx = 0
+
+        print()
+
+        while not done.is_set():
+            # Cycle through messages
+            if frame % 40 == 0:
+                msg_idx = (msg_idx + 1) % len(messages)
+
+            msg = messages[msg_idx]
+            padding = " " * max(0, (width - len(msg) - 10) // 2)
+
+            # Animated sparkles
+            sparkle_l = random.choice(SPARKLES) if _supports_unicode() else "*"
+            sparkle_r = random.choice(SPARKLES) if _supports_unicode() else "*"
+
+            # Color wave
+            color = SEXY[frame % len(SEXY)]
+
+            # Progress dots
+            dots = "." * ((frame // 5) % 4)
+            spaces = " " * (3 - len(dots))
+
+            sys.stdout.write(f"\r{padding}{_c256(color)}{sparkle_l}  {msg}{dots}{spaces}  {sparkle_r}{RESET}")
+            sys.stdout.flush()
+
+            frame += 1
+            time.sleep(0.10)
+
+        # Clear the waiting line
+        sys.stdout.write("\r" + " " * width + "\r")
+        sys.stdout.flush()
+
+    finally:
+        show_cursor()
+
+    thread.join()
+
+    if error[0]:
+        raise error[0]
+
+    # Clean up any stray output from the background thread
+    # by clearing screen and showing completion
+    clear_screen()
+
+    # Completion flourish
+    print()
+    print()
+    star = "✦" if _supports_unicode() else "*"
+    complete_msg = f"{star} ═══════════  DESTINY REVEALED  ═══════════ {star}"
+    complete_padding = " " * max(0, (width - len(complete_msg)) // 2)
+
+    GOLD = [136, 172, 208, 214, 220, 226, 229, 231]
+
+    hide_cursor()
+    try:
+        for frame in range(12):
+            sys.stdout.write(f"\r{complete_padding}")
+            for i, char in enumerate(complete_msg):
+                color = GOLD[(frame + i) % len(GOLD)]
+                sys.stdout.write(f"{BOLD}{_c256(color)}{char}")
+            sys.stdout.write(RESET)
+            sys.stdout.flush()
+            time.sleep(0.08)
+        print()
+    finally:
+        show_cursor()
+
+    print()
+
+    return result[0]

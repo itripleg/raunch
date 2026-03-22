@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { ArrowLeft, Sparkles, Users, MessageCircle, Eye, Wand2, Theater } from "lucide-react";
+import { ArrowLeft, Sparkles, Users, MessageCircle, Eye, Wand2, Theater, Cpu, Globe, Zap } from "lucide-react";
 
 type Props = {
   onBack: () => void;
@@ -69,8 +69,8 @@ export function AboutPage({ onBack, isAdmin: _isAdmin, apiUrl }: Props) {
             />
             <FeatureCard
               icon={Users}
-              title="Character Creation"
-              description="Create characters with species, personality, appearance, desires, and backstory. Promote memorable NPCs into full characters mid-story."
+              title="Multiplayer"
+              description="Play with friends in real-time. Turn-based sessions with player presence, ready states, and synchronized storytelling across multiple readers."
             />
             <FeatureCard
               icon={MessageCircle}
@@ -80,12 +80,22 @@ export function AboutPage({ onBack, isAdmin: _isAdmin, apiUrl }: Props) {
             <FeatureCard
               icon={Wand2}
               title="Smut Wizard"
-              description="Generate entire scenarios with custom settings, kinks, and vibes. Roll the dice for instant inspiration or craft your perfect setup."
+              description="Generate scenarios from 25 settings, 18 pairings, 30+ kinks, and 11 vibes. Roll for instant inspiration or craft your perfect setup."
             />
             <FeatureCard
-              icon={Sparkles}
-              title="AI Narration"
-              description="The narrator crafts scenes based on world state, character desires, and your guidance. Every page flows from what came before."
+              icon={Cpu}
+              title="Agent Modes"
+              description="Three AI modes: Default (sequential), Dual (narrator + batch), or Unified (single call). Trade off between coherence and speed."
+            />
+            <FeatureCard
+              icon={Globe}
+              title="NPC Detection"
+              description="The narrator naturally introduces new characters. Detected NPCs appear in the sidebar—promote them to full characters with one click."
+            />
+            <FeatureCard
+              icon={Zap}
+              title="Live Streaming"
+              description="Watch narration and dialogue appear in real-time with typewriter effects. Intensity markers highlight mood shifts as scenes unfold."
             />
           </section>
 
@@ -119,10 +129,10 @@ export function AboutPage({ onBack, isAdmin: _isAdmin, apiUrl }: Props) {
               </div>
 
               <div className="p-4 bg-card/50 border border-border rounded-xl space-y-3">
-                <h4 className="font-medium text-foreground">4. Add characters on the fly</h4>
+                <h4 className="font-medium text-foreground">4. Add or promote characters</h4>
                 <p>
-                  Click <strong className="text-primary">+ Add</strong> in the sidebar to create new characters mid-session.
-                  Define their species, personality, appearance, desires, and backstory. They'll join the story naturally.
+                  Click <strong className="text-primary">+ Add</strong> to create new characters, or look for detected NPCs in the sidebar.
+                  When the narrator mentions someone interesting, they'll appear as a potential character you can <strong className="text-primary">promote</strong> with one click.
                 </p>
               </div>
 
@@ -141,9 +151,25 @@ export function AboutPage({ onBack, isAdmin: _isAdmin, apiUrl }: Props) {
             <h3 className="text-xl font-semibold text-foreground">Known Limitations</h3>
             <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl text-sm text-muted-foreground/80 space-y-2">
               <p><strong className="text-amber-400">Alpha software.</strong> Expect rough edges, bugs, and incomplete features.</p>
-              <p><strong className="text-foreground/80">Session-based.</strong> Stories persist in the database but there's no save/load UI yet.</p>
-              <p><strong className="text-foreground/80">OAuth streaming.</strong> Google OAuth mode doesn't support true streaming—pages appear after generation completes.</p>
-              <p><strong className="text-foreground/80">Content filters.</strong> Some AI providers may limit explicit content. API key mode typically has fewer restrictions.</p>
+              <p><strong className="text-foreground/80">Refusal handling.</strong> AI may occasionally decline explicit content. The system auto-retries, but some requests may still be filtered.</p>
+              <p><strong className="text-foreground/80">Context limits.</strong> Very long sessions may lose early story details as the AI's context window fills.</p>
+            </div>
+          </section>
+
+          {/* Under the Hood */}
+          <section className="space-y-4">
+            <h3 className="text-xl font-semibold text-foreground">Under the Hood</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+              <StatCard label="Agent Modes" value="3" />
+              <StatCard label="Scenarios" value="6+" />
+              <StatCard label="Flavor Options" value="80+" />
+              <StatCard label="WebSocket Commands" value="20+" />
+            </div>
+            <div className="p-4 bg-card/30 border border-border rounded-xl text-sm text-muted-foreground/70 space-y-2">
+              <p><strong className="text-foreground/80">Backend:</strong> Python, FastAPI, WebSockets, Claude AI</p>
+              <p><strong className="text-foreground/80">Frontend:</strong> React, TypeScript, TailwindCSS, Framer Motion</p>
+              <p><strong className="text-foreground/80">Database:</strong> SQLite (local) or Firestore (cloud)</p>
+              <p><strong className="text-foreground/80">Real-time:</strong> Full WebSocket sync for multiplayer and streaming</p>
             </div>
           </section>
 
@@ -192,6 +218,15 @@ function FeatureCard({
       <Icon className="w-6 h-6 text-primary" />
       <h4 className="font-medium text-foreground">{title}</h4>
       <p className="text-sm text-muted-foreground/70 leading-relaxed">{description}</p>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="p-3 bg-card/30 border border-border rounded-lg">
+      <div className="text-xl font-bold text-primary">{value}</div>
+      <div className="text-xs text-muted-foreground/60">{label}</div>
     </div>
   );
 }

@@ -11,6 +11,10 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+      - key: DB_BACKEND
+        value: firestore  # Use Firestore for persistence across deploys
+      - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
+        sync: false  # Set manually in dashboard (Firebase service account JSON)
       - key: CLAUDE_CODE_OAUTH_TOKEN
         sync: false  # Set manually in dashboard (1-year OAuth token)
       - key: HOSTED_SCENARIO

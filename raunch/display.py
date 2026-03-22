@@ -227,7 +227,7 @@ def _render_intensity_text(text: str, use_ansi: bool = True) -> str:
     return "".join(result)
 
 
-def _typewriter(text: str, delay: float = 0.015, intensity: bool = True) -> None:
+def _typewriter(text: str, delay: float = 0.030, intensity: bool = True) -> None:
     """Print text with typewriter effect and optional intensity highlighting."""
     # Parse into words for natural pacing
     words = text.split(' ')
@@ -239,10 +239,10 @@ def _typewriter(text: str, delay: float = 0.015, intensity: bool = True) -> None
 
         if level and intensity:
             # Dramatic pause before intensity words
-            time.sleep(0.08)
+            time.sleep(0.15)
             color = random.choice(INTENSITY_COLORS[level])
             sys.stdout.write(f"{_c256(color)}{word}{RESET}")
-            time.sleep(0.05)  # Extra pause after
+            time.sleep(0.10)  # Extra pause after
         else:
             sys.stdout.write(word)
 
@@ -304,7 +304,7 @@ def _dramatic_reveal(text: str, style: str = "bright_magenta") -> None:
                     rich_text.append(content, style="dim")
             console.print(rich_text)
 
-        time.sleep(0.15)
+        time.sleep(0.30)
 
 
 def _scene_break(variant: int = 0) -> None:
@@ -869,14 +869,14 @@ def _animate_motherhaven_tagline(animated: bool = True) -> None:
             line = f"{' ' * padding}{DIM}{ITALIC}{prefix}{RESET}{_c256(213)}{BOLD}{revealed}{RESET}{sparkle}"
             sys.stdout.write(f"\r{line}")
             sys.stdout.flush()
-            time.sleep(0.05)
+            time.sleep(0.10)
 
         # Phase 2: Color pulse on 'motherhaven'
         for color in [213, 219, 225, 255, 231, 225, 219, 213]:
             line = f"{' ' * padding}{DIM}{ITALIC}{prefix}{RESET}{_c256(color)}{BOLD}{highlight}{RESET}"
             sys.stdout.write(f"\r{line}")
             sys.stdout.flush()
-            time.sleep(0.04)
+            time.sleep(0.08)
 
         # Phase 3: Fade in suffix
         line = f"{' ' * padding}{DIM}{ITALIC}{prefix}{RESET}{_c256(213)}{BOLD}{highlight}{RESET}{DIM}{ITALIC}{suffix}{RESET}"
@@ -920,7 +920,7 @@ def render_server_startup(
                     colored = _animate_logo_line(line, frame + i)
                     sys.stdout.write(f"\r{colored}\n")
                 sys.stdout.flush()
-                time.sleep(0.08)
+                time.sleep(0.15)
         finally:
             sys.stdout.write("\033[?25h")
             sys.stdout.flush()
@@ -1006,7 +1006,7 @@ def render_attach_animation(character_name: str, animated: bool = True) -> None:
             color = ATTACH_GRADIENT[frame % len(ATTACH_GRADIENT)]
             sys.stdout.write(f"\r  {_c256(color)}{spin}{RESET} {msg}{dots}{spaces}")
             sys.stdout.flush()
-            time.sleep(0.07)
+            time.sleep(0.12)
 
         sys.stdout.write("\r\033[K")
 
@@ -1016,13 +1016,13 @@ def render_attach_animation(character_name: str, animated: bool = True) -> None:
             color = ATTACH_GRADIENT[i % len(ATTACH_GRADIENT)]
             sys.stdout.write(f"{_c256(color)}{BOLD}{char}{RESET}")
             sys.stdout.flush()
-            time.sleep(0.06)
+            time.sleep(0.10)
 
         # Pause, then complete the line
-        time.sleep(0.2)
+        time.sleep(0.35)
         sys.stdout.write(f" {_c256(141)}{star}{RESET}")
         sys.stdout.flush()
-        time.sleep(0.1)
+        time.sleep(0.15)
 
         # Phase 3: Subtitle fade in
         sys.stdout.write(f"\n  {DIM}  You hear their inner thoughts...{RESET}\n\n")
@@ -1051,7 +1051,7 @@ def render_detach_animation(character_name: str, animated: bool = True) -> None:
             faded = dot * (len(character_name) - i)
             sys.stdout.write(f"\r  {_c256(241)}{star} {visible}{faded} {star}{RESET}   ")
             sys.stdout.flush()
-            time.sleep(0.04)
+            time.sleep(0.08)
 
         sys.stdout.write(f"\r  {DIM}The book closes softly{RESET}           \n")
 
@@ -1329,6 +1329,258 @@ def render_port_conflict(port: int, service: str) -> None:
 def render_port_error(port: int, service: str) -> None:
     """Legacy function - redirects to render_port_conflict."""
     render_port_conflict(port, service)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BOOK MANAGEMENT — Premium library experience
+# ═══════════════════════════════════════════════════════════════════════════════
+
+BOOK_GRADIENT = [51, 45, 39, 33, 27, 21, 27, 33, 39, 45]  # Cyan wave
+
+def _get_book_status_icons():
+    """Get book status icons based on unicode support."""
+    if _supports_unicode():
+        return {
+            "active": ("●", "green3"),
+            "paused": ("◐", "dark_goldenrod"),
+            "idle": ("○", "dim"),
+        }
+    else:
+        return {
+            "active": ("*", "green3"),
+            "paused": ("~", "dark_goldenrod"),
+            "idle": (".", "dim"),
+        }
+
+
+def render_books_header(animated: bool = True) -> None:
+    """Render premium header for book management."""
+    star = "✧" if _supports_unicode() else "*"
+    book_icon = "📚" if _supports_unicode() else "[LIBRARY]"
+
+    console.print()
+
+    if animated:
+        sys.stdout.write("\033[?25l")
+        try:
+            title = f"{star} YOUR LIBRARY {star}"
+            for i in range(len(title) + 1):
+                color = BOOK_GRADIENT[i % len(BOOK_GRADIENT)]
+                revealed = title[:i]
+                sys.stdout.write(f"\r  {_c256(color)}{BOLD}{revealed}{RESET}")
+                sys.stdout.flush()
+                time.sleep(0.04)
+            sys.stdout.write("\n")
+        finally:
+            sys.stdout.write("\033[?25h")
+    else:
+        console.print(f"  [bold bright_cyan]{star} YOUR LIBRARY {star}[/]")
+
+    console.print()
+
+
+def render_book_card(
+    book_id: str,
+    scenario_name: str,
+    bookmark: str,
+    page_count: int,
+    paused: bool = False,
+    is_owner: bool = True,
+    index: int = 0,
+    animated: bool = True,
+) -> None:
+    """Render a single book as a premium card."""
+    star = "✧" if _supports_unicode() else "*"
+    dash = "─" if _supports_unicode() else "-"
+
+    # Status indicator
+    icons = _get_book_status_icons()
+    if paused:
+        status_icon, status_color = icons["paused"]
+    elif page_count > 0:
+        status_icon, status_color = icons["active"]
+    else:
+        status_icon, status_color = icons["idle"]
+
+    # Ownership badge
+    owner_badge = "[dim](owner)[/]" if is_owner else "[dim](reader)[/]"
+
+    if animated:
+        # Slide in from left
+        sys.stdout.write("\033[?25l")
+        try:
+            line = f"  [{status_color}]{status_icon}[/] [bold]{index}.[/] [bright_cyan]{scenario_name}[/]"
+            for i in range(0, len(line), 3):
+                console.print(line[:i], end="\r")
+                time.sleep(0.02)
+            console.print(line)
+        finally:
+            sys.stdout.write("\033[?25h")
+    else:
+        console.print(f"  [{status_color}]{status_icon}[/] [bold]{index}.[/] [bright_cyan]{scenario_name}[/]")
+
+    # Details line
+    console.print(f"      [dim]Bookmark:[/] [bold bright_magenta]{bookmark}[/] {owner_badge}")
+    console.print(f"      [dim]Pages:[/] {page_count} [dim]|[/] [dim]ID:[/] [dim italic]{book_id[:8]}...[/]")
+    console.print()
+
+
+def render_books_list(books: list, animated: bool = True) -> None:
+    """Render the full book library with premium styling."""
+    render_books_header(animated)
+
+    if not books:
+        star = "✧" if _supports_unicode() else "*"
+        console.print(
+            Panel(
+                f"[dim italic]Your library is empty...{star}[/]\n\n"
+                "[dim]Create your first book with:[/]\n"
+                "  [bold]raunch start --scenario <name> --serve[/]\n"
+                "  [bold]raunch connect <server>[/]",
+                border_style="dim",
+                padding=(1, 2),
+            )
+        )
+        return
+
+    for i, book in enumerate(books, 1):
+        render_book_card(
+            book_id=book.get("id", book.get("book_id", "?")),
+            scenario_name=book.get("scenario_name", "Untitled"),
+            bookmark=book.get("bookmark", "???"),
+            page_count=book.get("page_count", 0),
+            paused=book.get("paused", False),
+            is_owner=book.get("is_owner", True),
+            index=i,
+            animated=animated and i <= 5,  # Only animate first 5
+        )
+
+    # Footer with commands
+    dash = "─" if _supports_unicode() else "-"
+    console.print(f"  [dim]{dash * 50}[/]")
+    console.print(f"  [dim]Total:[/] [bold]{len(books)}[/] books")
+    console.print()
+
+
+def render_book_info(book: dict, animated: bool = True) -> None:
+    """Render detailed book information."""
+    star = "✧" if _supports_unicode() else "*"
+    heart = "♥" if _supports_unicode() else "<3"
+
+    scenario = book.get("scenario_name", "Untitled")
+    bookmark = book.get("bookmark", "???")
+    book_id = book.get("id", book.get("book_id", "?"))
+    page_count = book.get("page_count", 0)
+    paused = book.get("paused", False)
+    characters = book.get("characters", [])
+    created_at = book.get("created_at", "Unknown")
+
+    status = "[yellow]Paused[/]" if paused else "[green]Active[/]"
+
+    content = Text()
+    content.append(f"{star} ", style="bright_cyan")
+    content.append(scenario, style="bold bright_cyan")
+    content.append(f" {star}\n\n", style="bright_cyan")
+
+    content.append("Bookmark: ", style="dim")
+    content.append(bookmark, style="bold bright_magenta")
+    content.append("\n")
+
+    content.append("Status: ", style="dim")
+    content.append(f"{'Paused' if paused else 'Active'}\n", style="yellow" if paused else "green")
+
+    content.append("Pages: ", style="dim")
+    content.append(f"{page_count}\n", style="bold")
+
+    content.append("Created: ", style="dim")
+    content.append(f"{created_at}\n", style="dim italic")
+
+    if characters:
+        content.append("\nCharacters:\n", style="bold")
+        for char in characters[:6]:
+            name = char if isinstance(char, str) else char.get("name", "?")
+            content.append(f"  {heart} {name}\n", style="medium_purple1")
+
+    content.append(f"\nBook ID: ", style="dim")
+    content.append(book_id, style="dim italic")
+
+    console.print()
+    console.print(
+        Panel(
+            content,
+            title=f"[bold]{star} Book Details {star}[/]",
+            border_style="bright_cyan",
+            padding=(1, 3),
+        )
+    )
+    console.print()
+
+
+def render_book_deleted(scenario_name: str, animated: bool = True) -> None:
+    """Render book deletion confirmation with animation."""
+    check = "✓" if _supports_unicode() else "+"
+
+    if animated:
+        sys.stdout.write("\033[?25l")
+        try:
+            # Fade out effect
+            for color in [255, 250, 245, 240, 235, 230]:
+                sys.stdout.write(f"\r  {_c256(color)}Deleting {scenario_name}...{RESET}")
+                sys.stdout.flush()
+                time.sleep(0.10)
+
+            sys.stdout.write(f"\r  {_c256(46)}{check}{RESET} [dim]{scenario_name}[/] deleted              \n")
+        finally:
+            sys.stdout.write("\033[?25h")
+    else:
+        console.print(f"  [{_c256(46)}]{check}[/] [dim]{scenario_name}[/] deleted")
+
+    console.print()
+
+
+def render_book_joined(scenario_name: str, bookmark: str, animated: bool = True) -> None:
+    """Render book join confirmation with animation."""
+    star = "✧" if _supports_unicode() else "*"
+
+    if animated:
+        sys.stdout.write("\033[?25l")
+        try:
+            msg = f"Joining {scenario_name}"
+            for i in range(len(msg) + 1):
+                color = BOOK_GRADIENT[i % len(BOOK_GRADIENT)]
+                sys.stdout.write(f"\r  {_c256(color)}{msg[:i]}{RESET}")
+                sys.stdout.flush()
+                time.sleep(0.06)
+
+            time.sleep(0.35)
+            sys.stdout.write(f"\r  {_c256(46)}{star}{RESET} Joined [bold bright_cyan]{scenario_name}[/] ({bookmark})       \n")
+        finally:
+            sys.stdout.write("\033[?25h")
+    else:
+        console.print(f"  [green]{star}[/] Joined [bold bright_cyan]{scenario_name}[/] ({bookmark})")
+
+    console.print()
+
+
+def render_books_menu() -> None:
+    """Render the books command menu."""
+    star = "✧" if _supports_unicode() else "*"
+    dash = "-" if not _supports_unicode() else "-"  # Keep simple ASCII dash
+
+    console.print()
+    console.print(
+        Panel(
+            f"[bold bright_cyan]{star} BOOK COMMANDS {star}[/]\n\n"
+            f"[bold]books[/], [bold]books list[/]     [dim]{dash}[/]  Show your library\n"
+            f"[bold]books info[/] [dim]<id>[/]       [dim]{dash}[/]  View book details\n"
+            f"[bold]books join[/] [dim]<bookmark>[/]  [dim]{dash}[/]  Join via bookmark code\n"
+            f"[bold]books delete[/] [dim]<id>[/]     [dim]{dash}[/]  Delete a book (owner only)\n"
+            f"[bold]books resume[/] [dim]<id>[/]     [dim]{dash}[/]  Resume a previous session\n",
+            border_style="bright_cyan",
+            padding=(1, 2),
+        )
+    )
+    console.print()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

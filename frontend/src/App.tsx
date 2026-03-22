@@ -325,7 +325,7 @@ function App() {
     }
   }, [apiUrl, library.currentBook, library.librarianId, actions]);
 
-  // Handle scenario selection
+  // Handle scenario selection (creates a NEW book)
   const handleScenarioSelected = useCallback(async (scenario: string) => {
     setScenarioLoading(true);
     setScenarioError(null);
@@ -341,6 +341,28 @@ function App() {
     } catch (err) {
       console.error("Failed to create book:", err);
       const msg = err instanceof Error ? err.message : "Failed to create book";
+      setScenarioError(msg.includes("fetch") ? "Server unreachable — is the backend running?" : msg);
+    } finally {
+      setScenarioLoading(false);
+    }
+  }, [library]);
+
+  // Handle book selection (resumes an EXISTING book)
+  const handleBookSelected = useCallback(async (bookId: string) => {
+    setScenarioLoading(true);
+    setScenarioError(null);
+    try {
+      const book = await library.getBook(bookId);
+      if (!book) {
+        throw new Error("Book not found");
+      }
+      library.setCurrentBook(book);
+      setHasPlayed();
+      setGameSubView("connecting");
+      setView("game");
+    } catch (err) {
+      console.error("Failed to resume book:", err);
+      const msg = err instanceof Error ? err.message : "Failed to resume book";
       setScenarioError(msg.includes("fetch") ? "Server unreachable — is the backend running?" : msg);
     } finally {
       setScenarioLoading(false);
@@ -614,11 +636,12 @@ function App() {
               apiUrl={apiUrl}
               librarianId={library.librarianId}
               onScenarioSelected={handleScenarioSelected}
+              onBookSelected={handleBookSelected}
               isLoading={scenarioLoading}
               externalError={scenarioError}
               onBack={handleBackToDashboard}
               onOpenWizard={() => setView("wizard")}
-              initialTab={scenarioInitialTab}
+              initialTab={scenarioInitialTab === "my" || scenarioInitialTab === "public" ? "scenarios" : "books"}
             />
           </motion.div>
         )}

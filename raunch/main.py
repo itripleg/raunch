@@ -18,6 +18,8 @@ from .display import (
     render_server_startup, render_scene_intro, _scene_break,
     start_page_loading, stop_page_loading, update_page_loading,
     render_attach_animation, render_detach_animation,
+    render_books_list, render_book_info, render_book_deleted, render_book_joined,
+    render_books_menu,
 )
 from .config import CHARACTERS_DIR, SAVES_DIR
 from .wizard import generate_scenario, random_scenario, save_scenario, load_scenario, list_scenarios
@@ -991,18 +993,29 @@ def _connect_interactive_loop(client: RemoteClient) -> None:
     # Show help
     console.print(
         Panel(
-            "[bold]Commands:[/bold]\n"
-            "  [bold]n[/bold], [bold]next[/bold], Enter  Trigger next page\n"
-            "  [bold]p[/bold], [bold]pause[/bold]        Pause/resume\n"
-            "  [bold]t[/bold] <sec>          Set page interval (0=manual)\n"
-            "  [bold]c[/bold], [bold]characters[/bold]   List characters\n"
-            "  [bold]a[/bold] <name>         Attach to character\n"
-            "  [bold]d[/bold]                Detach\n"
-            "  [bold]w[/bold] <text>         Whisper to attached character\n"
-            "  [bold]>[/bold] <text>         Submit action\n"
-            "  [bold]q[/bold]                Quit",
-            title="Remote Session",
-            border_style="cyan",
+            "[bold bright_cyan]STORY[/]\n"
+            "  [bold]n[/], [bold]next[/], Enter  [dim]─[/]  Trigger next page\n"
+            "  [bold]p[/], [bold]pause[/]        [dim]─[/]  Pause/resume\n"
+            "  [bold]t[/] <sec>          [dim]─[/]  Set page interval (0=manual)\n"
+            "\n"
+            "[bold bright_cyan]CHARACTERS[/]\n"
+            "  [bold]c[/], [bold]characters[/]   [dim]─[/]  List characters\n"
+            "  [bold]a[/] <name>         [dim]─[/]  Attach to character\n"
+            "  [bold]d[/]                [dim]─[/]  Detach\n"
+            "  [bold]w[/] <text>         [dim]─[/]  Whisper to attached character\n"
+            "  [bold]>[/] <text>         [dim]─[/]  Submit action\n"
+            "\n"
+            "[bold bright_cyan]BOOKS[/]\n"
+            "  [bold]books[/]             [dim]─[/]  List your books\n"
+            "  [bold]delete[/] <id>       [dim]─[/]  Delete a book\n"
+            "  [bold]switch[/] <bookmark> [dim]─[/]  Switch to another book\n"
+            "\n"
+            "[bold bright_cyan]SYSTEM[/]\n"
+            "  [bold]?[/], [bold]help[/]          [dim]─[/]  Show commands\n"
+            "  [bold]q[/]                [dim]─[/]  Quit",
+            title="[bold]Remote Session[/]",
+            border_style="bright_cyan",
+            padding=(0, 2),
         )
     )
 
@@ -1097,6 +1110,90 @@ def _connect_interactive_loop(client: RemoteClient) -> None:
                         console.print("[dim]Action submitted[/dim]")
                     except Exception as e:
                         console.print(f"[red]{e}[/red]")
+            elif cmd_name in ('books', 'library'):
+                # List books
+                try:
+                    books_list = client.list_books()
+                    books_data = [
+                        {
+                            "id": b.book_id,
+                            "scenario_name": b.scenario_name,
+                            "bookmark": b.bookmark,
+                            "page_count": b.page_count,
+                            "paused": b.paused,
+                            "is_owner": True,
+                        }
+                        for b in books_list
+                    ]
+                    render_books_list(books_data, animated=False)
+                except Exception as e:
+                    console.print(f"[red]Could not list books: {e}[/red]")
+            elif cmd_name == 'delete':
+                # Delete a book
+                if not cmd_arg:
+                    console.print("[red]Usage: delete <book_id or bookmark>[/red]")
+                else:
+                    try:
+                        # Find the book first
+                        books_list = client.list_books()
+                        target = None
+                        for b in books_list:
+                            if b.book_id.startswith(cmd_arg) or b.bookmark.upper() == cmd_arg.upper():
+                                target = b
+                                break
+
+                        if not target:
+                            console.print(f"[red]Book not found: {cmd_arg}[/red]")
+                        else:
+                            console.print(f"[yellow]Delete:[/yellow] {target.scenario_name}")
+                            confirm = input("Type 'delete' to confirm: ").strip().lower()
+                            if confirm == 'delete':
+                                client.delete_book(target.book_id)
+                                render_book_deleted(target.scenario_name, animated=True)
+                            else:
+                                console.print("[dim]Cancelled[/dim]")
+                    except Exception as e:
+                        console.print(f"[red]{e}[/red]")
+            elif cmd_name == 'switch':
+                # Switch to another book
+                if not cmd_arg:
+                    console.print("[red]Usage: switch <bookmark>[/red]")
+                else:
+                    try:
+                        client.disconnect()
+                        book_id = client.join_book(cmd_arg)
+                        book = client.get_book_info(book_id)
+                        render_book_joined(book.scenario_name if book else "Unknown", cmd_arg, animated=True)
+                        client.connect_ws()
+                        client.join_as_reader(client.nickname)
+                    except Exception as e:
+                        console.print(f"[red]Could not switch: {e}[/red]")
+            elif cmd_name in ('?', 'help'):
+                # Redisplay help
+                console.print(
+                    Panel(
+                        "[bold bright_cyan]STORY[/]\n"
+                        "  [bold]n[/], [bold]next[/], Enter  [dim]─[/]  Trigger next page\n"
+                        "  [bold]p[/], [bold]pause[/]        [dim]─[/]  Pause/resume\n"
+                        "  [bold]t[/] <sec>          [dim]─[/]  Set page interval\n"
+                        "\n"
+                        "[bold bright_cyan]CHARACTERS[/]\n"
+                        "  [bold]c[/]                [dim]─[/]  List characters\n"
+                        "  [bold]a[/] <name>         [dim]─[/]  Attach\n"
+                        "  [bold]d[/]                [dim]─[/]  Detach\n"
+                        "  [bold]w[/] <text>         [dim]─[/]  Whisper\n"
+                        "\n"
+                        "[bold bright_cyan]BOOKS[/]\n"
+                        "  [bold]books[/]             [dim]─[/]  List books\n"
+                        "  [bold]delete[/] <id>       [dim]─[/]  Delete book\n"
+                        "  [bold]switch[/] <bookmark> [dim]─[/]  Switch books\n"
+                        "\n"
+                        "[bold]q[/]  Quit",
+                        title="[bold]Commands[/]",
+                        border_style="bright_cyan",
+                        padding=(0, 2),
+                    )
+                )
             else:
                 # Treat as action
                 try:
@@ -1357,6 +1454,281 @@ def purge(yes):
 
 
 # ---------------------------------------------------------------------------
+# BOOK MANAGEMENT — Premium library experience
+# ---------------------------------------------------------------------------
+
+@cli.group(invoke_without_command=True)
+@click.option("--server", "-s", default=None, help="Server URL (default: localhost:8000)")
+@click.option("--quick", "-q", is_flag=True, help="Skip animations")
+@click.pass_context
+def books(ctx, server, quick):
+    """Manage your book library — list, join, delete, and resume books.
+
+    Examples:
+        raunch books              # List your books
+        raunch books list         # Same as above
+        raunch books info abc123  # View book details
+        raunch books join MILK-1A # Join via bookmark
+        raunch books delete abc1  # Delete a book
+    """
+    ctx.ensure_object(dict)
+    ctx.obj["server"] = server or os.environ.get("RAUNCH_SERVER", "http://localhost:8000")
+    ctx.obj["quick"] = quick
+
+    # If no subcommand, show books list
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(books_list)
+
+
+@books.command("list")
+@click.pass_context
+def books_list(ctx):
+    """List all your books."""
+    server_url = ctx.obj.get("server", "http://localhost:8000")
+    quick = ctx.obj.get("quick", False)
+
+    # Try local database first
+    books_data = []
+    try:
+        from .db_sqlite import _get_conn
+        conn = _get_conn()
+        rows = conn.execute("""
+            SELECT id, scenario_name, bookmark, page_count, paused, owner_id, created_at
+            FROM books
+            ORDER BY created_at DESC
+            LIMIT 50
+        """).fetchall()
+        books_data = [dict(r) for r in rows]
+    except Exception:
+        pass
+
+    # Fall back to remote API
+    if not books_data:
+        try:
+            client = RemoteClient(server_url)
+            books_list_result = client.list_books()
+            books_data = [
+                {
+                    "id": b.book_id,
+                    "scenario_name": b.scenario_name,
+                    "bookmark": b.bookmark,
+                    "page_count": b.page_count,
+                    "paused": b.paused,
+                    "is_owner": True,
+                }
+                for b in books_list_result
+            ]
+        except Exception as e:
+            console.print(f"[red]Could not fetch books: {e}[/red]")
+            console.print(f"[dim]Server: {server_url}[/dim]")
+            return
+
+    render_books_list(books_data, animated=not quick)
+
+
+@books.command("info")
+@click.argument("book_id")
+@click.pass_context
+def books_info(ctx, book_id):
+    """View detailed book information."""
+    server_url = ctx.obj.get("server", "http://localhost:8000")
+    quick = ctx.obj.get("quick", False)
+
+    # Try local database first
+    book_data = None
+    try:
+        from .db_sqlite import _get_conn
+        conn = _get_conn()
+
+        # Match by ID prefix or bookmark
+        row = conn.execute("""
+            SELECT id, scenario_name, bookmark, page_count, paused, owner_id, created_at
+            FROM books
+            WHERE id LIKE ? OR UPPER(bookmark) = UPPER(?)
+            LIMIT 1
+        """, (f"{book_id}%", book_id)).fetchone()
+
+        if row:
+            book_data = dict(row)
+            # Get characters for this book
+            # TODO: fetch from book state if available
+    except Exception:
+        pass
+
+    # Fall back to remote API
+    if not book_data:
+        try:
+            client = RemoteClient(server_url)
+            book = client.get_book_info(book_id)
+            if book:
+                book_data = {
+                    "id": book.book_id,
+                    "scenario_name": book.scenario_name,
+                    "bookmark": book.bookmark,
+                    "page_count": book.page_count,
+                    "paused": book.paused,
+                    "characters": book.characters,
+                }
+        except Exception as e:
+            console.print(f"[red]Could not fetch book: {e}[/red]")
+            return
+
+    if not book_data:
+        console.print(f"[red]Book not found: {book_id}[/red]")
+        return
+
+    render_book_info(book_data, animated=not quick)
+
+
+@books.command("delete")
+@click.argument("book_id")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def books_delete(ctx, book_id, yes):
+    """Delete a book you own."""
+    server_url = ctx.obj.get("server", "http://localhost:8000")
+    quick = ctx.obj.get("quick", False)
+
+    # Find the book first
+    book_data = None
+    try:
+        from .db_sqlite import _get_conn
+        conn = _get_conn()
+
+        row = conn.execute("""
+            SELECT id, scenario_name, bookmark, page_count
+            FROM books
+            WHERE id LIKE ? OR UPPER(bookmark) = UPPER(?)
+            LIMIT 1
+        """, (f"{book_id}%", book_id)).fetchone()
+
+        if row:
+            book_data = dict(row)
+    except Exception:
+        pass
+
+    if not book_data:
+        console.print(f"[red]Book not found: {book_id}[/red]")
+        console.print("[dim]Use 'raunch books' to see your books.[/dim]")
+        return
+
+    scenario_name = book_data.get("scenario_name", "Unknown")
+    full_id = book_data.get("id")
+
+    # Confirmation
+    if not yes:
+        console.print(f"\n[yellow]Delete book:[/yellow] [bold]{scenario_name}[/]")
+        console.print(f"[dim]ID: {full_id}[/dim]")
+        console.print(f"[dim]Pages: {book_data.get('page_count', 0)}[/dim]")
+        console.print()
+        try:
+            confirm = input("Type 'delete' to confirm: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]Cancelled.[/dim]")
+            return
+        if confirm != "delete":
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+    # Delete from database
+    try:
+        from .db_sqlite import _get_conn
+        conn = _get_conn()
+
+        # Delete related data
+        conn.execute("DELETE FROM pages WHERE world_id = ?", (full_id,))
+        conn.execute("DELETE FROM character_pages WHERE world_id = ?", (full_id,))
+        conn.execute("DELETE FROM potential_characters WHERE world_id = ?", (full_id,))
+        conn.execute("DELETE FROM books WHERE id = ?", (full_id,))
+        conn.commit()
+
+        render_book_deleted(scenario_name, animated=not quick)
+    except Exception as e:
+        console.print(f"[red]Delete failed: {e}[/red]")
+
+        # Try remote delete
+        try:
+            client = RemoteClient(server_url)
+            client.delete_book(full_id)
+            render_book_deleted(scenario_name, animated=not quick)
+        except Exception as e2:
+            console.print(f"[red]Remote delete also failed: {e2}[/red]")
+
+
+@books.command("join")
+@click.argument("bookmark")
+@click.pass_context
+def books_join(ctx, bookmark):
+    """Join a book via bookmark code."""
+    server_url = ctx.obj.get("server", "http://localhost:8000")
+    quick = ctx.obj.get("quick", False)
+
+    try:
+        client = RemoteClient(server_url)
+        book_id = client.join_book(bookmark)
+
+        # Get book info
+        book = client.get_book_info(book_id)
+        scenario_name = book.scenario_name if book else "Unknown"
+
+        render_book_joined(scenario_name, bookmark, animated=not quick)
+
+        console.print(f"[dim]Book ID: {book_id}[/dim]")
+        console.print(f"\n[bold]Start playing:[/bold]")
+        console.print(f"  raunch attach --book {book_id}")
+
+    except Exception as e:
+        console.print(f"[red]Could not join: {e}[/red]")
+        console.print(f"[dim]Bookmark: {bookmark} | Server: {server_url}[/dim]")
+
+
+@books.command("resume")
+@click.argument("book_id")
+@click.pass_context
+def books_resume(ctx, book_id):
+    """Resume a previous book session."""
+    server_url = ctx.obj.get("server", "http://localhost:8000")
+
+    # Find the book
+    book_data = None
+    try:
+        from .db_sqlite import _get_conn
+        conn = _get_conn()
+
+        row = conn.execute("""
+            SELECT id, scenario_name, bookmark
+            FROM books
+            WHERE id LIKE ? OR UPPER(bookmark) = UPPER(?)
+            LIMIT 1
+        """, (f"{book_id}%", book_id)).fetchone()
+
+        if row:
+            book_data = dict(row)
+    except Exception:
+        pass
+
+    if not book_data:
+        console.print(f"[red]Book not found: {book_id}[/red]")
+        return
+
+    full_id = book_data.get("id")
+    scenario_name = book_data.get("scenario_name")
+
+    console.print(f"\n[cyan]Resuming: {scenario_name}[/cyan]")
+    console.print(f"[dim]Book ID: {full_id}[/dim]")
+    console.print()
+
+    # Hand off to attach command
+    ctx.invoke(attach, character=None, host="localhost", port=8000, book_id=full_id)
+
+
+@books.command("help")
+def books_help():
+    """Show book management commands."""
+    render_books_menu()
+
+
+# ---------------------------------------------------------------------------
 # CHARACTER MANAGEMENT
 # ---------------------------------------------------------------------------
 
@@ -1570,6 +1942,48 @@ def wizard(num_chars, quick, debug):
     if extras and not quick:
         selection_confirm(extras, "Special")
 
+    # ─── LANGUAGE ─────────────────────────────────────────────────────────
+    LANGUAGES = [
+        "English (default)",
+        "Japanese (日本語)",
+        "Spanish (Español)",
+        "French (Français)",
+        "German (Deutsch)",
+        "Korean (한국어)",
+        "Pirate Speak",
+        "Elvish/Fantasy",
+        "Formal Victorian",
+    ]
+
+    if not quick:
+        sexy_prompt("In what tongue shall the tale be told?", "LANGUAGE")
+    else:
+        console.print("\n[bold bright_magenta]Output language?[/]")
+
+    option_display(LANGUAGES) if not quick else [console.print(f"  [dim]{i:2}.[/] {v}") for i, v in enumerate(LANGUAGES, 1)]
+
+    console.print()
+    console.print("  [dim italic]Pick a number, type any language/style, or Enter for English[/]")
+
+    try:
+        lang_choice = input("\n  > ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+
+    if lang_choice.isdigit() and 1 <= int(lang_choice) <= len(LANGUAGES):
+        language = LANGUAGES[int(lang_choice) - 1]
+        if language.startswith("English"):
+            language = None  # Default, don't need to specify
+    elif lang_choice:
+        language = lang_choice
+    else:
+        language = None  # Default English
+
+    if language and not quick:
+        selection_confirm(language, "Language")
+    elif language:
+        console.print(f"  [green]Language: {language}[/]")
+
     # Generate with animation
     def do_generate():
         return generate_scenario(
@@ -1591,8 +2005,10 @@ def wizard(num_chars, quick, debug):
         console.print(f"[red]The ritual failed: {e}[/red]")
         return
 
-    # Add multiplayer flag to scenario
+    # Add multiplayer and language flags to scenario
     scenario["multiplayer"] = multiplayer
+    if language:
+        scenario["language"] = language
 
     # Reveal
     if not quick:
@@ -1620,32 +2036,34 @@ def roll(num_chars, quick, debug):
     """Roll the dice — generate a fully random scenario."""
     import random as rand
     from .wizard_display import (
-        roll_dice_animation, conjuring_sequence, scenario_reveal, wizard_farewell
+        roll_dice_with_generation, scenario_reveal, wizard_farewell
     )
 
     # Random character count if not specified (weighted toward 2)
     if num_chars is None:
         num_chars = rand.choice([1, 2, 2, 2, 3, 3, 4])
 
-    if not quick:
-        roll_dice_animation()
-        # Show what we rolled
-        char_desc = {1: "solo", 2: "duo", 3: "trio", 4: "quartet"}.get(num_chars, f"{num_chars}-way")
-        console.print(f"\n  [dim]The dice decree:[/] [bold bright_magenta]{char_desc} encounter[/]\n")
-    else:
-        console.print(f"[bright_magenta]Rolling the dice... ({num_chars} characters)[/bright_magenta]")
-
     def do_generate():
         return random_scenario(num_characters=num_chars, debug=debug)
 
-    try:
-        if not quick:
-            scenario = conjuring_sequence(do_generate)
-        else:
+    if not quick:
+        # Start LLM generation immediately, dice animation runs in parallel
+        try:
+            scenario = roll_dice_with_generation(do_generate)
+        except Exception as e:
+            console.print(f"[red]The fates rejected your roll: {e}[/red]")
+            return
+
+        # Show what we rolled
+        char_desc = {1: "solo", 2: "duo", 3: "trio", 4: "quartet"}.get(num_chars, f"{num_chars}-way")
+        console.print(f"  [dim]The dice decreed:[/] [bold bright_magenta]{char_desc} encounter[/]\n")
+    else:
+        console.print(f"[bright_magenta]Rolling the dice... ({num_chars} characters)[/bright_magenta]")
+        try:
             scenario = do_generate()
-    except Exception as e:
-        console.print(f"[red]The fates rejected your roll: {e}[/red]")
-        return
+        except Exception as e:
+            console.print(f"[red]The fates rejected your roll: {e}[/red]")
+            return
 
     if not quick:
         scenario_reveal(scenario)
