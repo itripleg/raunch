@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { ArrowLeft, Sparkles, Users, MessageCircle, Eye, Wand2, Theater, Cpu, Globe, Zap } from "lucide-react";
+import { ArrowLeft, Users, MessageCircle, Eye, Wand2, Theater, Cpu, Globe, Zap } from "lucide-react";
 
 type Props = {
   onBack: () => void;
