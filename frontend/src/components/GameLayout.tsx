@@ -249,8 +249,9 @@ export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId
   const handleTapCharacter = useCallback((name: string) => {
     const isMobile = window.innerWidth < 1024;
     if (isMobile) {
-      // Mobile: attach to character and open panel
+      // Mobile: attach to character and open panel immediately
       actions.attach(name);
+      setPreviewCharacter(name); // Show instantly while WS attach round-trips
       setCharacterPanelOpen(true);
     } else if (game.attachedTo || game.directorMode || previewCharacter) {
       // Desktop: only preview if panel already open
@@ -652,7 +653,7 @@ export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId
 
         {/* Mobile right panel overlay - Director or Character */}
         <AnimatePresence>
-          {characterPanelOpen && (game.directorMode || displayedCharacterName) && (
+          {characterPanelOpen && (game.directorMode || displayedCharacterName || game.attachedTo) && (
             <div className="lg:hidden fixed inset-0 z-40">
               {/* Backdrop */}
               <motion.div

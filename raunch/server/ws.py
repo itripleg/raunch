@@ -396,7 +396,7 @@ async def handle_websocket(websocket: WebSocket, book_id: str):
     history = []
     try:
         logger.info(f"[History] Looking up pages for book_id={book_id}, world.world_id={world.world_id}")
-        history_data = db.get_page_history(book_id, limit=20)
+        history_data = db.get_page_history(book_id, limit=100)
         logger.info(f"[History] Loaded {len(history_data)} pages for book {book_id}")
         for h in history_data:
             history.append({

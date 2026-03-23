@@ -124,7 +124,10 @@ class Agent:
             return {"raw": raw, "_refusal": True}
 
     def _store_and_parse(self, raw: str, world_context: str, _original_context: str = None) -> Dict[str, Any]:
-        """Store response in history and parse JSON."""
+        """Store response in history and parse JSON. Skip refusals to prevent poisoning."""
+        if _is_refusal(raw):
+            logger.warning(f"[{self.name}] Refusal detected — not storing in history to prevent cascade")
+            return self._parse_json(raw)
         store_context = _original_context if _original_context else world_context
         self.history.append({"role": "user", "content": store_context})
         self.history.append({"role": "assistant", "content": raw})
