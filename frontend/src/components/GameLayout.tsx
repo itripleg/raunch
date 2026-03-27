@@ -81,7 +81,7 @@ export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId
   const [nextClicked, setNextClicked] = useState(false);
   const [waitingForPage, setWaitingForPage] = useState(false);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
-  const { mockMode, toggleMockMode } = useMockMode();
+  const { mockMode } = useMockMode();
   const feedRef = useRef<HTMLDivElement>(null);
 
   // Potential characters (NPCs detected by narrator)
