@@ -1402,13 +1402,13 @@ class Orchestrator:
         logger.info("World resumed")
 
     def set_page_interval(self, seconds: int) -> None:
-        """Set the page interval in seconds. 0 = manual mode, otherwise min 10, max 86400."""
+        """Set the page interval in seconds. 0 = manual mode, otherwise min 30, max 86400."""
         was_manual = self.page_interval == 0
         if seconds == 0:
             self.page_interval = 0
             logger.info("Page interval set to manual mode")
         else:
-            self.page_interval = max(10, min(86400, seconds))
+            self.page_interval = max(30, min(86400, seconds))
             self._auto_pages_generated = 0  # Reset budget when interval changes
             logger.info(f"Page interval set to {self.page_interval}s")
             # If transitioning from manual to auto mode, unblock the loop

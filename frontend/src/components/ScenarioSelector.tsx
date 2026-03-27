@@ -606,9 +606,9 @@ export function ScenarioSelector({
                   <div className="space-y-3">
                     {/* Stats */}
                     <div className="flex items-center gap-4 text-xs text-muted-foreground/50 pb-1">
-                      <span>{ownBooks.length} {ownBooks.length === 1 ? "book" : "books"}</span>
+                      <span>{ownBooks.length + joinedBooks.length} {(ownBooks.length + joinedBooks.length) === 1 ? "book" : "books"}</span>
                       <span className="w-px h-3 bg-border/30" />
-                      <span>{ownBooks.reduce((sum, b) => sum + b.page_count, 0)} total pages</span>
+                      <span>{[...ownBooks, ...joinedBooks].reduce((sum, b) => sum + b.page_count, 0)} total pages</span>
                     </div>
                     {/* Own books */}
                     {ownBooks.length > 0 && ownBooks.map((book, i) => (

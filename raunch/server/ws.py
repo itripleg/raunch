@@ -387,7 +387,11 @@ async def handle_websocket(websocket: WebSocket, book_id: str):
         return
 
     client = WSClient(websocket=websocket, book_id=book_id)
-    client.librarian_id = websocket.query_params.get("librarian_id")
+    # Validate librarian_id against DB (matches REST layer's get_librarian_id)
+    raw_librarian_id = websocket.query_params.get("librarian_id")
+    if raw_librarian_id and db.get_librarian(raw_librarian_id) is None:
+        raw_librarian_id = None  # Reject forged/invalid IDs
+    client.librarian_id = raw_librarian_id
     client_id = ws_manager.add_client(book_id, client)
 
     # Send welcome message

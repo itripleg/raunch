@@ -31,11 +31,20 @@ export function ActionBar({
   const [value, setValue] = useState("");
   const [flash, setFlash] = useState(false);
 
+  // prevInfluenceRef tracks the last seen pendingInfluence text so we can detect
+  // when the parent sets a genuinely new pending whisper (e.g. another character
+  // was tapped) and pre-populate the input with that suggested text.
   const prevInfluenceRef = useRef<string | null>(null);
+  // justSubmittedRef records the text the user just sent so we can skip
+  // re-populating the input if the parent echoes the same text back as
+  // pendingInfluence — without this guard, submitting would immediately
+  // refill the input with the text the user already sent.
   const justSubmittedRef = useRef<string | null>(null);
   useEffect(() => {
     const influenceText = pendingInfluence?.text ?? null;
     if (influenceText && influenceText !== prevInfluenceRef.current) {
+      // Only pre-populate when the incoming text differs from what we just
+      // submitted; avoids fighting the user's cleared input after a send.
       if (influenceText !== justSubmittedRef.current) {
         setValue(influenceText);
       }
@@ -46,16 +55,23 @@ export function ActionBar({
 
   const handleSubmit = useCallback(() => {
     const text = value.trim();
+    // Intentionally allows blank submit when there is a pending whisper/direction —
+    // the backend interprets an empty whisper/director command as a clear request
+    // and responds with influence_cleared / director_cleared WS messages.
     let submitted = false;
     if (directorMode) {
       onSubmitDirector(text);
       submitted = true;
     } else if (attachedTo) {
+      // Record what we're about to send so the useEffect above can skip
+      // re-populating the input when the parent reflects it back as pending.
       justSubmittedRef.current = text;
       onSubmitInfluence(text);
       submitted = true;
     }
     if (submitted) {
+      // Submitting with an empty string is intentional: it lets the user
+      // clear a pending whisper or director guidance without sending new text.
       setValue("");
       setFlash(true);
     }
