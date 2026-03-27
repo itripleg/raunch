@@ -171,7 +171,7 @@ function App() {
   const isAdmin = LOCAL_DEMO || user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
   const library = useLibrary(apiUrl, accessToken, user?.id);
-  const { wsState, game, actions } = useGame(apiUrl, library.currentBook?.book_id);
+  const { wsState, game, actions } = useGame(apiUrl, library.currentBook?.book_id, library.librarianId);
 
   // View state — skip presplash if user has played before
   const [view, setView] = useState<AppView>(() => hasPlayedBefore() ? "splash" : "presplash");
@@ -181,7 +181,7 @@ function App() {
   const { toggleMockMode } = useMockMode();
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === "M") { e.preventDefault(); toggleMockMode(); }
+      if (e.ctrlKey && e.shiftKey && e.key === "M" && isAdmin) { e.preventDefault(); toggleMockMode(); }
       if (e.key === "Escape" && showCommandCenter) setShowCommandCenter(false);
     };
     window.addEventListener("keydown", handler);
