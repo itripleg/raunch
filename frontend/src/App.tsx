@@ -620,6 +620,8 @@ function App() {
                 setScenarioInitialTab("my");
                 setView("scenario");
               }}
+              onStartBook={(scenarioId) => handleScenarioSelected(scenarioId)}
+              isAdmin={isAdmin}
             />
           </motion.div>
         )}
