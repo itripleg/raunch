@@ -379,43 +379,17 @@ export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId
             )
           )}
 
-          {/* Debug button — admin only, desktop only */}
-          {isAdmin && (
-            <button
-              onClick={onOpenDebug}
-              className="hidden sm:block p-1.5 text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors"
-              title="Debug Panel"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 20h.01M8.5 3H7a2 2 0 0 0-2 2v1.5M15.5 3H17a2 2 0 0 1 2 2v1.5M8.5 21H7a2 2 0 0 1-2-2v-1.5M15.5 21H17a2 2 0 0 0 2-2v-1.5M3 8.5V7a2 2 0 0 1 2-2h1.5M21 8.5V7a2 2 0 0 0-2-2h-1.5M3 15.5V17a2 2 0 0 0 2 2h1.5M21 15.5V17a2 2 0 0 1-2 2h-1.5M12 12h.01" />
-              </svg>
-            </button>
-          )}
-
-          {/* Right panel toggle - mobile only, shown when attached or director mode */}
-          {(game.attachedTo || game.directorMode) && (
-            <button
-              onClick={() => setCharacterPanelOpen(!characterPanelOpen)}
-              className={`lg:hidden p-1.5 -mr-1.5 transition-colors ${
-                game.directorMode
-                  ? "text-amber-400 hover:text-amber-300"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              aria-label={game.directorMode ? "Toggle director panel" : "Toggle character panel"}
-            >
-              {game.directorMode ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 11l18-5v12L3 13v-2z" />
-                  <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
-                </svg>
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-              )}
-            </button>
-          )}
+          {/* Settings / Control Panel */}
+          <button
+            onClick={onOpenDebug}
+            className="p-1.5 text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors"
+            title="Settings"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+            </svg>
+          </button>
 
         </div>
       </header>
@@ -516,7 +490,6 @@ export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId
             pendingDirectorGuidance={game.pendingDirectorGuidance}
             isStreaming={game.streaming?.isStreaming}
             wideMode={wideMode}
-            onNextPage={actions.triggerPage ? handleNextClick : undefined}
           />
 
           {/* Turn state indicator - only in multiplayer */}

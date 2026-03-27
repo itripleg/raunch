@@ -100,6 +100,49 @@ async def list_books(librarian_id: str = Depends(get_librarian_id)):
     return books
 
 
+@router.get("/public", response_model=List[dict])
+async def list_public_books():
+    """List all public books available to join."""
+    from raunch.wizard import load_scenario
+    books = db.list_public_books()
+    for book in books:
+        raw_name = book.get("scenario_name", "")
+        try:
+            data = load_scenario(raw_name)
+            if data:
+                if data.get("scenario_name"):
+                    book["scenario_name"] = data["scenario_name"]
+                book["setting"] = data.get("setting")
+                book["characters"] = [c.get("name", "?") for c in data.get("characters", [])]
+                book["premise"] = data.get("premise")
+        except Exception:
+            pass
+        try:
+            book["readers"] = db.count_book_readers(book["id"])
+            book["mood"] = db.get_latest_mood(book["id"])
+        except Exception:
+            pass
+    return books
+
+
+@router.post("/join", response_model=JoinBookResponse)
+async def join_book(
+    request: JoinBookRequest,
+    librarian_id: str = Depends(get_librarian_id),
+):
+    """Join a book via bookmark."""
+    library = get_library()
+    book_id = library.find_by_bookmark(request.bookmark)
+
+    if book_id is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    # Bookmark always grants access — private flag only controls public listing
+    db.grant_book_access(book_id, librarian_id, role="reader")
+
+    return JoinBookResponse(book_id=book_id)
+
+
 @router.get("/{book_id}", response_model=BookResponse)
 async def get_book(
     book_id: str,
@@ -145,49 +188,6 @@ async def leave_book(
     if not removed:
         raise HTTPException(status_code=400, detail="Cannot leave — you own this book or aren't a member")
     return {"left": True}
-
-
-@router.get("/public", response_model=List[dict])
-async def list_public_books():
-    """List all public books available to join."""
-    from raunch.wizard import load_scenario
-    books = db.list_public_books()
-    for book in books:
-        raw_name = book.get("scenario_name", "")
-        try:
-            data = load_scenario(raw_name)
-            if data:
-                if data.get("scenario_name"):
-                    book["scenario_name"] = data["scenario_name"]
-                book["setting"] = data.get("setting")
-                book["characters"] = [c.get("name", "?") for c in data.get("characters", [])]
-                book["premise"] = data.get("premise")
-        except Exception:
-            pass
-        try:
-            book["readers"] = db.count_book_readers(book["id"])
-            book["mood"] = db.get_latest_mood(book["id"])
-        except Exception:
-            pass
-    return books
-
-
-@router.post("/join", response_model=JoinBookResponse)
-async def join_book(
-    request: JoinBookRequest,
-    librarian_id: str = Depends(get_librarian_id),
-):
-    """Join a book via bookmark."""
-    library = get_library()
-    book_id = library.find_by_bookmark(request.bookmark)
-
-    if book_id is None:
-        raise HTTPException(status_code=404, detail="Book not found")
-
-    # Bookmark always grants access — private flag only controls public listing
-    db.grant_book_access(book_id, librarian_id, role="reader")
-
-    return JoinBookResponse(book_id=book_id)
 
 
 class PauseResponse(BaseModel):

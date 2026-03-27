@@ -250,13 +250,17 @@ function BookCardExpanded({ book, index, onResume, onDelete, onToggleShare, isLo
               <div className="w-2 h-0.5 bg-muted-foreground/10 rounded-full ml-0.5" />
             </div>
           </div>
-          <h3 className="font-medium text-foreground/90 flex-1 min-w-0 truncate">{book.scenario_name}</h3>
-          {book.mood && (
-            <span className="px-2 py-0.5 text-[10px] rounded-md bg-primary/10 text-primary/70 font-medium shrink-0 italic">
+          <h3 className="font-medium text-foreground/90 flex-1 min-w-0">{book.scenario_name}</h3>
+        </div>
+
+        {/* Mood */}
+        {book.mood && (
+          <div className="ml-8 mb-1">
+            <span className="px-1.5 py-0.5 text-[10px] rounded-md bg-primary/10 text-primary/70 italic">
               {book.mood}
             </span>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Meta row — always visible */}
         <div className="flex items-center gap-3 text-xs flex-wrap ml-8">

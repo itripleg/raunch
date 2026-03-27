@@ -14,7 +14,7 @@ import { NicknamePrompt } from "./components/NicknamePrompt";
 import { CharacterWizard } from "./components/CharacterWizard";
 import { WizardPage } from "./components/WizardPage";
 import { ScenarioSelector } from "./components/ScenarioSelector";
-import { CommandCenter, CommandCenterTrigger } from "./components/CommandCenter";
+import { CommandCenter } from "./components/CommandCenter";
 import { NotFoundPage } from "./components/NotFoundPage";
 
 const NICKNAME_STORAGE_KEY = "raunch_nickname";
@@ -418,6 +418,29 @@ function App() {
     }
   }, [isConnected, hasWorld, gameSubView]);
 
+  // Safety net: if in game view with a book but WS is disconnected, force connect
+  useEffect(() => {
+    if (view === "game" && hasBook && wsState === "disconnected") {
+      const timer = setTimeout(() => {
+        console.warn("[App] In game view but disconnected — forcing connect");
+        actions.connect();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [view, hasBook, wsState, actions]);
+
+  // Safety net: if connected but no world data after 2s, re-request it
+  useEffect(() => {
+    if (isConnected && !hasWorld && view === "game") {
+      const timer = setTimeout(() => {
+        console.warn("[App] Connected but no world data — re-requesting");
+        actions.getWorld();
+        actions.listCharacters();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isConnected, hasWorld, view, actions]);
+
   // In solo mode, auto-confirm nickname (skip the prompt)
   useEffect(() => {
     if (isConnected && hasWorld && !isMultiplayer && !nicknameConfirmed) {
@@ -518,30 +541,18 @@ function App() {
   // Render based on view state
   return (
     <>
-      <AnimatePresence mode="wait">
+      <>
         {view === "splash" && (
-          <motion.div
-            key="splash"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-          >
+          <div key="splash">
             <SplashScreen
               onComplete={handleSplashComplete}
               showIntro={false}
             />
-          </motion.div>
+          </div>
         )}
 
         {view === "dashboard" && (
-          <motion.div
-            key="dashboard"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-          >
+          <div>
             <AlphaDashboard
               onNavigate={handleNavigate}
               isAdmin={isAuthenticated}
@@ -551,67 +562,43 @@ function App() {
               hasActiveBook={library.currentBook !== null}
               activeBookName={library.currentBook?.scenario}
             />
-          </motion.div>
+          </div>
         )}
 
         {view === "kanban" && (
-          <motion.div
-            key="kanban"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-          >
+          <div>
             <FeedbackKanban
               onBack={handleBackToDashboard}
               isAdmin={isAuthenticated}
               apiUrl={apiUrl}
               userEmail={user?.email}
             />
-          </motion.div>
+          </div>
         )}
 
         {view === "voting" && (
-          <motion.div
-            key="voting"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-          >
+          <div>
             <VotingPolls
               onBack={handleBackToDashboard}
               isAdmin={isAuthenticated}
               apiUrl={apiUrl}
               userEmail={user?.email}
             />
-          </motion.div>
+          </div>
         )}
 
         {view === "about" && (
-          <motion.div
-            key="about"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-          >
+          <div>
             <AboutPage
               onBack={handleBackToDashboard}
               isAdmin={isAuthenticated}
               apiUrl={apiUrl}
             />
-          </motion.div>
+          </div>
         )}
 
         {view === "wizard" && (
-          <motion.div
-            key="wizard"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-          >
+          <div>
             <WizardPage
               onBack={handleBackToDashboard}
               apiUrl={apiUrl}
@@ -623,17 +610,11 @@ function App() {
               onStartBook={(scenarioId) => handleScenarioSelected(scenarioId)}
               isAdmin={isAdmin}
             />
-          </motion.div>
+          </div>
         )}
 
         {view === "scenario" && (
-          <motion.div
-            key="scenario"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-          >
+          <div>
             <ScenarioSelector
               apiUrl={apiUrl}
               librarianId={library.librarianId}
@@ -645,29 +626,17 @@ function App() {
               onOpenWizard={() => setView("wizard")}
               initialTab={scenarioInitialTab === "my" || scenarioInitialTab === "public" ? "scenarios" : "books"}
             />
-          </motion.div>
+          </div>
         )}
 
         {view === "notfound" && (
-          <motion.div
-            key="notfound"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3 }}
-          >
+          <div>
             <NotFoundPage onBack={handleBackToDashboard} />
-          </motion.div>
+          </div>
         )}
 
         {view === "game" && (
-          <motion.div
-            key="game"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-          >
+          <div className="h-screen">
             {/* No book selected - redirect to scenario selector */}
             {!hasBook ? (
               <div className="min-h-screen flex items-center justify-center">
@@ -858,14 +827,11 @@ function App() {
                 />
               )}
             </AnimatePresence>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      </>
 
-      {/* Command Center trigger - hidden during splash and dashboard (dashboard has its own gear) */}
-      {view !== "splash" && view !== "dashboard" && (
-        <CommandCenterTrigger onClick={() => setShowCommandCenter(true)} />
-      )}
+      {/* Command Center trigger removed — game has gear in header, dashboard has its own */}
 
       {/* Command Center panel */}
       {showCommandCenter && (

@@ -10,7 +10,6 @@ type Props = {
   pendingDirectorGuidance?: string | null;
   isStreaming?: boolean;
   wideMode?: boolean;
-  onNextPage?: () => void;
 };
 
 function firstName(name: string): string {
@@ -26,7 +25,6 @@ export function ActionBar({
   pendingDirectorGuidance,
   isStreaming,
   wideMode,
-  onNextPage,
 }: Props) {
   const [value, setValue] = useState("");
   const [flash, setFlash] = useState(false);
@@ -134,19 +132,6 @@ export function ActionBar({
             {isDirector ? "Direct" : "Whisper"}
           </button>
 
-          {/* Next page - mobile only */}
-          {onNextPage && (
-            <button
-              onClick={onNextPage}
-              disabled={isStreaming}
-              className="lg:hidden p-2 rounded-lg text-muted-foreground/40 hover:text-primary/70 bg-secondary/30 border border-border/20 transition-all disabled:opacity-20 shrink-0"
-              aria-label="Next page"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </button>
-          )}
         </div>
 
         {/* Pending indicator — compact single line */}
