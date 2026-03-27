@@ -13,6 +13,10 @@ type Props = {
   onNextPage?: () => void;
 };
 
+function firstName(name: string): string {
+  return name.split(/[\s,]+/)[0];
+}
+
 export function ActionBar({
   onSubmitInfluence,
   onSubmitDirector,
@@ -27,8 +31,6 @@ export function ActionBar({
   const [value, setValue] = useState("");
   const [flash, setFlash] = useState(false);
 
-  // Populate input with pending influence text so user can see/edit it
-  // But skip if we just submitted this exact text (avoid repopulating after our own submit)
   const prevInfluenceRef = useRef<string | null>(null);
   const justSubmittedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -44,8 +46,6 @@ export function ActionBar({
 
   const handleSubmit = useCallback(() => {
     const text = value.trim();
-
-    // Allow blank submit to clear queued whisper/direction
     let submitted = false;
     if (directorMode) {
       onSubmitDirector(text);
@@ -55,7 +55,6 @@ export function ActionBar({
       onSubmitInfluence(text);
       submitted = true;
     }
-
     if (submitted) {
       setValue("");
       setFlash(true);
@@ -69,8 +68,10 @@ export function ActionBar({
     }
   }, [flash]);
 
-  // Show bar in either mode (director OR attached to character)
   if (!directorMode && !attachedTo) return null;
+
+  const isDirector = directorMode;
+  const shortName = attachedTo ? firstName(attachedTo) : "";
 
   return (
     <AnimatePresence>
@@ -79,60 +80,42 @@ export function ActionBar({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 20 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
-        className={`border-t border-border/50 bg-card/30 p-3 shrink-0 transition-colors ${
-          flash ? (directorMode ? "bg-amber-500/10" : "bg-primary/10") : ""
+        className={`border-t border-border/30 bg-card/20 px-3 py-2 sm:py-3 shrink-0 transition-colors ${
+          flash ? (isDirector ? "bg-amber-500/10" : "bg-primary/10") : ""
         }`}
       >
-        <div className={`mx-auto flex gap-2 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
-          {/* Mode indicator icon */}
-          <div
-            className={`px-3 py-2.5 rounded-lg flex items-center ${
-              directorMode
-                ? "bg-amber-500/20 text-amber-400"
-                : "bg-primary/20 text-primary"
-            }`}
-          >
-            {directorMode ? (
-              // Director icon (megaphone)
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M3 11l18-5v12L3 13v-2z" />
-                <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
-              </svg>
-            ) : (
-              // Whisper icon (speech bubble)
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-              </svg>
-            )}
+        <div className={`mx-auto flex items-center gap-1.5 sm:gap-2 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}>
+          {/* Input with inline label */}
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+              placeholder={
+                isDirector
+                  ? "Direct the scene..."
+                  : `Whisper to ${shortName}...`
+              }
+              className={`w-full pl-3 pr-3 py-2 sm:py-2.5 bg-secondary/30 border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 transition-all ${
+                isDirector
+                  ? "border-amber-500/20 focus:ring-amber-500/30 focus:border-amber-500/30"
+                  : "border-border/30 focus:ring-primary/30 focus:border-primary/20"
+              }`}
+            />
           </div>
 
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            placeholder={
-              directorMode
-                ? "Direct the scene... (e.g., 'make it rain', 'introduce tension')"
-                : `Whisper to ${attachedTo}...`
-            }
-            className={`flex-1 px-4 py-2.5 bg-secondary/50 border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 transition-all ${
-              directorMode
-                ? "border-amber-500/30 focus:ring-amber-500/50 focus:border-amber-500/40"
-                : "border-border/50 focus:ring-primary/50 focus:border-primary/30"
-            }`}
-          />
-
+          {/* Submit */}
           <button
             onClick={handleSubmit}
             disabled={!value.trim() && !pendingInfluence && !pendingDirectorGuidance}
-            className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-30 ${
-              directorMode
-                ? "bg-amber-500/80 hover:bg-amber-500 text-black hover:shadow-[0_0_20px_oklch(0.7_0.15_80_/_0.3)]"
-                : "bg-primary/80 hover:bg-primary text-primary-foreground hover:shadow-[0_0_20px_oklch(0.65_0.22_340_/_0.2)]"
+            className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all disabled:opacity-30 shrink-0 ${
+              isDirector
+                ? "bg-amber-500/80 hover:bg-amber-500 text-black"
+                : "bg-primary/80 hover:bg-primary text-primary-foreground"
             }`}
           >
-            {directorMode ? "Direct" : "Whisper"}
+            {isDirector ? "Direct" : "Whisper"}
           </button>
 
           {/* Next page - mobile only */}
@@ -140,59 +123,53 @@ export function ActionBar({
             <button
               onClick={onNextPage}
               disabled={isStreaming}
-              className="lg:hidden p-2.5 rounded-lg text-muted-foreground/40 hover:text-primary/70 bg-secondary/30 border border-border/30 transition-all disabled:opacity-20"
+              className="lg:hidden p-2 rounded-lg text-muted-foreground/40 hover:text-primary/70 bg-secondary/30 border border-border/20 transition-all disabled:opacity-20 shrink-0"
               aria-label="Next page"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M8 5v14l11-7z" />
               </svg>
             </button>
           )}
         </div>
 
-        {/* Pending whisper or direction — show whichever is relevant to current mode */}
-        {directorMode ? (
-          pendingDirectorGuidance && (
-            <motion.div
+        {/* Pending indicator — compact single line */}
+        <AnimatePresence>
+          {(isDirector ? pendingDirectorGuidance : pendingInfluence) && (
+            <motion.p
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
-              className={`mx-auto mt-2 text-xs text-amber-400/70 italic transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
+              exit={{ opacity: 0, height: 0 }}
+              className={`mx-auto mt-1.5 text-[10px] text-muted-foreground/40 italic truncate transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
             >
-              Direction: "{pendingDirectorGuidance}"
-            </motion.div>
-          )
-        ) : (
-          pendingInfluence && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              className={`mx-auto mt-2 text-xs text-amber-400/70 italic transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
-            >
-              Whispering to {pendingInfluence.character}: "{pendingInfluence.text}"
-            </motion.div>
-          )
-        )}
+              {isDirector
+                ? `Directing: "${pendingDirectorGuidance}"`
+                : `Whispering to ${firstName(pendingInfluence!.character)}: "${pendingInfluence!.text}"`
+              }
+            </motion.p>
+          )}
+        </AnimatePresence>
 
-        {/* Characters responding indicator */}
+        {/* Streaming indicator */}
         <AnimatePresence>
           {isStreaming && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className={`mx-auto mt-2 flex items-center gap-2 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
+              className={`mx-auto mt-1.5 flex items-center gap-1.5 transition-all duration-300 ${wideMode ? "max-w-5xl" : "max-w-3xl"}`}
             >
-              <div className="flex gap-1">
+              <div className="flex gap-0.5">
                 {[0, 1, 2].map(i => (
                   <motion.div
                     key={i}
                     className="w-1 h-1 rounded-full bg-primary/50"
-                    animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }}
+                    animate={{ opacity: [0.3, 1, 0.3] }}
                     transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
                   />
                 ))}
               </div>
-              <span className="text-[10px] text-muted-foreground/40">characters responding...</span>
+              <span className="text-[10px] text-muted-foreground/30">generating...</span>
             </motion.div>
           )}
         </AnimatePresence>

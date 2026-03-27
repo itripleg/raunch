@@ -335,14 +335,16 @@ export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectB
                 label={wsState === "connected" ? "Online" : wsState === "connecting" ? "Connecting" : "Offline"}
                 color={wsState === "connected" ? "emerald" : wsState === "connecting" ? "amber" : "red"}
               />
-              <button onClick={toggleMockMode}>
-                <StatusPill
-                  active={mockMode}
-                  label={mockMode ? "Mock" : "Live"}
-                  color={mockMode ? "fuchsia" : "cyan"}
-                  pulse={mockMode}
-                />
-              </button>
+              {isAdmin && (
+                <button onClick={toggleMockMode}>
+                  <StatusPill
+                    active={mockMode}
+                    label={mockMode ? "Mock" : "Live"}
+                    color={mockMode ? "fuchsia" : "cyan"}
+                    pulse={mockMode}
+                  />
+                </button>
+              )}
               {isAdmin && (
                 <span className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider bg-amber-500/10 text-amber-400/80 border border-amber-500/20 rounded">
                   Admin
@@ -407,6 +409,7 @@ export function CommandCenter({ apiUrl, authInfo, bookId, sendCommand, onSelectB
                       intervalInput={intervalInput}
                       setIntervalInput={setIntervalInput}
                       agentMode={agentMode}
+                      isAdmin={isAdmin}
                     />
                   </motion.div>
                 )}
@@ -592,12 +595,13 @@ function StatusSection({ bookId, pageCount, characterCount, gamePaused, gameManu
 
 // ─── Controls Section ────────────────────────────────────────────────────────
 
-function ControlsSection({ sendCommand, runCommand, bookId, isPaused, setIsPaused, intervalInput, setIntervalInput, agentMode }: {
+function ControlsSection({ sendCommand, runCommand, bookId, isPaused, setIsPaused, intervalInput, setIntervalInput, agentMode, isAdmin }: {
   sendCommand?: (cmd: string, data?: Record<string, unknown>) => void;
   runCommand: (cmd: string, data?: Record<string, unknown>) => void;
   bookId?: string; isPaused: boolean; setIsPaused: (v: boolean) => void;
   intervalInput: string; setIntervalInput: (v: string) => void;
   agentMode?: "default" | "dual" | "unified";
+  isAdmin?: boolean;
 }) {
   const [localAgentMode, setLocalAgentMode] = useState<"default" | "dual" | "unified">(agentMode ?? "default");
 
@@ -646,44 +650,46 @@ function ControlsSection({ sendCommand, runCommand, bookId, isPaused, setIsPause
         </div>
       </DataBlock>
 
-      {/* Quick actions */}
-      <DataBlock title="Quick Actions">
-        <div className="grid grid-cols-2 gap-1.5">
-          {[
-            { label: "Status", cmd: "status" },
-            { label: "World", cmd: "world" },
-            { label: "Characters", cmd: "list" },
-            { label: "History", cmd: "history", data: { count: 20 } },
-          ].map(({ label, cmd, data }) => (
-            <button
-              key={cmd}
-              onClick={() => runCommand(cmd, data)}
-              className="px-3 py-2 text-[10px] font-mono text-muted-foreground/60 bg-white/[0.02] border border-white/[0.04] rounded hover:bg-white/[0.04] hover:text-foreground/70 transition-all"
-            >
-              {label}
-            </button>
-          ))}
-          {bookId && sendCommand && (
-            <>
+      {/* Quick actions — admin only */}
+      {isAdmin && (
+        <DataBlock title="Quick Actions">
+          <div className="grid grid-cols-2 gap-1.5">
+            {[
+              { label: "Status", cmd: "status" },
+              { label: "World", cmd: "world" },
+              { label: "Characters", cmd: "list" },
+              { label: "History", cmd: "history", data: { count: 20 } },
+            ].map(({ label, cmd, data }) => (
               <button
-                onClick={() => fetch(`${location.protocol}//${location.hostname}:8000/api/v1/books/${bookId}/pause`, { method: "POST" })}
-                className="px-3 py-2 text-[10px] font-mono text-amber-400/50 bg-amber-500/5 border border-amber-500/10 rounded hover:bg-amber-500/10 transition-all"
+                key={cmd}
+                onClick={() => runCommand(cmd, data)}
+                className="px-3 py-2 text-[10px] font-mono text-muted-foreground/60 bg-white/[0.02] border border-white/[0.04] rounded hover:bg-white/[0.04] hover:text-foreground/70 transition-all"
               >
-                API Pause
+                {label}
               </button>
-              <button
-                onClick={() => fetch(`${location.protocol}//${location.hostname}:8000/api/v1/books/${bookId}/resume`, { method: "POST" })}
-                className="px-3 py-2 text-[10px] font-mono text-emerald-400/50 bg-emerald-500/5 border border-emerald-500/10 rounded hover:bg-emerald-500/10 transition-all"
-              >
-                API Resume
-              </button>
-            </>
-          )}
-        </div>
-      </DataBlock>
+            ))}
+            {bookId && sendCommand && (
+              <>
+                <button
+                  onClick={() => fetch(`${location.protocol}//${location.hostname}:8000/api/v1/books/${bookId}/pause`, { method: "POST" })}
+                  className="px-3 py-2 text-[10px] font-mono text-amber-400/50 bg-amber-500/5 border border-amber-500/10 rounded hover:bg-amber-500/10 transition-all"
+                >
+                  API Pause
+                </button>
+                <button
+                  onClick={() => fetch(`${location.protocol}//${location.hostname}:8000/api/v1/books/${bookId}/resume`, { method: "POST" })}
+                  className="px-3 py-2 text-[10px] font-mono text-emerald-400/50 bg-emerald-500/5 border border-emerald-500/10 rounded hover:bg-emerald-500/10 transition-all"
+                >
+                  API Resume
+                </button>
+              </>
+            )}
+          </div>
+        </DataBlock>
+      )}
 
-      {/* Agent Mode */}
-      <DataBlock title="Agent Mode">
+      {/* Agent Mode — admin only */}
+      {isAdmin && <DataBlock title="Agent Mode">
         <div className="flex gap-1.5">
           {([
             { mode: "default" as const, label: "Default", color: "cyan", desc: "Each agent separate" },
@@ -724,7 +730,7 @@ function ControlsSection({ sendCommand, runCommand, bookId, isPaused, setIsPause
             );
           })}
         </div>
-      </DataBlock>
+      </DataBlock>}
     </div>
   );
 }

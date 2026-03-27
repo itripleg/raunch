@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, Optional, Callable, List
 
 from .agents import Narrator, Character
+from .agents.base import _is_refusal
 from .world import WorldState
 from .config import BASE_PAGE_SECONDS, SAVES_DIR
 from . import db
@@ -131,6 +132,10 @@ class Orchestrator:
         self._player_ready_states: Dict[str, bool] = {}  # player_id -> ready state
         self._turn_start_time: Optional[float] = None  # When current turn started
         self._last_page_trigger_reason: str = 'auto'  # Reason for last page: 'all_ready', 'timeout', 'host', 'auto'
+
+        # Auto-page budget: auto-pause after N consecutive auto pages to prevent runaway
+        self.auto_page_budget = 5
+        self._auto_pages_generated = 0
 
         # Experimental: unified mode — one LLM call for narration + all characters
         self.unified_mode = False
@@ -429,6 +434,15 @@ class Orchestrator:
                 # Non-streaming mode - progressive rendering via narrator/character callbacks
                 narrator_result = self.narrator.page(narrator_input)
 
+            # Check for narrator refusal — don't save or process, revert page count
+            if narrator_result.get("_refusal"):
+                logger.warning(f"Narrator refused on page {page_num} — discarding page")
+                self.world.page_count -= 1
+                results["narration"] = "[The narrator paused, gathering their thoughts...]"
+                results["events"] = []
+                results["_is_error"] = True
+                return results
+
             self.world.apply_narrator_update(narrator_result)
             # Extract narration, cleaning up any raw JSON fallback
             narration = narrator_result.get("narration")
@@ -678,6 +692,15 @@ class Orchestrator:
             results["events"] = []
             return results
 
+        # Check for refusal in unified mode
+        if _is_refusal(raw):
+            logger.warning(f"[Unified] Narrator refused on page {page_num} — discarding page")
+            self.world.page_count -= 1
+            results["narration"] = "[The narrator paused, gathering their thoughts...]"
+            results["events"] = []
+            results["_is_error"] = True
+            return results
+
         # --- Parse the response ---
         parsed = self._parse_unified_response(raw)
 
@@ -858,6 +881,15 @@ class Orchestrator:
             else:
                 # Non-streaming mode - progressive rendering via narrator/character callbacks
                 narrator_result = self.narrator.page(narrator_input)
+
+            # Check for narrator refusal — don't save or process, revert page count
+            if narrator_result.get("_refusal"):
+                logger.warning(f"[Dual] Narrator refused on page {page_num} — discarding page")
+                self.world.page_count -= 1
+                results["narration"] = "[The narrator paused, gathering their thoughts...]"
+                results["events"] = []
+                results["_is_error"] = True
+                return results
 
             self.world.apply_narrator_update(narrator_result)
             # Extract narration, cleaning up any raw JSON fallback
@@ -1312,6 +1344,24 @@ class Orchestrator:
                 except Exception as e:
                     logger.error(f"Page callback error: {e}")
 
+            # Auto-page budget: count auto pages and pause after budget exhausted
+            if page_trigger_reason == 'auto' and self.page_interval > 0:
+                self._auto_pages_generated += 1
+                if self._auto_pages_generated >= self.auto_page_budget:
+                    logger.info(f"Auto-page budget exhausted ({self.auto_page_budget} pages), auto-pausing")
+                    self._paused = True
+                    self._auto_pages_generated = 0
+                    # Notify via callbacks
+                    for cb in self._page_callbacks:
+                        try:
+                            cb({"auto_paused": True, "reason": "budget_exhausted", "budget": self.auto_page_budget})
+                        except Exception:
+                            pass
+                    continue
+            else:
+                # Manual/host triggers reset the counter
+                self._auto_pages_generated = 0
+
             # Interruptible sleep between pages
             if not self._interruptible_sleep(self.page_interval):
                 break
@@ -1348,6 +1398,7 @@ class Orchestrator:
 
     def resume(self) -> None:
         self._paused = False
+        self._auto_pages_generated = 0  # Reset budget on resume
         logger.info("World resumed")
 
     def set_page_interval(self, seconds: int) -> None:
@@ -1358,6 +1409,7 @@ class Orchestrator:
             logger.info("Page interval set to manual mode")
         else:
             self.page_interval = max(10, min(86400, seconds))
+            self._auto_pages_generated = 0  # Reset budget when interval changes
             logger.info(f"Page interval set to {self.page_interval}s")
             # If transitioning from manual to auto mode, unblock the loop
             if was_manual:

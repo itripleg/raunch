@@ -21,6 +21,7 @@ class WSClient:
         self.websocket = websocket
         self.book_id = book_id
         self.reader: Optional[Reader] = None
+        self.librarian_id: Optional[str] = None
 
     async def send(self, data: Dict[str, Any]) -> None:
         """Send JSON message to client."""
@@ -386,6 +387,7 @@ async def handle_websocket(websocket: WebSocket, book_id: str):
         return
 
     client = WSClient(websocket=websocket, book_id=book_id)
+    client.librarian_id = websocket.query_params.get("librarian_id")
     client_id = ws_manager.add_client(book_id, client)
 
     # Send welcome message
@@ -579,8 +581,12 @@ async def handle_command(client: WSClient, book, data: Dict[str, Any]) -> None:
             await client.send({"type": "history", "pages": []})
 
     elif cmd == "page":
-        # Trigger manual page generation
+        # Trigger manual page generation — owner only
         if orch:
+            is_owner = client.librarian_id and client.librarian_id == book.owner_id
+            if not is_owner:
+                await client.send_error("forbidden", "Only the book owner can generate pages")
+                return
             orch.trigger_page()
             await client.send({"type": "ok", "message": "Page triggered"})
 
@@ -604,6 +610,9 @@ async def handle_command(client: WSClient, book, data: Dict[str, Any]) -> None:
 
     elif cmd == "set_page_interval":
         seconds = data.get("seconds", 0)
+        # Minimum 30s for auto mode
+        if seconds > 0 and seconds < 30:
+            seconds = 30
         if orch:
             orch.set_page_interval(seconds)
             await client.send({
@@ -654,6 +663,11 @@ async def handle_command(client: WSClient, book, data: Dict[str, Any]) -> None:
                 })
 
     elif cmd == "director":
+        # Director mode — owner only
+        is_owner = client.librarian_id and client.librarian_id == book.owner_id
+        if not is_owner:
+            await client.send_error("forbidden", "Only the book owner can use director mode")
+            return
         text = data.get("text", "").strip()
         if orch:
             if text:

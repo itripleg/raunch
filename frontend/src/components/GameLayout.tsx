@@ -291,7 +291,7 @@ export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           {/* Player presence indicator - only in multiplayer */}
           {game.multiplayer && game.players && game.players.length > 0 && (
             <PlayerPresence
@@ -300,22 +300,18 @@ export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId
             />
           )}
 
-          {/* Page interval selector - admin only */}
+          {/* Page interval selector - admin only, hidden on small screens */}
           {isAdmin && actions.setPageInterval && (
             <select
               value={game.pageInterval ?? 0}
               onChange={(e) => actions.setPageInterval?.(parseInt(e.target.value))}
-              className="bg-muted/50 text-muted-foreground text-xs px-2 py-1 rounded border-none outline-none cursor-pointer hover:bg-muted"
+              className="hidden sm:block bg-muted/50 text-muted-foreground text-[10px] px-1.5 py-1 rounded border-none outline-none cursor-pointer hover:bg-muted"
               title="Page interval"
             >
               <option value={0}>Manual</option>
-              <option value={10}>10s</option>
               <option value={30}>30s</option>
               <option value={60}>1m</option>
-              <option value={120}>2m</option>
               <option value={300}>5m</option>
-              <option value={600}>10m</option>
-              <option value={1800}>30m</option>
               <option value={3600}>1h</option>
             </select>
           )}
@@ -326,7 +322,7 @@ export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId
               <motion.button
                 onClick={handleNextClick}
                 disabled={game.streaming?.isStreaming || nextClicked}
-                className="relative flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed px-2 py-1 -my-1 rounded"
+                className="relative flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed px-1.5 sm:px-2 py-1 -my-1 rounded"
                 whileTap={{ scale: 0.95 }}
               >
                 {/* Pulse ring on click */}
@@ -383,49 +379,18 @@ export function GameLayout({ game, actions, bookId, isAdmin, apiUrl, librarianId
             )
           )}
 
-          {/* Debug button */}
-          <button
-            onClick={onOpenDebug}
-            className="p-1.5 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-            title="Debug Panel"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 20h.01M8.5 3H7a2 2 0 0 0-2 2v1.5M15.5 3H17a2 2 0 0 1 2 2v1.5M8.5 21H7a2 2 0 0 1-2-2v-1.5M15.5 21H17a2 2 0 0 0 2-2v-1.5M3 8.5V7a2 2 0 0 1 2-2h1.5M21 8.5V7a2 2 0 0 0-2-2h-1.5M3 15.5V17a2 2 0 0 0 2 2h1.5M21 15.5V17a2 2 0 0 1-2 2h-1.5M12 12h.01" />
-            </svg>
-          </button>
-
-          {/* Mock/Live mode toggle */}
-          <button
-            onClick={() => toggleMockMode()}
-            className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide transition-colors ${
-              mockMode
-                ? "bg-fuchsia-500/20 text-fuchsia-400 hover:bg-fuchsia-500/30"
-                : "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
-            }`}
-            title={mockMode ? "Mock mode - click for Live (Ctrl+Shift+M)" : "Live mode - click for Mock (Ctrl+Shift+M)"}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${mockMode ? "bg-fuchsia-400 animate-pulse" : "bg-emerald-400"}`} />
-            {mockMode ? "Mock" : "Live"}
-          </button>
-
-          {/* Status LED with hover tooltip - desktop only */}
-          <div className="relative group hidden sm:block">
-            <span
-              className={`block w-2.5 h-2.5 rounded-full shadow-sm cursor-default transition-colors ${
-                mockMode
-                  ? "bg-fuchsia-500 shadow-fuchsia-500/50"
-                  : game.paused
-                  ? "bg-amber-500 shadow-amber-500/30"
-                  : game.manualMode
-                  ? "bg-sky-400 shadow-sky-400/30"
-                  : "bg-emerald-500 shadow-emerald-500/50 animate-pulse"
-              }`}
-            />
-            <div className="absolute right-0 top-full mt-2 px-2 py-1 bg-popover border border-border rounded text-xs text-popover-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-              {mockMode ? "Mock mode (Ctrl+Shift+M to toggle)" : game.paused ? "Simulation paused" : game.manualMode ? "Manual mode" : "Auto-advancing"}
-              {!game.manualMode && game.pageInterval && ` · ${game.pageInterval}s intervals`}
-            </div>
-          </div>
+          {/* Debug button — admin only, desktop only */}
+          {isAdmin && (
+            <button
+              onClick={onOpenDebug}
+              className="hidden sm:block p-1.5 text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors"
+              title="Debug Panel"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 20h.01M8.5 3H7a2 2 0 0 0-2 2v1.5M15.5 3H17a2 2 0 0 1 2 2v1.5M8.5 21H7a2 2 0 0 1-2-2v-1.5M15.5 21H17a2 2 0 0 0 2-2v-1.5M3 8.5V7a2 2 0 0 1 2-2h1.5M21 8.5V7a2 2 0 0 0-2-2h-1.5M3 15.5V17a2 2 0 0 0 2 2h1.5M21 15.5V17a2 2 0 0 1-2 2h-1.5M12 12h.01" />
+              </svg>
+            </button>
+          )}
 
           {/* Right panel toggle - mobile only, shown when attached or director mode */}
           {(game.attachedTo || game.directorMode) && (

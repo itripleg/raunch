@@ -76,16 +76,25 @@ async def create_book(
 
 @router.get("", response_model=List[dict])
 async def list_books(librarian_id: str = Depends(get_librarian_id)):
-    """List books accessible to the librarian."""
+    """List books accessible to the librarian, enriched with scenario details."""
     from raunch.wizard import load_scenario
     books = db.list_books_for_librarian(librarian_id)
-    # Resolve display names from scenario data
     for book in books:
         raw_name = book.get("scenario_name", "")
         try:
             data = load_scenario(raw_name)
-            if data and data.get("scenario_name"):
-                book["scenario_name"] = data["scenario_name"]
+            if data:
+                if data.get("scenario_name"):
+                    book["scenario_name"] = data["scenario_name"]
+                book["setting"] = data.get("setting")
+                book["characters"] = [c.get("name", "?") for c in data.get("characters", [])]
+                book["premise"] = data.get("premise")
+        except Exception:
+            pass
+        # Get last page mood and reader count
+        try:
+            book["mood"] = db.get_latest_mood(book["id"])
+            book["readers"] = db.count_book_readers(book["id"])
         except Exception:
             pass
     return books
@@ -126,18 +135,38 @@ async def delete_book(
     return {"deleted": True}
 
 
+@router.delete("/{book_id}/leave")
+async def leave_book(
+    book_id: str,
+    librarian_id: str = Depends(get_librarian_id),
+):
+    """Leave a joined book (removes reader access, cannot leave owned books)."""
+    removed = db.revoke_book_access(book_id, librarian_id)
+    if not removed:
+        raise HTTPException(status_code=400, detail="Cannot leave — you own this book or aren't a member")
+    return {"left": True}
+
+
 @router.get("/public", response_model=List[dict])
 async def list_public_books():
     """List all public books available to join."""
     from raunch.wizard import load_scenario
     books = db.list_public_books()
-    # Resolve display names from scenario data
     for book in books:
         raw_name = book.get("scenario_name", "")
         try:
             data = load_scenario(raw_name)
-            if data and data.get("scenario_name"):
-                book["scenario_name"] = data["scenario_name"]
+            if data:
+                if data.get("scenario_name"):
+                    book["scenario_name"] = data["scenario_name"]
+                book["setting"] = data.get("setting")
+                book["characters"] = [c.get("name", "?") for c in data.get("characters", [])]
+                book["premise"] = data.get("premise")
+        except Exception:
+            pass
+        try:
+            book["readers"] = db.count_book_readers(book["id"])
+            book["mood"] = db.get_latest_mood(book["id"])
         except Exception:
             pass
     return books
@@ -155,14 +184,7 @@ async def join_book(
     if book_id is None:
         raise HTTPException(status_code=404, detail="Book not found")
 
-    book = library.get_book(book_id)
-    if book and book.private:
-        # Check if user has access
-        books = db.list_books_for_librarian(librarian_id)
-        if not any(b["id"] == book_id for b in books):
-            raise HTTPException(status_code=403, detail="This book is private")
-
-    # Grant access if not already granted
+    # Bookmark always grants access — private flag only controls public listing
     db.grant_book_access(book_id, librarian_id, role="reader")
 
     return JoinBookResponse(book_id=book_id)
@@ -217,18 +239,43 @@ async def trigger_page(
     book_id: str,
     librarian_id: str = Depends(get_librarian_id),
 ):
-    """Trigger the next page generation."""
+    """Trigger the next page generation. Owner only."""
     library = get_library()
     book = library.get_book(book_id)
 
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found")
 
+    if book.owner_id != librarian_id:
+        raise HTTPException(status_code=403, detail="Only the book owner can generate pages")
+
     if book.orchestrator:
         triggered = book.orchestrator.trigger_page()
         return {"triggered": triggered}
 
     return {"triggered": False, "message": "Book not started"}
+
+
+@router.put("/{book_id}/share")
+async def toggle_book_share(
+    book_id: str,
+    librarian_id: str = Depends(get_librarian_id),
+):
+    """Toggle a book's public/private status (owner only)."""
+    library = get_library()
+    book = library.get_book(book_id)
+
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    if book.owner_id != librarian_id:
+        raise HTTPException(status_code=403, detail="Only the owner can share this book")
+
+    new_private = not book.private
+    db.set_book_private(book_id, new_private)
+    book.private = new_private
+
+    return {"shared": not new_private, "private": new_private}
 
 
 @router.put("/{book_id}/settings")
@@ -245,7 +292,11 @@ async def update_settings(
         raise HTTPException(status_code=404, detail="Book not found")
 
     if request.page_interval is not None and book.orchestrator:
-        book.orchestrator.set_page_interval(request.page_interval)
+        interval = request.page_interval
+        # Minimum 30s for auto mode
+        if interval > 0 and interval < 30:
+            interval = 30
+        book.orchestrator.set_page_interval(interval)
 
     return {"updated": True}
 

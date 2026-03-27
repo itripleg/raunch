@@ -7,7 +7,7 @@ export type ServerMessage = {
 
 type WSState = "connecting" | "connected" | "disconnected";
 
-export function useWebSocket(baseUrl: string, bookId?: string | null) {
+export function useWebSocket(baseUrl: string, bookId?: string | null, librarianId?: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
   const [state, setState] = useState<WSState>("disconnected");
   const [messages, setMessages] = useState<ServerMessage[]>([]);
@@ -24,8 +24,9 @@ export function useWebSocket(baseUrl: string, bookId?: string | null) {
     if (!bookId) return null;
     // Convert http:// to ws://, https:// to wss://
     const wsBase = baseUrl.replace(/^http/, 'ws');
-    return `${wsBase}/ws/${bookId}`;
-  }, [baseUrl, bookId]);
+    const params = librarianId ? `?librarian_id=${encodeURIComponent(librarianId)}` : '';
+    return `${wsBase}/ws/${bookId}${params}`;
+  }, [baseUrl, bookId, librarianId]);
 
   const connect = useCallback(() => {
     if (!url) return; // Don't connect if no URL (no bookId)

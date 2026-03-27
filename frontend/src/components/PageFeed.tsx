@@ -1068,8 +1068,8 @@ function isRecentTimestamp(timestamp?: string | number, maxAgeSeconds = 60): boo
 }
 
 function PageEntry({ pageItem, isFocused, isNew, onHoverCharacter, onTapCharacter, characterNames, moodStyle, onTapBorder }: PageEntryProps) {
-  // Use typewriter for recent pages (created < 1 min ago)
-  const useTypewriter = isNew && isRecentTimestamp(pageItem.created_at, 60);
+  // Use typewriter for recent pages (created < 30s ago)
+  const useTypewriter = isNew && isRecentTimestamp(pageItem.created_at, 30);
 
   // Track narration completion for skip-on-double-click feature
   const [narrationComplete, setNarrationComplete] = useState(!useTypewriter);

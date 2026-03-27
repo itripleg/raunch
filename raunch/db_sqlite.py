@@ -1381,6 +1381,63 @@ def grant_book_access(book_id: str, librarian_id: str, role: str = "reader") -> 
     conn.commit()
 
 
+def get_latest_mood(book_id: str) -> Optional[str]:
+    """Get the mood from the most recent page of a book."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT mood FROM pages WHERE world_id = ? ORDER BY page_num DESC LIMIT 1",
+        (book_id,)
+    ).fetchone()
+    return row["mood"] if row else None
+
+
+def get_first_page_snippet(book_id: str, max_length: int = 200) -> Optional[str]:
+    """Get a snippet of the first page narration."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT narration FROM pages WHERE world_id = ? ORDER BY page_num ASC LIMIT 1",
+        (book_id,)
+    ).fetchone()
+    if not row or not row["narration"]:
+        return None
+    text = row["narration"]
+    if len(text) > max_length:
+        return text[:max_length].rsplit(" ", 1)[0] + "..."
+    return text
+
+
+def set_book_private(book_id: str, private: bool) -> bool:
+    """Set a book's private flag."""
+    conn = _get_conn()
+    result = conn.execute(
+        "UPDATE books SET private = ? WHERE id = ?",
+        (1 if private else 0, book_id)
+    )
+    conn.commit()
+    return result.rowcount > 0
+
+
+def count_book_readers(book_id: str) -> int:
+    """Count how many users have access to a book (excluding owner)."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT COUNT(*) FROM book_access WHERE book_id = ? AND role = 'reader'",
+        (book_id,)
+    ).fetchone()
+    return row[0] if row else 0
+
+
+def revoke_book_access(book_id: str, librarian_id: str) -> bool:
+    """Remove a librarian's access to a book (leave). Cannot revoke owner access."""
+    conn = _get_conn()
+    result = conn.execute(
+        "DELETE FROM book_access WHERE book_id = ? AND librarian_id = ? AND role != 'owner'",
+        (book_id, librarian_id)
+    )
+    conn.commit()
+    return result.rowcount > 0
+
+
 def list_public_books() -> List[Dict[str, Any]]:
     """List all public books."""
     conn = _get_conn()
