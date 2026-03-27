@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useAnimation } from "motion/react";
+import { useMockMode } from "../context/MockMode";
 import {
   ArrowLeft,
   Sparkles,
@@ -18,6 +19,7 @@ import {
   Heart,
   FileJson,
   Eye,
+  BookOpen,
 } from "lucide-react";
 
 type WizardOptions = {
@@ -52,10 +54,47 @@ type Props = {
   librarianId: string | null;
   onBack: () => void;
   onSaved?: () => void;
+  onStartBook?: (scenarioId: string) => void;
+  isAdmin?: boolean;
+};
+
+// Mock data for development
+const MOCK_OPTIONS: WizardOptions = {
+  settings: ["Enchanted Forest", "Space Station", "Victorian Mansion", "Underground Club", "Desert Oasis", "Pirate Ship"],
+  pairings: ["M/F", "M/M", "F/F", "Multi", "Solo"],
+  kinks: ["Romance", "Power Play", "Forbidden", "Voyeurism", "Slow Burn", "Body Worship", "Rivals to Lovers"],
+  vibes: ["Steamy", "Tender", "Dark", "Playful", "Intense", "Dreamy"],
+};
+
+const MOCK_RESULT: GeneratedScenario = {
+  scenario_name: "Midnight Bloom at the Crimson Garden",
+  setting: "A secret garden hidden behind a Victorian greenhouse, where rare night-blooming flowers release intoxicating pollen under the full moon.",
+  premise: "Two rival botanists, each seeking the legendary Midnight Orchid for their own reasons, find themselves locked inside the greenhouse after hours. As the rare flowers bloom and fill the air with their heady fragrance, academic rivalry gives way to something far more primal. The orchid's pollen is said to dissolve inhibitions — but perhaps it merely reveals what was always there, buried beneath layers of professional courtesy and stolen glances across lecture halls.",
+  themes: ["Rivals to Lovers", "Forbidden Desire", "Intoxication", "Academic Rivalry", "Surrender"],
+  opening_situation: "The greenhouse door clicks shut behind you with a sound that feels far too final. Through the fogged glass panels, moonlight streams in silver ribbons across beds of impossible flowers. Dr. Ashworth is already here — you can see their silhouette between the towering ferns, notebook in hand, completely absorbed. They haven't noticed you yet. The first Midnight Orchid is beginning to unfurl its crimson petals, and with it comes a scent like warm honey and thunderstorms.",
+  characters: [
+    {
+      name: "Dr. Morgan Ashworth",
+      species: "Human",
+      personality: "Brilliant, competitive, and devastatingly composed — until they're not. Known for sharp wit in peer reviews and an infuriating habit of being right. Beneath the academic armor lies someone who hasn't been touched in far too long.",
+      appearance: "Tall with dark curly hair perpetually escaping a loose bun. Wire-rimmed glasses, ink-stained fingers, a crisp white shirt that's come slightly untucked. Eyes the color of aged whiskey.",
+      desires: "To be seen as more than a mind. To let go of control, just once, with someone who can match them intellectually and overwhelm them physically.",
+      backstory: "Youngest tenured professor at the Royal Botanical Institute. Published three groundbreaking papers on nocturnal pollination, all of which directly contradicted your research.",
+    },
+    {
+      name: "You",
+      species: "Human",
+      personality: "Equally brilliant, more impulsive, with a reputation for fieldwork that borders on reckless. You've clashed with Ashworth at every conference for three years, and every argument left you thinking about them for weeks after.",
+      appearance: "Sun-weathered from years of field research. Strong hands, easy smile, a leather journal stuffed with pressed flowers.",
+      desires: "To finally break through Ashworth's composure. To discover if the tension between you is truly just academic.",
+      backstory: "Independent researcher funded by a private grant. Your discovery of the greenhouse's location was supposed to be your triumph — until you found Ashworth already inside.",
+    },
+  ],
+  saved_to: "mock-scenario-001",
 };
 
 // Floating particle component for magical ambience
-function MagicParticle({ delay }: { delay: number }) {
+function MagicParticle({ delay, drift }: { delay: number; drift: number }) {
   return (
     <motion.div
       className="absolute w-1 h-1 rounded-full bg-primary/40"
@@ -64,7 +103,7 @@ function MagicParticle({ delay }: { delay: number }) {
         opacity: [0, 0.8, 0],
         scale: [0, 1.5, 0],
         y: [-20, -100],
-        x: [0, Math.random() * 40 - 20],
+        x: [0, drift],
       }}
       transition={{
         duration: 3,
@@ -77,6 +116,166 @@ function MagicParticle({ delay }: { delay: number }) {
 }
 
 
+
+// Typewriter text animation for headers
+function TypewriterText({ text, delay = 0, className = "" }: { text: string; delay?: number; className?: string }) {
+  const [displayedText, setDisplayedText] = useState("");
+  const [started, setStarted] = useState(false);
+
+  useEffect(() => {
+    const startTimer = setTimeout(() => setStarted(true), delay);
+    return () => clearTimeout(startTimer);
+  }, [delay]);
+
+  useEffect(() => {
+    if (!started) return;
+    let i = 0;
+    const interval = setInterval(() => {
+      i++;
+      setDisplayedText(text.slice(0, i));
+      if (i >= text.length) clearInterval(interval);
+    }, 40);
+    return () => clearInterval(interval);
+  }, [started, text]);
+
+  return (
+    <span className={className}>
+      {displayedText}
+      {started && displayedText.length < text.length && (
+        <motion.span
+          animate={{ opacity: [1, 0] }}
+          transition={{ duration: 0.5, repeat: Infinity }}
+          className="inline-block w-[2px] h-[1em] bg-primary/60 ml-0.5 align-middle"
+        />
+      )}
+    </span>
+  );
+}
+
+// Shimmer skeleton placeholder
+function ShimmerSkeleton({ lines = 3, className = "" }: { lines?: number; className?: string }) {
+  return (
+    <div className={`space-y-2 ${className}`}>
+      {[...Array(lines)].map((_, i) => (
+        <div
+          key={i}
+          className="h-3 rounded-md bg-gradient-to-r from-secondary/80 via-secondary/40 to-secondary/80 animate-shimmer"
+          style={{ width: i === lines - 1 ? "60%" : "100%", animationDelay: `${i * 0.15}s` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Wizard quips — themed per section, then random filler
+const SECTION_QUIPS = {
+  premise: [
+    "Setting the scene...",
+    "Crafting the premise...",
+    "Building the world...",
+  ],
+  opening: [
+    "Writing the opening act...",
+    "Now THIS is raunchy",
+    "The spice must flow",
+  ],
+  themes: [
+    "Picking the juicy themes...",
+    "Channeling pure filth",
+    "I won't kink shame...",
+  ],
+  characters: [
+    "Sculpting the cast...",
+    "Giving them personality...",
+    "Oh my, that's creative",
+  ],
+  filler: [
+    "Even I'm blushing",
+    "Chef's kiss",
+    "This one's going in the vault",
+    "No judgment here...",
+    "Consulting the ancient scrolls",
+    "Brewing something wicked",
+    "Degeneracy loading...",
+    "I'm outdoing myself",
+    "Hold onto your knickers",
+    "Almost too good",
+  ],
+};
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function buildQuipSequence(): string[] {
+  // 1 random quip per section (0s, 5s, 10s, 15s, 20s intervals)
+  const sequence = [
+    pickRandom(SECTION_QUIPS.premise),
+    pickRandom(SECTION_QUIPS.opening),
+    pickRandom(SECTION_QUIPS.themes),
+    pickRandom(SECTION_QUIPS.characters),
+  ];
+  // Then shuffle filler for variety after all skeletons are up
+  const shuffledFiller = [...SECTION_QUIPS.filler].sort(() => Math.random() - 0.5);
+  return [...sequence, ...shuffledFiller];
+}
+
+function WizardQuips() {
+  const [index, setIndex] = useState(0);
+  const [quips] = useState(() => buildQuipSequence());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIndex((prev) => (prev + 1) % quips.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [quips]);
+
+  return (
+    <div className="flex items-center justify-center gap-3 h-14">
+      <motion.div
+        animate={{ rotate: [0, 10, -10, 0], y: [0, -3, 0] }}
+        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <Wand2 className="w-5 h-5 text-primary/60" />
+      </motion.div>
+      <AnimatePresence mode="wait">
+        <motion.p
+          key={index}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.4 }}
+          className="text-sm text-muted-foreground/70 italic"
+        >
+          {quips[index]}
+        </motion.p>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// Expandable text block for long content
+function ExpandableText({ text, className = "" }: { text: string; className?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = text.length > 300;
+
+  return (
+    <div className="relative">
+      <p className={`${className} ${!expanded && isLong ? "line-clamp-4" : ""}`}>
+        {text}
+      </p>
+      {isLong && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="text-xs text-primary/70 hover:text-primary mt-1 transition-colors"
+        >
+          {expanded ? "Show less" : "Show more..."}
+        </button>
+      )}
+    </div>
+  );
+}
 
 // Chip component for kinks and vibes
 function SelectableChip({
@@ -128,7 +327,7 @@ function CharacterCard({
   character: Character;
   index: number;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   return (
     <motion.div
@@ -175,7 +374,7 @@ function CharacterCard({
 
         {/* Personality preview */}
         {character.personality && (
-          <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
+          <p className="text-xs text-muted-foreground mb-2">
             {character.personality}
           </p>
         )}
@@ -230,7 +429,8 @@ function CharacterCard({
   );
 }
 
-export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
+export function WizardPage({ apiUrl, librarianId, onBack, onSaved, onStartBook, isAdmin }: Props) {
+  const { mockMode } = useMockMode();
   const [options, setOptions] = useState<WizardOptions | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -257,7 +457,9 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
   const [settingOpen, setSettingOpen] = useState(false);
 
   const resultRef = useRef<HTMLDivElement>(null);
+  const settingRef = useRef<HTMLDivElement>(null);
   const diceControls = useAnimation();
+  const maxChars = isAdmin ? 5 : 3;
 
   // Hold-to-roll refs
   const rollingRef = useRef(false);
@@ -299,7 +501,6 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
       const kIdx = f % kinkOptions.length;
       setSelectedKinks([kinkOptions[kIdx], kinkOptions[(kIdx + 2) % kinkOptions.length], kinkOptions[(kIdx + 5) % kinkOptions.length]]);
       setSelectedVibe(vibeOptions[f % vibeOptions.length]);
-      setNumChars(1 + (f % 4));
     }, 60);
   };
 
@@ -314,13 +515,16 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
       rollIntervalRef.current = null;
     }
 
+    // Scroll to setting section so user sees what was picked
+    setTimeout(() => {
+      settingRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 300);
+
     // Pick final values
     const finalSetting = options.settings[Math.floor(Math.random() * options.settings.length)];
     const finalPairings = [...options.pairings].sort(() => Math.random() - 0.5).slice(0, 1 + Math.floor(Math.random() * 2));
     const finalKinks = [...options.kinks].sort(() => Math.random() - 0.5).slice(0, 2 + Math.floor(Math.random() * 3));
     const finalVibe = options.vibes[Math.floor(Math.random() * options.vibes.length)];
-    const finalChars = 1 + Math.floor(Math.random() * 4);
-
     // Dice deceleration
     diceControls.stop();
     diceControls.start({
@@ -389,12 +593,6 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
           () => { setSelectedVibe(finalVibe); setCustomVibe(""); },
         ).then(r);
       }, stagger * 3)),
-      new Promise<void>(r => setTimeout(() => {
-        runReel(6,
-          (i) => setNumChars(1 + ((rollFrameRef.current + i) % 4)),
-          () => setNumChars(finalChars),
-        ).then(r);
-      }, stagger * 4)),
     ];
 
     await Promise.all(reels);
@@ -420,6 +618,15 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
 
   // Fetch options on mount and shuffle them
   useEffect(() => {
+    if (mockMode) {
+      setOptions({
+        settings: shuffle(MOCK_OPTIONS.settings),
+        pairings: shuffle(MOCK_OPTIONS.pairings),
+        kinks: shuffle(MOCK_OPTIONS.kinks),
+        vibes: shuffle(MOCK_OPTIONS.vibes),
+      });
+      return;
+    }
     setLoading(true);
     fetch(`${apiUrl}/api/v1/wizard/options`)
       .then((r) => r.json())
@@ -433,7 +640,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
       })
       .catch((e) => setError(`Failed to load options: ${e.message}`))
       .finally(() => setLoading(false));
-  }, [apiUrl]);
+  }, [apiUrl, mockMode]);
 
   const togglePairing = (pairing: string) => {
     setSelectedPairings((prev) =>
@@ -452,6 +659,23 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
     setError(null);
     setResult(null);
     setRawJson("");
+
+    // Scroll to skeleton result area immediately
+    setTimeout(() => {
+      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+
+    // Mock mode — fake delay then return mock data
+    if (mockMode) {
+      await new Promise((r) => setTimeout(r, 8000));
+      setResult(MOCK_RESULT);
+      setRawJson(JSON.stringify(MOCK_RESULT, null, 2));
+      setGenerating(false);
+      setTimeout(() => {
+        resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+      return;
+    }
 
     const finalSetting = customSetting.trim() || selectedSetting || null;
     const finalVibe = customVibe.trim() || selectedVibe || null;
@@ -645,11 +869,11 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
       </div>
 
       <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
-        {/* Header */}
+        {/* Header — sticky so back/roll are always reachable */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8 sm:mb-12"
+          className="mb-8 sm:mb-12 sticky top-0 z-40 bg-background/80 backdrop-blur-xl -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 sm:py-0 sm:bg-transparent sm:backdrop-blur-none"
         >
           <div className="flex items-start gap-4">
             <button
@@ -681,29 +905,34 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
                     </p>
                   </div>
                 </div>
-
-                {/* Roll button */}
-                <motion.button
-                  onMouseDown={startRolling}
-                  onMouseUp={stopRolling}
-                  onMouseLeave={() => { if (rollingRef.current) stopRolling(); }}
-                  onTouchStart={startRolling}
-                  onTouchEnd={stopRolling}
-                  disabled={generating || !options}
-                  className="relative group px-4 py-2.5 bg-gradient-to-r from-violet-500/80 to-primary/80 hover:from-violet-500 hover:to-primary text-white rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20 flex items-center gap-2 select-none"
-                >
-                  {/* Button glow */}
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-violet-500 to-primary opacity-0 group-hover:opacity-50 blur-xl transition-opacity" />
-                  <span className="relative flex items-center gap-2">
-                    <motion.span animate={diceControls}><Dice5 className="w-5 h-5" /></motion.span>
-                    <span className="hidden sm:inline">{rolling ? "Rolling..." : "Roll the Dice"}</span>
-                    <span className="sm:hidden">{rolling ? "..." : "Roll"}</span>
-                  </span>
-                </motion.button>
               </div>
             </div>
           </div>
         </motion.header>
+
+        {/* Roll the Dice — between header and form */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="mb-6 flex justify-center"
+        >
+          <motion.button
+            onMouseDown={startRolling}
+            onMouseUp={stopRolling}
+            onMouseLeave={() => { if (rollingRef.current) stopRolling(); }}
+            onTouchStart={startRolling}
+            onTouchEnd={stopRolling}
+            disabled={generating || !options}
+            className="relative group px-5 py-2.5 bg-gradient-to-r from-violet-500/80 to-primary/80 hover:from-violet-500 hover:to-primary text-white rounded-full font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20 flex items-center gap-2 select-none text-sm"
+          >
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500 to-primary opacity-0 group-hover:opacity-50 blur-xl transition-opacity" />
+            <span className="relative flex items-center gap-2">
+              <motion.span animate={diceControls}><Dice5 className="w-4 h-4" /></motion.span>
+              {rolling ? "Rolling..." : "Roll the Dice"}
+            </span>
+          </motion.button>
+        </motion.div>
 
         {/* Form */}
         <motion.div
@@ -731,9 +960,8 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
               {/* Person icons */}
               <div className="flex items-end justify-center gap-1.5 h-14">
                 <AnimatePresence mode="popLayout">
-                  {multiplayer ? (
-                    <>
-                      {[0, 1, 2, 3, 4].map((i) => (
+                  {multiplayer
+                    ? [0, 1, 2, 3, 4].map((i) => (
                         <motion.div
                           key={`mp-${i}`}
                           initial={{ scale: 0, opacity: 0, y: 10 }}
@@ -750,11 +978,8 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
                             strokeWidth={1.5}
                           />
                         </motion.div>
-                      ))}
-                    </>
-                  ) : (
-                    <>
-                      {[...Array(numChars)].map((_, i) => (
+                      ))
+                    : [...Array(numChars)].map((_, i) => (
                         <motion.div
                           key={`solo-${i}`}
                           initial={{ scale: 0, opacity: 0, y: 10 }}
@@ -764,16 +989,15 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
                         >
                           <User className="w-10 h-10 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]" strokeWidth={1.5} />
                         </motion.div>
-                      ))}
-                    </>
-                  )}
+                      ))
+                  }
                 </AnimatePresence>
               </div>
 
               {/* Number buttons — only in solo mode */}
               {!multiplayer && (
                 <div className="flex items-center justify-center gap-2">
-                  {[1, 2, 3, 4, 5].map((n) => (
+                  {Array.from({ length: maxChars }, (_, i) => i + 1).map((n) => (
                     <button
                       key={n}
                       onClick={() => setNumChars(n)}
@@ -824,22 +1048,24 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
                 </button>
               </div>
 
-              {/* Language input */}
-              <div className="mt-4">
-                <label className="text-xs text-muted-foreground/70 mb-1.5 block">
-                  Language (optional)
-                </label>
-                <input
-                  type="text"
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  placeholder="English, Japanese, Pirate Speak, Elvish..."
-                  className="w-full bg-secondary/50 border border-border/50 rounded-xl px-4 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
-                />
-                <p className="text-xs text-muted-foreground/50 mt-1.5">
-                  Output narration in any language or style
-                </p>
-              </div>
+              {/* Language input — admin only while debugging */}
+              {isAdmin && (
+                <div className="mt-4">
+                  <label className="text-xs text-muted-foreground/70 mb-1.5 block">
+                    Language (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    placeholder="English, Japanese, Pirate Speak, Elvish..."
+                    className="w-full bg-secondary/50 border border-border/50 rounded-xl px-4 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+                  />
+                  <p className="text-xs text-muted-foreground/50 mt-1.5">
+                    Output narration in any language or style
+                  </p>
+                </div>
+              )}
             </div>
           </motion.section>
 
@@ -851,7 +1077,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
             className="relative"
           >
             <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-primary/50 via-primary/20 to-transparent rounded-full" />
-            <div className="flex items-center gap-2 mb-3">
+            <div ref={settingRef} className="flex items-center gap-2 mb-3 scroll-mt-20">
               <MapPin className="w-4 h-4 text-primary" />
               <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">
                 Setting
@@ -1069,6 +1295,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
             transition={{ delay: 0.4 }}
             className="flex gap-3 pt-4"
           >
+            {/* Cast the Spell */}
             <motion.button
               onClick={generate}
               disabled={generating}
@@ -1080,7 +1307,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
               <motion.div
                 className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
                 initial={{ x: "-100%" }}
-                animate={generating ? { x: ["100%"] } : {}}
+                animate={generating ? { x: ["-100%", "100%"] } : {}}
                 transition={{
                   duration: 1.5,
                   repeat: generating ? Infinity : 0,
@@ -1109,7 +1336,7 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
               {generating && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   {[...Array(6)].map((_, i) => (
-                    <MagicParticle key={i} delay={i * 0.3} />
+                    <MagicParticle key={i} delay={i * 0.3} drift={(i % 2 === 0 ? 1 : -1) * (10 + i * 5)} />
                   ))}
                 </div>
               )}
@@ -1153,236 +1380,397 @@ export function WizardPage({ apiUrl, librarianId, onBack, onSaved }: Props) {
           </AnimatePresence>
         </motion.div>
 
-        {/* Result */}
+        {/* Result — shown during generation (skeleton) and after (filled) */}
         <AnimatePresence>
-          {result && (
+          {(generating || result) && (
             <motion.div
               ref={resultRef}
               initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
               transition={{ duration: 0.5, ease: "easeOut" }}
-              className="mt-12 relative"
+              className="mt-12 relative scroll-mt-20"
             >
               {/* Result glow */}
               <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-violet-500/5 rounded-2xl blur-3xl" />
 
               <div className="relative bg-gradient-to-br from-card/95 to-card/80 backdrop-blur-sm border border-border/50 rounded-2xl overflow-hidden">
                 {/* Result header */}
-                <div className="p-5 sm:p-6 border-b border-border/30">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <motion.h2
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-primary to-violet-400 bg-clip-text text-transparent truncate"
-                      >
-                        {result.scenario_name}
-                      </motion.h2>
-                      <p className="text-muted-foreground text-xs mt-1 flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {result.setting}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      {/* View toggle */}
-                      <button
-                        onClick={() => setShowRaw(!showRaw)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                          showRaw
-                            ? "bg-primary/20 text-primary border border-primary/30"
-                            : "bg-secondary/50 text-muted-foreground hover:text-foreground border border-border/50 hover:border-border"
-                        }`}
-                      >
-                        {showRaw ? (
-                          <>
-                            <Eye className="w-3.5 h-3.5" /> Pretty
-                          </>
-                        ) : (
-                          <>
-                            <FileJson className="w-3.5 h-3.5" /> JSON
-                          </>
-                        )}
-                      </button>
-
-                      {/* Save button */}
-                      {result.saved_to ? (
-                        <span className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg text-xs font-medium border border-emerald-500/30">
-                          <Check className="w-3.5 h-3.5" /> Saved
-                        </span>
-                      ) : (
-                        <button
-                          onClick={saveScenario}
-                          disabled={saving}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+                <div className="p-4 sm:p-6 border-b border-border/30">
+                  {result ? (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.5 }}
+                      className="space-y-3"
+                    >
+                      <div>
+                        <motion.h2
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.4 }}
+                          className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-primary to-violet-400 bg-clip-text text-transparent"
                         >
-                          {saving ? (
-                            <motion.div
-                              animate={{ rotate: 360 }}
-                              transition={{
-                                duration: 1,
-                                repeat: Infinity,
-                                ease: "linear",
-                              }}
-                            >
-                              <Sparkles className="w-3.5 h-3.5" />
-                            </motion.div>
-                          ) : (
-                            <Save className="w-3.5 h-3.5" />
-                          )}
-                          {saving ? "Saving" : "Save"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                          {result.scenario_name}
+                        </motion.h2>
+                        <motion.p
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: 0.2, duration: 0.3 }}
+                          className="text-muted-foreground text-xs mt-1 flex items-center gap-1"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          {result.setting}
+                        </motion.p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Save button */}
+                        {result.saved_to ? (
+                          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg text-xs font-medium border border-emerald-500/30">
+                            <Check className="w-3.5 h-3.5" /> Saved
+                          </span>
+                        ) : (
+                          <button
+                            onClick={saveScenario}
+                            disabled={saving}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+                          >
+                            {saving ? (
+                              <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{
+                                  duration: 1,
+                                  repeat: Infinity,
+                                  ease: "linear",
+                                }}
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                              </motion.div>
+                            ) : (
+                              <Save className="w-3.5 h-3.5" />
+                            )}
+                            {saving ? "Saving" : "Save"}
+                          </button>
+                        )}
+
+                        {/* Play button — desktop only, mobile gets it at the bottom */}
+                        {result.saved_to && onStartBook && (
+                          <button
+                            onClick={() => onStartBook(result.saved_to!)}
+                            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-primary/80 hover:bg-primary text-white rounded-lg text-xs font-medium transition-all"
+                          >
+                            <BookOpen className="w-3.5 h-3.5" />
+                            Play
+                          </button>
+                        )}
+
+                        {/* JSON toggle — admin only */}
+                        {isAdmin && (
+                          <button
+                            onClick={() => setShowRaw(!showRaw)}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all ${
+                              showRaw
+                                ? "bg-primary/20 text-primary border border-primary/30"
+                                : "bg-secondary/30 text-muted-foreground/50 hover:text-muted-foreground border border-border/30 hover:border-border/50"
+                            }`}
+                          >
+                            {showRaw ? (
+                              <><Eye className="w-3 h-3" /> Pretty</>
+                            ) : (
+                              <><FileJson className="w-3 h-3" /> JSON</>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5 }}
+                      className="space-y-3"
+                    >
+                      <div>
+                        <div className="h-7 w-64 max-w-full rounded-lg bg-gradient-to-r from-secondary/80 via-secondary/40 to-secondary/80 animate-shimmer" style={{ backgroundSize: "200% 100%" }} />
+                        <div className="h-3 w-32 mt-2 rounded bg-gradient-to-r from-secondary/60 via-secondary/30 to-secondary/60 animate-shimmer" style={{ backgroundSize: "200% 100%" }} />
+                      </div>
+                    </motion.div>
+                  )}
                 </div>
 
                 {/* Result content */}
                 <div className="p-5 sm:p-6">
-                  <AnimatePresence mode="wait">
-                    {showRaw ? (
+                  {generating && !result ? (
+                    /* Skeleton state — progressive reveal during generation */
+                    <div className="space-y-8">
+                      {/* Wizard quips — rolling commentary */}
+                      <WizardQuips />
+
+                      {/* Premise skeleton */}
                       <motion.div
-                        key="raw"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="space-y-3"
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 5, duration: 0.5 }}
                       >
+                        <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                          <TypewriterText text="Premise" delay={5000} />
+                        </h3>
+                        <ShimmerSkeleton lines={3} />
+                      </motion.div>
+
+                      {/* Opening Scene skeleton */}
+                      <motion.div
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 10, duration: 0.5 }}
+                      >
+                        <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                          <TypewriterText text="Opening Scene" delay={10000} />
+                        </h3>
+                        <div className="relative pl-4 border-l-2 border-primary/20">
+                          <ShimmerSkeleton lines={4} />
+                        </div>
+                      </motion.div>
+
+                      {/* Themes skeleton */}
+                      <motion.div
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 15, duration: 0.5 }}
+                      >
+                        <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                          <TypewriterText text="Themes" delay={15000} />
+                        </h3>
                         <div className="flex gap-2">
-                          <button
-                            onClick={copyToClipboard}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary/70 hover:bg-secondary text-xs rounded-lg transition-colors"
-                          >
-                            {copied ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                Copied!
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                Copy
-                              </>
-                            )}
-                          </button>
-                          <button
-                            onClick={async () => {
-                              const text = await navigator.clipboard.readText();
-                              setRawJson(text);
+                          {[...Array(4)].map((_, i) => (
+                            <motion.div
+                              key={i}
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ delay: 15.5 + i * 0.2 }}
+                              className="h-6 w-16 rounded-lg bg-gradient-to-r from-secondary/80 via-secondary/40 to-secondary/80 animate-shimmer"
+                              style={{ backgroundSize: "200% 100%" }}
+                            />
+                          ))}
+                        </div>
+                      </motion.div>
+
+                      {/* Characters skeleton */}
+                      <motion.div
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 20, duration: 0.5 }}
+                      >
+                        <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                          <Users className="w-3.5 h-3.5" />
+                          <TypewriterText text="Characters" delay={20000} />
+                        </h3>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {[...Array(numChars)].map((_, i) => (
+                            <motion.div
+                              key={i}
+                              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              transition={{ delay: 20.5 + i * 0.8, duration: 0.4 }}
+                              className="bg-gradient-to-br from-card/90 to-card/70 border border-border/50 rounded-xl p-4"
+                            >
+                              <div className="flex items-center gap-2 mb-3">
+                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-violet-500/20 animate-shimmer" style={{ backgroundSize: "200% 100%" }} />
+                                <div className="h-4 w-24 rounded bg-gradient-to-r from-secondary/80 via-secondary/40 to-secondary/80 animate-shimmer" style={{ backgroundSize: "200% 100%" }} />
+                              </div>
+                              <ShimmerSkeleton lines={2} />
+                            </motion.div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    </div>
+                  ) : result ? (
+                    <AnimatePresence mode="wait">
+                      {showRaw ? (
+                        <motion.div
+                          key="raw"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="space-y-3"
+                        >
+                          <div className="flex gap-2">
+                            <button
+                              onClick={copyToClipboard}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary/70 hover:bg-secondary text-xs rounded-lg transition-colors"
+                            >
+                              {copied ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  Copied!
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  Copy
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const text = await navigator.clipboard.readText();
+                                setRawJson(text);
+                                try {
+                                  setResult(JSON.parse(text));
+                                } catch {
+                                  // Invalid JSON while editing
+                                }
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary/70 hover:bg-secondary text-xs rounded-lg transition-colors"
+                            >
+                              <ClipboardPaste className="w-3.5 h-3.5" />
+                              Paste
+                            </button>
+                          </div>
+
+                          <textarea
+                            value={rawJson}
+                            onChange={(e) => {
+                              setRawJson(e.target.value);
                               try {
-                                setResult(JSON.parse(text));
+                                const parsed = JSON.parse(e.target.value);
+                                setResult({ ...parsed, saved_to: undefined });
                               } catch {
-                                // Invalid JSON while editing
+                                // Invalid JSON while typing
                               }
                             }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary/70 hover:bg-secondary text-xs rounded-lg transition-colors"
+                            className="w-full bg-background/50 border border-border/30 rounded-xl p-4 text-xs font-mono h-[50vh] resize-none outline-none focus:border-primary/30 transition-colors"
+                            spellCheck={false}
+                          />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="pretty"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="space-y-6"
+                        >
+                          {/* Premise */}
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.1, duration: 0.4 }}
                           >
-                            <ClipboardPaste className="w-3.5 h-3.5" />
-                            Paste
-                          </button>
-                        </div>
+                            <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                              Premise
+                            </h3>
+                            <ExpandableText
+                              text={result.premise}
+                              className="text-sm text-foreground/90 leading-relaxed"
+                            />
+                          </motion.div>
 
-                        <textarea
-                          value={rawJson}
-                          onChange={(e) => {
-                            setRawJson(e.target.value);
-                            try {
-                              const parsed = JSON.parse(e.target.value);
-                              setResult({ ...parsed, saved_to: undefined });
-                            } catch {
-                              // Invalid JSON while typing
-                            }
-                          }}
-                          className="w-full bg-background/50 border border-border/30 rounded-xl p-4 text-xs font-mono h-[50vh] resize-none outline-none focus:border-primary/30 transition-colors"
-                          spellCheck={false}
-                        />
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="pretty"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="space-y-6"
-                      >
-                        {/* Premise */}
-                        <div>
-                          <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-                            Premise
-                          </h3>
-                          <p className="text-sm text-foreground/90 leading-relaxed">
-                            {result.premise}
-                          </p>
-                        </div>
-
-                        {/* Opening */}
-                        <div>
-                          <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-                            Opening Scene
-                          </h3>
-                          <div className="relative pl-4 border-l-2 border-primary/30">
-                            <p className="text-sm text-foreground/80 italic leading-relaxed">
-                              {result.opening_situation}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Themes */}
-                        <div>
-                          <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-                            Themes
-                          </h3>
-                          <div className="flex flex-wrap gap-1.5">
-                            {result.themes.map((t, i) => (
-                              <motion.span
-                                key={i}
-                                initial={{ opacity: 0, scale: 0.8 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                transition={{ delay: i * 0.05 }}
-                                className="px-2.5 py-1 bg-secondary/70 rounded-lg text-xs text-foreground/70"
-                              >
-                                {t}
-                              </motion.span>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Characters */}
-                        <div>
-                          <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                            <Users className="w-3.5 h-3.5" />
-                            Characters ({result.characters.length})
-                          </h3>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {result.characters.map((char, i) => (
-                              <CharacterCard
-                                key={char.name}
-                                character={char}
-                                index={i}
+                          {/* Opening */}
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.3, duration: 0.4 }}
+                          >
+                            <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                              Opening Scene
+                            </h3>
+                            <div className="relative pl-4 border-l-2 border-primary/30">
+                              <ExpandableText
+                                text={result.opening_situation}
+                                className="text-sm text-foreground/80 italic leading-relaxed"
                               />
-                            ))}
-                          </div>
-                        </div>
+                            </div>
+                          </motion.div>
 
-                        {/* Saved indicator */}
-                        {result.saved_to && (
-                          <p className="text-xs text-muted-foreground pt-2 border-t border-border/30">
-                            Saved as:{" "}
-                            <code className="px-1.5 py-0.5 bg-secondary/50 rounded text-primary/80">
-                              {result.saved_to}
-                            </code>
-                          </p>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                          {/* Themes */}
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.5, duration: 0.4 }}
+                          >
+                            <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                              Themes
+                            </h3>
+                            <div className="flex flex-wrap gap-1.5">
+                              {result.themes.map((t, i) => (
+                                <motion.span
+                                  key={i}
+                                  initial={{ opacity: 0, scale: 0.8 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  transition={{ delay: 0.6 + i * 0.05 }}
+                                  className="px-2.5 py-1 bg-secondary/70 rounded-lg text-xs text-foreground/70"
+                                >
+                                  {t}
+                                </motion.span>
+                              ))}
+                            </div>
+                          </motion.div>
+
+                          {/* Characters */}
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.7, duration: 0.4 }}
+                          >
+                            <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                              <Users className="w-3.5 h-3.5" />
+                              Characters ({result.characters.length})
+                            </h3>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {result.characters.map((char, i) => (
+                                <CharacterCard
+                                  key={char.name}
+                                  character={char}
+                                  index={i}
+                                />
+                              ))}
+                            </div>
+                          </motion.div>
+
+                          {/* Play button — mobile only, prominent at bottom */}
+                          {result.saved_to && onStartBook && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.9, duration: 0.4 }}
+                              className="sm:hidden pt-2"
+                            >
+                              <button
+                                onClick={() => onStartBook(result.saved_to!)}
+                                className="w-full py-3 bg-gradient-to-r from-primary to-[oklch(0.55_0.2_320)] text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/25"
+                              >
+                                <BookOpen className="w-5 h-5" />
+                                Start Playing
+                              </button>
+                            </motion.div>
+                          )}
+
+                          {/* Saved indicator */}
+                          {result.saved_to && (
+                            <motion.p
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              transition={{ delay: 1.0 }}
+                              className="text-xs text-muted-foreground pt-2 border-t border-border/30"
+                            >
+                              Saved as:{" "}
+                              <code className="px-1.5 py-0.5 bg-secondary/50 rounded text-primary/80">
+                                {result.saved_to}
+                              </code>
+                            </motion.p>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  ) : null}
                 </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
     </div>
   );
 }
