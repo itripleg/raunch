@@ -223,23 +223,28 @@ export function useLibrary(apiUrl: string, accessToken?: string | null, kindeUse
         }
       }
 
-      // No Kinde match — fall back to cached localStorage ID
-      const storedId = getStoredLibrarianId(apiUrl);
-      if (storedId) {
-        // Validate the cached librarian still exists on the server
-        try {
-          const res = await fetch(`${apiUrl}/api/v1/librarians/${encodeURIComponent(storedId)}`);
-          if (res.ok) {
+      // If Kinde user is authenticated but has no linked librarian,
+      // don't fall back to cached ID — it belongs to a different user.
+      // Create a fresh librarian for this Kinde account.
+      if (kindeUserId) {
+        console.warn("Kinde user has no linked librarian — creating new one");
+        clearStoredLibrarianId(apiUrl);
+      } else {
+        // No Kinde auth — fall back to cached localStorage ID (anonymous/demo mode)
+        const storedId = getStoredLibrarianId(apiUrl);
+        if (storedId) {
+          try {
+            const res = await fetch(`${apiUrl}/api/v1/librarians/${encodeURIComponent(storedId)}`);
+            if (res.ok) {
+              setLibrarianId(storedId);
+              return;
+            }
+            console.warn("Cached librarian ID is stale, recreating...");
+            clearStoredLibrarianId(apiUrl);
+          } catch {
             setLibrarianId(storedId);
             return;
           }
-          // Server returned 404 or other error — cached ID is stale
-          console.warn("Cached librarian ID is stale, recreating...");
-          clearStoredLibrarianId(apiUrl);
-        } catch {
-          // Server unreachable — use cached ID optimistically
-          setLibrarianId(storedId);
-          return;
         }
       }
 
@@ -339,7 +344,7 @@ export function useLibrary(apiUrl: string, accessToken?: string | null, kindeUse
   // Create a new book
   const createBook = useCallback(async (
     scenario: string,
-    isPrivate = false
+    isPrivate = true
   ): Promise<{ bookId: string; bookmark: string }> => {
     setIsLoading(true);
     setError(null);

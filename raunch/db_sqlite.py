@@ -226,7 +226,7 @@ def init_db() -> None:
             bookmark      TEXT UNIQUE NOT NULL,
             scenario_name TEXT NOT NULL,
             owner_id      TEXT REFERENCES librarians(id),
-            private       INTEGER DEFAULT 0,
+            private       INTEGER DEFAULT 1,
             created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_active   TIMESTAMP,
             page_count    INTEGER DEFAULT 0

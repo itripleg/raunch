@@ -23,7 +23,7 @@ def get_librarian_id(x_librarian_id: str = Header(..., alias="X-Librarian-ID")) 
 
 class CreateBookRequest(BaseModel):
     scenario: str
-    private: bool = False
+    private: bool = True
 
 
 class CreateBookResponse(BaseModel):

@@ -110,10 +110,12 @@ async def get_scenarios():
     """List all available scenarios (both file-based and public DB scenarios)."""
     results = []
 
-    # Add file-based scenarios
+    # Add file-based scenarios (filter out DB scenarios which are handled below)
     for scenario in list_scenarios():
+        if scenario.get("source") != "file":
+            continue
         results.append(ScenarioSummary(
-            file=scenario["file"],
+            file=scenario.get("file"),
             name=scenario["name"],
             setting=scenario.get("setting"),
             characters=scenario.get("characters", 0),

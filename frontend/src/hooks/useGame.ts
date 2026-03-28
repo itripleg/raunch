@@ -367,7 +367,12 @@ function reducer(state: State, action: Action): State {
     case "PAGE_INTERVAL":
       return { ...state, pageInterval: action.seconds, manualMode: action.manual };
     case "ERROR":
-      return { ...state, error: action.message };
+      return {
+        ...state,
+        error: action.message,
+        pageGenerating: null,
+        streaming: { ...state.streaming, isStreaming: false },
+      };
     case "CLEAR_ERROR":
       return { ...state, error: null };
     case "INFLUENCE_QUEUED":
