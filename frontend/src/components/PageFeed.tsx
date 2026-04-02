@@ -1059,29 +1059,19 @@ type PageEntryProps = {
   onTapBorder?: () => void;
 };
 
-/** Check if a timestamp is within the last N seconds */
-function isRecentTimestamp(timestamp?: string | number, maxAgeSeconds = 60): boolean {
-  if (!timestamp) return false;
-  const date = parseTimestamp(timestamp);
-  if (isNaN(date.getTime())) return false;
-  return Date.now() - date.getTime() < maxAgeSeconds * 1000;
-}
-
 function PageEntry({ pageItem, isFocused, isNew, onHoverCharacter, onTapCharacter, characterNames, moodStyle, onTapBorder }: PageEntryProps) {
-  // Use typewriter for recent pages (created < 30s ago)
-  const useTypewriter = isNew && isRecentTimestamp(pageItem.created_at, 30);
+  // Typewriter only for the newest page (user is watching it arrive)
+  const useTypewriter = isNew;
 
-  // Track narration completion for skip-on-double-click feature
+  // Track if typewriter has been skipped or completed
   const [narrationComplete, setNarrationComplete] = useState(!useTypewriter);
 
-  // Allow skipping typewriter with double-click
-  const [typewriterSkipped, setTypewriterSkipped] = useState(false);
-  const handleDoubleClick = useCallback(() => {
-    if (useTypewriter && !narrationComplete) {
-      setTypewriterSkipped(true);
+  // Skip typewriter with a single tap/click (works on mobile)
+  const handleSkip = useCallback(() => {
+    if (!narrationComplete) {
       setNarrationComplete(true);
     }
-  }, [useTypewriter, narrationComplete]);
+  }, [narrationComplete]);
 
   return (
     <div
@@ -1107,8 +1097,7 @@ function PageEntry({ pageItem, isFocused, isNew, onHoverCharacter, onTapCharacte
         </span>
       </div>
 
-      {/* Narration with highlighted dialogue and intensity words */}
-      {/* Double-click to skip typewriter animation */}
+      {/* Narration - tap anywhere to skip typewriter */}
       <div className="relative">
         {/* Mobile-only: tap the left border to open sidebar */}
         {onTapBorder && (
@@ -1120,14 +1109,14 @@ function PageEntry({ pageItem, isFocused, isNew, onHoverCharacter, onTapCharacte
         )}
         <div
           className={`text-sm leading-relaxed text-foreground/90 pl-3 border-l-2 ${moodStyle.border} whitespace-pre-line cursor-text`}
-          onDoubleClick={handleDoubleClick}
-          title={useTypewriter && !narrationComplete ? "Double-click to skip animation" : undefined}
+          onClick={useTypewriter && !narrationComplete ? handleSkip : undefined}
+          title={useTypewriter && !narrationComplete ? "Tap to skip animation" : undefined}
         >
         <NarrationText
           text={pageItem.narration}
           isNew={useTypewriter}
-          useTypewriter={useTypewriter && !typewriterSkipped}
-          onComplete={() => setNarrationComplete(true)}
+          useTypewriter={useTypewriter && !narrationComplete}
+          onComplete={handleSkip}
         />
         </div>
       </div>

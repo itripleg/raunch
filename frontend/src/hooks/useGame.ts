@@ -192,11 +192,14 @@ function reducer(state: State, action: Action): State {
       if (existingIndex !== -1) {
         // Update existing partial page with full data (characters, etc.)
         const updatedPages = [...state.pages];
+        const existingPage = updatedPages[existingIndex];
         updatedPages[existingIndex] = {
-          ...updatedPages[existingIndex],
+          ...existingPage,
           ...action.data,
           // Merge characters - full page has all character data
           characters: action.data.characters,
+          // Preserve original created_at to avoid breaking typewriter animation
+          created_at: existingPage.created_at || action.data.created_at,
         };
         return {
           ...state,
